@@ -23,8 +23,8 @@ python3.10 -m venv ai
 cp .env.example .env
 # 编辑 .env，填入 CURSOR_API_KEY
 
-# 4. 启动（默认监听 127.0.0.1:8765；run.sh 优先使用 ./ai/bin/python）
-bash run.sh
+# 4. 启动（先激活你的 Python 3.10+ 环境）
+./ai/bin/python start.py
 ```
 
 自检（不依赖 API Key）：
@@ -52,7 +52,16 @@ http://127.0.0.1:8765/
 在宿主项目任意 HTML 模板（如 `server/templates/base.html`）的 `</body>` 前加一行：
 
 ```html
-<script src="http://127.0.0.1:8765/static/widget.js" data-api-base="http://127.0.0.1:8765"></script>
+<script src="http://<ai-agent-host>:8765/static/widget.js"></script>
+```
+
+如果宿主页面和 Ai-agent API 不在同一域名下，再显式传 `data-api-base`：
+
+```html
+<script
+  src="http://<ai-agent-host>:8765/static/widget.js"
+  data-api-base="http://<ai-agent-host>:8765"
+></script>
 ```
 
 刷新页面后右下角出现 **AI** 按钮，点击展开侧边栏即可对话。侧边栏支持 📷 图片上传，可与文本一起发送给 Agent 分析。
@@ -60,7 +69,7 @@ http://127.0.0.1:8765/
 纯后端项目也可以不用 widget，直接调 API：
 
 ```bash
-curl -X POST http://127.0.0.1:8765/api/chat \
+curl -X POST http://<ai-agent-host>:8765/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"列出项目顶层目录结构"}'
 ```
@@ -68,7 +77,7 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 带图片的请求示例：
 
 ```bash
-curl -X POST http://127.0.0.1:8765/api/chat \
+curl -X POST http://<ai-agent-host>:8765/api/chat \
   -H 'Content-Type: application/json' \
   -d '{
     "message": "这张截图里报错是什么意思？",
@@ -89,7 +98,7 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 
 | 字段 | 说明 |
 |------|------|
-| `host_project_root` | 宿主项目根目录，相对 Ai-agent 目录，默认 `..` |
+| `host_project_root` | 宿主项目根目录，相对 Ai-agent 目录，按你的目录结构配置 |
 | `server.host` / `server.port` | 本地服务地址，默认 `127.0.0.1:8765` |
 | `agent.model` | Cursor 模型，默认 `composer-2.5` |
 | `agent.runtime` | `local`（本机改代码）或 `cloud`（云端 VM + GitHub） |
@@ -118,6 +127,7 @@ Ai-agent/
 ├── config.yaml
 ├── .env.example
 ├── requirements.txt
+├── start.py
 └── run.sh
 ```
 

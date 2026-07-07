@@ -1,5 +1,5 @@
-# 宿主项目根目录（相对 Ai-agent 目录）。clone 到宿主项目根下时默认 ../ 即可。
-host_project_root: ".."
+# 宿主项目根目录。当前 Ai-agent 作为 ad-plex 同级目录独立运行。
+host_project_root: "../ad-plex"
 
 server:
   host: "0.0.0.0"

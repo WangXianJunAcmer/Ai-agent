@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from collections import deque
@@ -18,6 +19,7 @@ from cursor_sdk import (
   CursorAgentError,
   LocalAgentOptions,
   SDKImage,
+  SendOptions,
   UserMessage,
 )
 
@@ -91,6 +93,119 @@ class SessionManager:
     except Exception:
       return str(value)
 
+  def _jsonable(self, value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+      return value
+    if isinstance(value, dict):
+      return {str(k): self._jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+      return [self._jsonable(item) for item in value]
+    try:
+      json.dumps(value)
+      return value
+    except Exception:
+      return str(value)
+
+  def _collect_paths(self, value) -> list[str]:
+    paths: list[str] = []
+
+    def visit(item) -> None:
+      if isinstance(item, dict):
+        for key, nested in item.items():
+          lowered = str(key).lower()
+          if lowered in {"path", "paths", "file", "files", "target_file", "target_notebook", "working_directory"}:
+            if isinstance(nested, str):
+              paths.append(nested)
+            elif isinstance(nested, (list, tuple)):
+              for entry in nested:
+                if isinstance(entry, str):
+                  paths.append(entry)
+          visit(nested)
+      elif isinstance(item, (list, tuple)):
+        for nested in item:
+          visit(nested)
+
+    visit(value)
+    seen = set()
+    result = []
+    for path in paths:
+      if path and path not in seen:
+        seen.add(path)
+        result.append(path)
+    return result[:6]
+
+  def _extract_patch_targets(self, text: str) -> list[str]:
+    if not text:
+      return []
+    matches = re.findall(r"\*\*\* (?:Add|Update) File: (.+)", text)
+    return matches[:6]
+
+  def _extract_patch_preview(self, text: str) -> list[dict]:
+    if not text:
+      return []
+    previews: list[dict] = []
+    current_path = ""
+    removed: list[str] = []
+    added: list[str] = []
+    for line in text.splitlines():
+      if line.startswith("*** Add File: ") or line.startswith("*** Update File: "):
+        if current_path and (removed or added):
+          previews.append({"path": current_path, "removed": removed[:3], "added": added[:3]})
+        current_path = line.split(": ", 1)[1].strip()
+        removed = []
+        added = []
+      elif line.startswith("-") and not line.startswith("---"):
+        removed.append(line[1:])
+      elif line.startswith("+") and not line.startswith("+++"):
+        added.append(line[1:])
+    if current_path and (removed or added):
+      previews.append({"path": current_path, "removed": removed[:3], "added": added[:3]})
+    return previews[:3]
+
+  def _tool_summary(self, name: str, args=None, result=None, status: str = "unknown") -> dict:
+    lowered = (name or "tool").lower()
+    paths = self._collect_paths(args) or self._collect_paths(result)
+    patch_text = ""
+    if isinstance(args, str):
+      patch_text = args
+    elif isinstance(args, dict):
+      for key in ("patch", "old_string", "new_string"):
+        if isinstance(args.get(key), str) and "*** " in args.get(key, ""):
+          patch_text = args[key]
+          break
+    patch_paths = self._extract_patch_targets(patch_text)
+    if patch_paths:
+      paths = patch_paths
+    patch_preview = self._extract_patch_preview(patch_text)
+
+    if lowered in {"readfile", "glob", "rg"}:
+      return {
+        "kind": "explore",
+        "title": f"Explored {max(1, len(paths))} file{'s' if len(paths) != 1 else ''}",
+        "detail": ", ".join(paths) if paths else name,
+        "paths": paths,
+      }
+    if lowered in {"applypatch", "editnotebook", "delete"}:
+      return {
+        "kind": "edit",
+        "title": "Edit attempted" if status == "running" else "Edited code",
+        "detail": ", ".join(paths) if paths else name,
+        "paths": paths,
+        "diff": patch_preview,
+      }
+    if lowered in {"todowrite"}:
+      return {"kind": "plan", "title": "Updated plan", "detail": "Refreshed task list", "paths": []}
+    if lowered in {"readlints"}:
+      return {"kind": "verify", "title": "Checked diagnostics", "detail": ", ".join(paths) if paths else name, "paths": paths}
+    if lowered in {"shell", "awaitshell"}:
+      return {
+        "kind": "run",
+        "title": "Ran command" if status == "running" else "Command finished",
+        "detail": ", ".join(paths) if paths else name,
+        "paths": paths,
+      }
+    return {"kind": "tool", "title": name or "Tool call", "detail": ", ".join(paths) if paths else "", "paths": paths}
+
   def _assistant_text(self, message) -> str:
     content = getattr(getattr(message, "message", None), "content", None) or []
     parts: list[str] = []
@@ -127,28 +242,75 @@ class SessionManager:
       remembered.append(item)
     return remembered
 
+  def _delta_event(self, update, session: Session) -> dict | None:
+    update_type = getattr(update, "type", None)
+    if update_type == "summary-started":
+      return {"type": "planning", "content": "", "session_id": session.session_id, "model": session.model}
+    if update_type == "summary-update":
+      return {
+        "type": "planning",
+        "content": getattr(update, "text", ""),
+        "session_id": session.session_id,
+        "model": session.model,
+      }
+    if update_type == "thinking-delta":
+      return {
+        "type": "thinking",
+        "content": getattr(update, "text", ""),
+        "session_id": session.session_id,
+        "model": session.model,
+      }
+    if update_type == "tool-call-started":
+      summary = self._tool_summary(
+        getattr(update, "name", "tool"),
+        getattr(update, "args", None),
+        None,
+        "running",
+      )
+      return {
+        "type": "tool_call",
+        "session_id": session.session_id,
+        "model": session.model,
+        "call_id": getattr(update, "call_id", ""),
+        "name": getattr(update, "name", "tool"),
+        "status": "running",
+        "args": self._stringify(getattr(update, "args", None)),
+        "result": "",
+        "summary": summary,
+        "args_json": self._jsonable(getattr(update, "args", None)),
+      }
+    if update_type == "tool-call-completed":
+      summary = self._tool_summary(
+        getattr(update, "name", "tool"),
+        None,
+        getattr(update, "result", None),
+        "completed",
+      )
+      return {
+        "type": "tool_call",
+        "session_id": session.session_id,
+        "model": session.model,
+        "call_id": getattr(update, "call_id", ""),
+        "name": getattr(update, "name", "tool"),
+        "status": "completed",
+        "args": "",
+        "result": self._stringify(getattr(update, "result", None)),
+        "summary": summary,
+        "result_json": self._jsonable(getattr(update, "result", None)),
+      }
+    if update_type == "text-delta":
+      return {
+        "type": "text",
+        "content": getattr(update, "text", ""),
+        "session_id": session.session_id,
+        "model": session.model,
+      }
+    return None
+
   async def _stream_run_messages(self, run, session: Session) -> AsyncIterator[dict]:
     async for message in run.messages():
       msg_type = getattr(message, "type", None)
-      if msg_type == "assistant":
-        text = self._assistant_text(message)
-        if text:
-          yield {"type": "text", "content": text, "session_id": session.session_id, "model": session.model}
-      elif msg_type == "thinking":
-        text = getattr(message, "text", "")
-        if text:
-          yield {"type": "thinking", "content": text, "session_id": session.session_id, "model": session.model}
-      elif msg_type == "tool_call":
-        yield {
-          "type": "tool_call",
-          "session_id": session.session_id,
-          "model": session.model,
-          "name": getattr(message, "name", "tool"),
-          "status": getattr(message, "status", "unknown"),
-          "args": self._stringify(getattr(message, "args", None)),
-          "result": self._stringify(getattr(message, "result", None)),
-        }
-      elif msg_type == "status":
+      if msg_type == "status":
         yield {
           "type": "status",
           "session_id": session.session_id,
@@ -164,6 +326,26 @@ class SessionManager:
           "status": getattr(message, "status", "unknown"),
           "content": getattr(message, "text", ""),
         }
+
+  async def _stream_run(self, run, session: Session) -> AsyncIterator[dict]:
+    queue: asyncio.Queue[dict | None] = asyncio.Queue()
+
+    async def forward_messages() -> None:
+      try:
+        async for event in self._stream_run_messages(run, session):
+          await queue.put(event)
+      finally:
+        await queue.put(None)
+
+    task = asyncio.create_task(forward_messages())
+    try:
+      while True:
+        event = await queue.get()
+        if event is None:
+          break
+        yield event
+    finally:
+      await task
 
   async def get_or_create(self, session_id: str | None, model: str | None = None) -> Session:
     await self.start()
@@ -189,15 +371,12 @@ class SessionManager:
     async with session.lock:
       try:
         self._remember_images(session, images)
-        run = await session.agent.send(self._image_message(message, images))
-        parts: list[str] = []
-        async for event in self._stream_run_messages(run, session):
-          if event["type"] == "text":
-            parts.append(event["content"])
+        run = await session.agent.send(self._image_message(message, images), SendOptions())
         result = await run.wait()
+        reply = await run.text()
         return {
           "session_id": session.session_id,
-          "reply": "".join(parts),
+          "reply": reply,
           "status": result.status,
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
@@ -227,9 +406,33 @@ class SessionManager:
             "images": remembered,
             "recent_images": list(session.recent_images),
           }
-        run = await session.agent.send(self._image_message(message, images))
-        async for event in self._stream_run_messages(run, session):
+        loop = asyncio.get_running_loop()
+
+        def on_delta(update) -> None:
+          event = self._delta_event(update, session)
+          if event:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        run = await session.agent.send(
+          self._image_message(message, images),
+          SendOptions(on_delta=on_delta),
+        )
+
+        async def forward_messages() -> None:
+          try:
+            async for event in self._stream_run_messages(run, session):
+              await queue.put(event)
+          finally:
+            await queue.put(None)
+
+        task = asyncio.create_task(forward_messages())
+        while True:
+          event = await queue.get()
+          if event is None:
+            break
           yield event
+        await task
         result = await run.wait()
         yield {
           "type": "done",
