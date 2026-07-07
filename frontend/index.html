@@ -287,7 +287,7 @@
     function syncStatusPill(runtime) {
       var el = document.getElementById("health-status");
       currentRuntime = runtime || currentRuntime;
-      el.textContent = "OK · " + runtime + " · 当前模型: " + selectedModel;
+      el.textContent = "在线 · " + currentRuntime;
     }
 
     async function checkHealth() {

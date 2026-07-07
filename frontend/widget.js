@@ -56,6 +56,48 @@
     #ai-agent-messages {
       flex: 1; overflow-y: auto; padding: 18px; background: #f8fafc;
     }
+    .ai-agent-trace {
+      margin-top: 10px;
+      border: 1px solid #dbe3ee;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .72);
+      overflow: hidden;
+      display: none;
+    }
+    .ai-agent-trace.visible { display: block; }
+    .ai-agent-trace-toggle {
+      width: 100%;
+      border: 0;
+      border-top: 1px solid #e2e8f0;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      padding: 10px 12px;
+      font: 700 12px/1.4 system-ui, sans-serif;
+      color: #334155;
+    }
+    .ai-agent-trace-body {
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px 12px 12px;
+      display: none;
+    }
+    .ai-agent-trace.open .ai-agent-trace-body { display: block; }
+    .ai-agent-step {
+      border-left: 3px solid #cbd5e1;
+      padding: 8px 0 8px 12px;
+      color: #475569;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .ai-agent-step + .ai-agent-step { margin-top: 6px; }
+    .ai-agent-step.thinking { border-left-color: #a78bfa; }
+    .ai-agent-step.tool_call { border-left-color: #60a5fa; }
+    .ai-agent-step.status { border-left-color: #34d399; }
+    .ai-agent-step.task { border-left-color: #f59e0b; }
+    .ai-agent-step.upload { border-left-color: #818cf8; }
+    .ai-agent-step .meta { font-weight: 700; color: #0f172a; display: block; margin-bottom: 2px; }
     .ai-agent-msg-images {
       display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
     }
@@ -213,7 +255,7 @@
   var imageInput = document.getElementById("ai-agent-image-input");
   var pendingImages = [];
   modelField.value = defaultModel;
-  currentModel.textContent = "模型: " + defaultModel;
+  currentModel.textContent = defaultModel;
 
   async function loadModelOptions() {
     try {
@@ -383,6 +425,33 @@
     return msg;
   }
 
+  function ensureTracePanel(msg) {
+    var panel = msg.querySelector(".ai-agent-trace");
+    if (panel) return panel;
+    panel = document.createElement("div");
+    panel.className = "ai-agent-trace";
+    panel.innerHTML = '<button type="button" class="ai-agent-trace-toggle">查看思考过程</button><div class="ai-agent-trace-body"></div>';
+    var toggle = panel.querySelector(".ai-agent-trace-toggle");
+    toggle.onclick = function () {
+      panel.classList.toggle("open");
+      toggle.textContent = panel.classList.contains("open") ? "隐藏思考过程" : "查看思考过程";
+    };
+    msg.appendChild(panel);
+    return panel;
+  }
+
+  function appendTraceStep(msg, kind, title, content) {
+    var panel = ensureTracePanel(msg);
+    var body = panel.querySelector(".ai-agent-trace-body");
+    var step = document.createElement("div");
+    step.className = "ai-agent-step " + kind;
+    step.innerHTML = '<span class="meta"></span><div class="content"></div>';
+    step.querySelector(".meta").textContent = title;
+    step.querySelector(".content").textContent = content || "";
+    body.appendChild(step);
+    panel.classList.add("visible");
+  }
+
   function renderAttachmentPreview() {
     attachmentsDiv.innerHTML = "";
     pendingImages.forEach(function (item, index) {
@@ -454,12 +523,12 @@
     inputField.disabled = busy;
     modelField.disabled = busy;
     pickImageBtn.disabled = busy;
-    runState.textContent = busy ? "运行中" : "空闲";
-    currentModel.textContent = "模型: " + modelField.value;
+    runState.textContent = busy ? "处理中" : "就绪";
+    currentModel.textContent = modelField.value;
   }
 
   function updateRunState(text) {
-    runState.textContent = text || "运行中";
+    runState.textContent = text || "处理中";
   }
 
   async function sendMessage() {
@@ -513,7 +582,7 @@
             localStorage.setItem("ai-agent-session-id", sessionId);
           }
           if (payload.model) {
-            currentModel.textContent = "模型: " + payload.model;
+            currentModel.textContent = payload.model;
           }
 
           if (payload.type === "text") {
@@ -522,14 +591,24 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           } else if (payload.type === "upload") {
             updateRunState("已上传图片");
+            var names = (payload.images || []).map(function (img) { return img.name || "image"; }).join(", ");
+            appendTraceStep(agentMsg, "upload", "Uploaded " + (payload.images || []).length + " image(s)", names);
           } else if (payload.type === "thinking") {
             updateRunState("正在思考");
+            appendTraceStep(agentMsg, "thinking", "Thinking", payload.content || "");
           } else if (payload.type === "tool_call") {
             updateRunState("正在调用工具");
+            var toolText = (payload.args ? "args:\n" + payload.args : "");
+            if (payload.result) {
+              toolText += (toolText ? "\n\n" : "") + "result:\n" + payload.result;
+            }
+            appendTraceStep(agentMsg, "tool_call", (payload.name || "tool") + " · " + (payload.status || "unknown"), toolText);
           } else if (payload.type === "status") {
             updateRunState(payload.content || "正在处理");
+            appendTraceStep(agentMsg, "status", "Status · " + (payload.status || "unknown"), payload.content || "");
           } else if (payload.type === "task") {
             updateRunState(payload.content || "正在执行任务");
+            appendTraceStep(agentMsg, "task", "Task · " + (payload.status || "unknown"), payload.content || "");
           } else if (payload.type === "error") {
             setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
