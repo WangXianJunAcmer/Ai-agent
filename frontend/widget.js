@@ -37,33 +37,25 @@
       color: #475569;
       font-size: 13px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
+    }
+    #ai-agent-run-state {
+      flex: 0 0 auto;
+      min-width: 48px;
+    }
+    #ai-agent-current-model {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     #ai-agent-messages {
       flex: 1; overflow-y: auto; padding: 18px; background: #f8fafc;
     }
-    #ai-agent-process {
-      border-bottom: 1px solid #e2e8f0;
-      background: #fff;
-    }
-    #ai-agent-process-toggle {
-      width: 100%;
-      border: 0;
-      background: transparent;
-      cursor: pointer;
-      text-align: left;
-      padding: 12px 18px;
-      font: 700 13px/1.4 system-ui, sans-serif;
-      color: #334155;
-    }
-    #ai-agent-process-body {
-      max-height: 180px;
-      overflow-y: auto;
-      padding: 0 18px 14px;
-      display: none;
-    }
-    #ai-agent-process.open #ai-agent-process-body { display: block; }
     .ai-agent-step {
       border-left: 3px solid #cbd5e1;
       padding: 8px 0 8px 12px;
@@ -79,6 +71,33 @@
     .ai-agent-step.task { border-left-color: #f59e0b; }
     .ai-agent-step.upload { border-left-color: #818cf8; }
     .ai-agent-step .meta { font-weight: 700; color: #0f172a; display: block; margin-bottom: 2px; }
+    .ai-agent-msg-process {
+      margin: 10px 0 0;
+      border: 1px solid #dbe3ee;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .72);
+      overflow: hidden;
+      display: none;
+    }
+    .ai-agent-msg-process.visible { display: block; }
+    .ai-agent-msg-process button {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #e2e8f0;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      padding: 10px 12px;
+      font: 700 12px/1.4 system-ui, sans-serif;
+      color: #334155;
+    }
+    .ai-agent-msg-process-body {
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px 12px 12px;
+      display: none;
+    }
+    .ai-agent-msg-process.open .ai-agent-msg-process-body { display: block; }
     .ai-agent-msg-images {
       display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
     }
@@ -199,10 +218,6 @@
         <span id="ai-agent-run-state">空闲</span>
         <span id="ai-agent-current-model"></span>
       </div>
-      <div id="ai-agent-process">
-        <button id="ai-agent-process-toggle" type="button">过程面板（展开）</button>
-        <div id="ai-agent-process-body"></div>
-      </div>
       <div id="ai-agent-messages"></div>
       <div id="ai-agent-footer">
         <div id="ai-agent-toolbar">
@@ -233,9 +248,6 @@
   var inputField = document.getElementById("ai-agent-input");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
-  var processPanel = document.getElementById("ai-agent-process");
-  var processBody = document.getElementById("ai-agent-process-body");
-  var processToggle = document.getElementById("ai-agent-process-toggle");
   var runState = document.getElementById("ai-agent-run-state");
   var currentModel = document.getElementById("ai-agent-current-model");
   var attachmentsDiv = document.getElementById("ai-agent-attachments");
@@ -283,10 +295,6 @@
   trigger.onclick = openSidebar;
   closeBtn.onclick = closeSidebar;
   backdrop.onclick = closeSidebar;
-  processToggle.onclick = function () {
-    processPanel.classList.toggle("open");
-    processToggle.textContent = processPanel.classList.contains("open") ? "过程面板（收起）" : "过程面板（展开）";
-  };
 
   function escapeHtml(text) {
     return text
@@ -417,6 +425,21 @@
     return msg;
   }
 
+  function ensureProcessPanel(msg) {
+    var panel = msg.querySelector(".ai-agent-msg-process");
+    if (panel) return panel;
+    panel = document.createElement("div");
+    panel.className = "ai-agent-msg-process";
+    panel.innerHTML = '<button type="button">过程（展开）</button><div class="ai-agent-msg-process-body"></div>';
+    var toggle = panel.querySelector("button");
+    toggle.onclick = function () {
+      panel.classList.toggle("open");
+      toggle.textContent = panel.classList.contains("open") ? "过程（收起）" : "过程（展开）";
+    };
+    msg.appendChild(panel);
+    return panel;
+  }
+
   function renderAttachmentPreview() {
     attachmentsDiv.innerHTML = "";
     pendingImages.forEach(function (item, index) {
@@ -492,11 +515,10 @@
     currentModel.textContent = "模型: " + modelField.value;
   }
 
-  function clearProcess() {
-    processBody.innerHTML = "";
-  }
-
-  function appendProcessStep(kind, title, content) {
+  function appendProcessStep(msg, kind, title, content) {
+    var panel = ensureProcessPanel(msg);
+    var processBody = panel.querySelector(".ai-agent-msg-process-body");
+    var processToggle = panel.querySelector("button");
     var step = document.createElement("div");
     step.className = "ai-agent-step " + kind;
     step.innerHTML = '<span class="meta"></span><div class="content"></div>';
@@ -504,9 +526,10 @@
     step.querySelector(".content").textContent = content || "";
     processBody.appendChild(step);
     processBody.scrollTop = processBody.scrollHeight;
-    if (!processPanel.classList.contains("open")) {
-      processPanel.classList.add("open");
-      processToggle.textContent = "过程面板（收起）";
+    panel.classList.add("visible");
+    if (!panel.classList.contains("open")) {
+      panel.classList.add("open");
+      processToggle.textContent = "过程（收起）";
     }
   }
 
@@ -520,7 +543,6 @@
     inputField.value = "";
     clearPendingImages(false);
     setBusy(true);
-    clearProcess();
 
     var agentMsg = appendMessage("Agent", "思考中...", "agent", true);
     var reply = "";
@@ -571,25 +593,25 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           } else if (payload.type === "upload") {
             var names = (payload.images || []).map(function (img) { return img.name || "image"; }).join(", ");
-            appendProcessStep("upload", "Uploaded " + (payload.images || []).length + " image(s)", names);
+            appendProcessStep(agentMsg, "upload", "Uploaded " + (payload.images || []).length + " image(s)", names);
           } else if (payload.type === "thinking") {
-            appendProcessStep("thinking", "Thinking", payload.content || "");
+            appendProcessStep(agentMsg, "thinking", "Thinking", payload.content || "");
           } else if (payload.type === "tool_call") {
             var toolText = (payload.args ? "args:\n" + payload.args : "");
             if (payload.result) {
               toolText += (toolText ? "\n\n" : "") + "result:\n" + payload.result;
             }
-            appendProcessStep("tool_call", (payload.name || "tool") + " · " + (payload.status || "unknown"), toolText);
+            appendProcessStep(agentMsg, "tool_call", (payload.name || "tool") + " · " + (payload.status || "unknown"), toolText);
           } else if (payload.type === "status") {
-            appendProcessStep("status", "Status · " + (payload.status || "unknown"), payload.content || "");
+            appendProcessStep(agentMsg, "status", "Status · " + (payload.status || "unknown"), payload.content || "");
           } else if (payload.type === "task") {
-            appendProcessStep("task", "Task · " + (payload.status || "unknown"), payload.content || "");
+            appendProcessStep(agentMsg, "task", "Task · " + (payload.status || "unknown"), payload.content || "");
           } else if (payload.type === "error") {
             setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
           } else if (payload.type === "done") {
-            appendProcessStep("status", "Done", "status: " + (payload.status || "unknown"));
+            appendProcessStep(agentMsg, "status", "Done", "status: " + (payload.status || "unknown"));
           }
         }
       }
