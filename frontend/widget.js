@@ -162,7 +162,12 @@
           modelField.appendChild(option);
         });
       }
-      modelField.value = data.model || defaultModel;
+      var preferredModel = defaultModel || data.default_model || data.model;
+      if (preferredModel && Array.from(modelField.options).some(function (option) { return option.value === preferredModel; })) {
+        modelField.value = preferredModel;
+      } else if (data.default_model && Array.from(modelField.options).some(function (option) { return option.value === data.default_model; })) {
+        modelField.value = data.default_model;
+      }
     } catch (err) {
       modelField.value = defaultModel;
     }

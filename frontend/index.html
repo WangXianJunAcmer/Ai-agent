@@ -236,6 +236,13 @@
 
   <script>
     var selectedModel = "composer-2.5";
+    var currentRuntime = "local";
+
+    function syncStatusPill(runtime) {
+      var el = document.getElementById("health-status");
+      currentRuntime = runtime || currentRuntime;
+      el.textContent = "OK · " + runtime + " · 当前模型: " + selectedModel;
+    }
 
     async function checkHealth() {
       const el = document.getElementById("health-status");
@@ -244,7 +251,6 @@
         const res = await fetch("/api/health");
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
-        el.textContent = "OK · " + data.runtime + " · " + data.model;
         if (Array.isArray(data.model_options) && data.model_options.length) {
           modelSelect.innerHTML = "";
           data.model_options.forEach(function (model) {
@@ -254,8 +260,11 @@
             modelSelect.appendChild(option);
           });
         }
-        selectedModel = data.model || selectedModel;
+        if (!Array.from(modelSelect.options).some(function (option) { return option.value === selectedModel; })) {
+          selectedModel = data.default_model || data.model || selectedModel;
+        }
         modelSelect.value = selectedModel;
+        syncStatusPill(data.runtime);
       } catch (err) {
         el.textContent = "Health check failed";
         el.style.background = "#fef2f2";
@@ -282,6 +291,7 @@
 
     document.getElementById("model-select").addEventListener("change", function (e) {
       selectedModel = e.target.value;
+      syncStatusPill(currentRuntime);
       var widgetModelSelect = document.getElementById("ai-agent-model");
       if (widgetModelSelect) widgetModelSelect.value = selectedModel;
     });
