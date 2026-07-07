@@ -7,6 +7,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from cursor_sdk import Cursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -22,6 +23,18 @@ from backend.sessions import SessionManager
 
 settings = load_settings()
 sessions = SessionManager(settings)
+DEFAULT_MODEL_OPTIONS = ["composer-2.5", "auto"]
+
+
+def get_model_options() -> list[str]:
+    try:
+        models = Cursor.models.list(api_key=settings["api_key"])
+        options = ["auto"]
+        ids = sorted({getattr(model, "id", "") for model in models if getattr(model, "id", "")})
+        options.extend(model_id for model_id in ids if model_id != "auto")
+        return options or DEFAULT_MODEL_OPTIONS
+    except Exception:
+        return DEFAULT_MODEL_OPTIONS
 
 
 @asynccontextmanager
@@ -60,7 +73,7 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
-        "model_options": ["composer-2.5", "auto"],
+        "model_options": get_model_options(),
     }
 
 

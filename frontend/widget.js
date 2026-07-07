@@ -116,6 +116,26 @@
   var messagesDiv = document.getElementById("ai-agent-messages");
   modelField.value = defaultModel;
 
+  async function loadModelOptions() {
+    try {
+      var res = await fetch(apiBase + "/api/health");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var data = await res.json();
+      if (Array.isArray(data.model_options) && data.model_options.length) {
+        modelField.innerHTML = "";
+        data.model_options.forEach(function (model) {
+          var option = document.createElement("option");
+          option.value = model;
+          option.textContent = model;
+          modelField.appendChild(option);
+        });
+      }
+      modelField.value = data.model || defaultModel;
+    } catch (err) {
+      modelField.value = defaultModel;
+    }
+  }
+
   function openSidebar() {
     sidebar.classList.add("open");
     backdrop.classList.add("open");
@@ -212,4 +232,5 @@
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter") sendMessage();
   });
+  loadModelOptions();
 })();
