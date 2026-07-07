@@ -56,48 +56,6 @@
     #ai-agent-messages {
       flex: 1; overflow-y: auto; padding: 18px; background: #f8fafc;
     }
-    .ai-agent-step {
-      border-left: 3px solid #cbd5e1;
-      padding: 8px 0 8px 12px;
-      color: #475569;
-      font-size: 13px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .ai-agent-step + .ai-agent-step { margin-top: 6px; }
-    .ai-agent-step.thinking { border-left-color: #a78bfa; }
-    .ai-agent-step.tool_call { border-left-color: #60a5fa; }
-    .ai-agent-step.status { border-left-color: #34d399; }
-    .ai-agent-step.task { border-left-color: #f59e0b; }
-    .ai-agent-step.upload { border-left-color: #818cf8; }
-    .ai-agent-step .meta { font-weight: 700; color: #0f172a; display: block; margin-bottom: 2px; }
-    .ai-agent-msg-process {
-      margin: 10px 0 0;
-      border: 1px solid #dbe3ee;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, .72);
-      overflow: hidden;
-      display: none;
-    }
-    .ai-agent-msg-process.visible { display: block; }
-    .ai-agent-msg-process button {
-      width: 100%;
-      border: 0;
-      border-bottom: 1px solid #e2e8f0;
-      background: transparent;
-      cursor: pointer;
-      text-align: left;
-      padding: 10px 12px;
-      font: 700 12px/1.4 system-ui, sans-serif;
-      color: #334155;
-    }
-    .ai-agent-msg-process-body {
-      max-height: 180px;
-      overflow-y: auto;
-      padding: 10px 12px 12px;
-      display: none;
-    }
-    .ai-agent-msg-process.open .ai-agent-msg-process-body { display: block; }
     .ai-agent-msg-images {
       display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
     }
@@ -425,21 +383,6 @@
     return msg;
   }
 
-  function ensureProcessPanel(msg) {
-    var panel = msg.querySelector(".ai-agent-msg-process");
-    if (panel) return panel;
-    panel = document.createElement("div");
-    panel.className = "ai-agent-msg-process";
-    panel.innerHTML = '<button type="button">过程（展开）</button><div class="ai-agent-msg-process-body"></div>';
-    var toggle = panel.querySelector("button");
-    toggle.onclick = function () {
-      panel.classList.toggle("open");
-      toggle.textContent = panel.classList.contains("open") ? "过程（收起）" : "过程（展开）";
-    };
-    msg.appendChild(panel);
-    return panel;
-  }
-
   function renderAttachmentPreview() {
     attachmentsDiv.innerHTML = "";
     pendingImages.forEach(function (item, index) {
@@ -515,22 +458,8 @@
     currentModel.textContent = "模型: " + modelField.value;
   }
 
-  function appendProcessStep(msg, kind, title, content) {
-    var panel = ensureProcessPanel(msg);
-    var processBody = panel.querySelector(".ai-agent-msg-process-body");
-    var processToggle = panel.querySelector("button");
-    var step = document.createElement("div");
-    step.className = "ai-agent-step " + kind;
-    step.innerHTML = '<span class="meta"></span><div class="content"></div>';
-    step.querySelector(".meta").textContent = title;
-    step.querySelector(".content").textContent = content || "";
-    processBody.appendChild(step);
-    processBody.scrollTop = processBody.scrollHeight;
-    panel.classList.add("visible");
-    if (!panel.classList.contains("open")) {
-      panel.classList.add("open");
-      processToggle.textContent = "过程（收起）";
-    }
+  function updateRunState(text) {
+    runState.textContent = text || "运行中";
   }
 
   async function sendMessage() {
@@ -592,26 +521,19 @@
             setMessageBody(agentMsg, reply || "…", true);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           } else if (payload.type === "upload") {
-            var names = (payload.images || []).map(function (img) { return img.name || "image"; }).join(", ");
-            appendProcessStep(agentMsg, "upload", "Uploaded " + (payload.images || []).length + " image(s)", names);
+            updateRunState("已上传图片");
           } else if (payload.type === "thinking") {
-            appendProcessStep(agentMsg, "thinking", "Thinking", payload.content || "");
+            updateRunState("正在思考");
           } else if (payload.type === "tool_call") {
-            var toolText = (payload.args ? "args:\n" + payload.args : "");
-            if (payload.result) {
-              toolText += (toolText ? "\n\n" : "") + "result:\n" + payload.result;
-            }
-            appendProcessStep(agentMsg, "tool_call", (payload.name || "tool") + " · " + (payload.status || "unknown"), toolText);
+            updateRunState("正在调用工具");
           } else if (payload.type === "status") {
-            appendProcessStep(agentMsg, "status", "Status · " + (payload.status || "unknown"), payload.content || "");
+            updateRunState(payload.content || "正在处理");
           } else if (payload.type === "task") {
-            appendProcessStep(agentMsg, "task", "Task · " + (payload.status || "unknown"), payload.content || "");
+            updateRunState(payload.content || "正在执行任务");
           } else if (payload.type === "error") {
             setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
-          } else if (payload.type === "done") {
-            appendProcessStep(agentMsg, "status", "Done", "status: " + (payload.status || "unknown"));
           }
         }
       }
