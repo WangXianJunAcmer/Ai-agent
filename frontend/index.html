@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ai-agent</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --line: #e2e8f0;
+      --primary: #4f46e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    .hero, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+    .hero { padding: 24px; margin-bottom: 20px; }
+    .hero h1 { margin: 0 0 10px; font-size: 30px; }
+    .hero p { margin: 8px 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin-bottom: 20px;
+    }
+    .card { padding: 20px; }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #0f172a;
+      color: #e2e8f0;
+      overflow: auto;
+      font-size: 13px;
+    }
+    ol, ul { padding-left: 20px; margin: 10px 0 0; }
+    li + li { margin-top: 6px; }
+    .health {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 14px 0 0;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: #eef2ff;
+      color: var(--primary);
+      font-weight: 600;
+    }
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--primary);
+      color: #fff;
+    }
+    .muted { color: var(--muted); }
+    a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Ai-agent</h1>
+      <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。它可以作为独立说明页打开，也可以通过 <code>widget.js</code> 注入到宿主项目页面。</p>
+      <div class="health">
+        <span class="pill" id="health-status">Checking...</span>
+        <button class="btn" id="open-widget">打开悬浮聊天框</button>
+        <a href="/api/health" target="_blank" rel="noreferrer">查看健康检查 JSON</a>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>快速开始</h2>
+        <ol>
+          <li>在 <code>.env</code> 里填入 <code>CURSOR_API_KEY</code>。</li>
+          <li>运行 <code>bash run.sh</code> 启动服务。</li>
+          <li>访问当前页面确认服务和网络都正常。</li>
+          <li>需要嵌入宿主项目时，在页面模板里引入 <code>/static/widget.js</code>。</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>接口说明</h2>
+        <ul>
+          <li><code>GET /api/health</code>：健康检查</li>
+          <li><code>POST /api/chat</code>：同步对话</li>
+          <li><code>POST /api/chat/stream</code>：SSE 流式对话</li>
+          <li><code>GET /static/widget.js</code>：可嵌入聊天组件</li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="card" style="margin-bottom: 20px;">
+      <h2>直接嵌入宿主项目</h2>
+      <p class="muted">把下面这行插入到宿主项目页面模板的 <code>&lt;/body&gt;</code> 前：</p>
+      <pre>&lt;script src="http://10.130.214.58:8765/static/widget.js"
+  data-api-base="http://10.130.214.58:8765"&gt;&lt;/script&gt;</pre>
+    </section>
+
+    <section class="card">
+      <h2>命令行测试</h2>
+      <pre>curl -X POST http://127.0.0.1:8765/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"先看看这个项目是干什么的"}'</pre>
+    </section>
+  </div>
+
+  <script>
+    async function checkHealth() {
+      const el = document.getElementById("health-status");
+      try {
+        const res = await fetch("/api/health");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        el.textContent = "OK · " + data.runtime + " · " + data.model;
+      } catch (err) {
+        el.textContent = "Health check failed";
+        el.style.background = "#fef2f2";
+        el.style.color = "#b91c1c";
+      }
+    }
+
+    document.getElementById("open-widget").addEventListener("click", function () {
+      if (!document.getElementById("ai-agent-trigger")) {
+        const script = document.createElement("script");
+        script.src = "/static/widget.js";
+        script.setAttribute("data-api-base", window.location.origin);
+        script.onload = function () {
+          const trigger = document.getElementById("ai-agent-trigger");
+          if (trigger) trigger.click();
+        };
+        document.body.appendChild(script);
+        return;
+      }
+      const trigger = document.getElementById("ai-agent-trigger");
+      if (trigger) trigger.click();
+    });
+
+    checkHealth();
+  </script>
+</body>
+</html>

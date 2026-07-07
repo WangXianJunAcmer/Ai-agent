@@ -39,6 +39,14 @@ bash run.sh
 curl http://127.0.0.1:8765/api/health
 ```
 
+也可以直接用浏览器打开首页：
+
+```text
+http://127.0.0.1:8765/
+```
+
+首页自带一份简易说明书，并可直接拉起悬浮聊天框用于联调。
+
 ## 嵌入宿主项目前端
 
 在宿主项目任意 HTML 模板（如 `server/templates/base.html`）的 `</body>` 前加一行：
@@ -72,6 +80,7 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 ## API
 
 - `GET /api/health` — 健康检查
+- `GET /` — 简易首页 / 使用说明
 - `POST /api/chat` — 同步对话 `{ "message": "...", "session_id": "可选" }`
 - `POST /api/chat/stream` — SSE 流式对话（widget 使用）
 - `GET /static/widget.js` — 可嵌入的前端组件

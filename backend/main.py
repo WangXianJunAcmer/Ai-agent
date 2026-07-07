@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -45,6 +45,11 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
+
+
+@app.get("/")
+async def index():
+    return FileResponse(frontend_dir / "index.html")
 
 
 @app.get("/api/health")
