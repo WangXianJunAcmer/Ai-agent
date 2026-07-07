@@ -1,0 +1,15 @@
+# 宿主项目根目录（相对 Ai-agent 目录）。clone 到宿主项目根下时默认 ../ 即可。
+host_project_root: ".."
+
+server:
+  host: "127.0.0.1"
+  port: 8765
+
+agent:
+  model: "composer-2.5"
+  # local: 直接操作本机宿主项目；cloud: 在 Cursor 云端 VM 上跑（需配置 cloud 段）
+  runtime: "local"
+  cloud:
+    repo_url: ""
+    starting_ref: "main"
+    auto_create_pr: false
