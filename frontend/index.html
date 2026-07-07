@@ -17,83 +17,139 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font: 15px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 16px/1.75 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
     }
     .wrap {
-      max-width: 960px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 32px 20px 56px;
+      padding: 36px 24px 72px;
     }
     .hero, .card {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
     }
-    .hero { padding: 24px; margin-bottom: 20px; }
-    .hero h1 { margin: 0 0 10px; font-size: 30px; }
-    .hero p { margin: 8px 0; color: var(--muted); }
+    .hero { padding: 30px 32px; margin-bottom: 24px; }
+    .hero h1 { margin: 0 0 12px; font-size: 36px; line-height: 1.2; }
+    .hero p { margin: 10px 0; color: var(--muted); font-size: 17px; }
     .grid {
       display: grid;
-      gap: 20px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      margin-bottom: 20px;
+      gap: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      margin-bottom: 24px;
     }
-    .card { padding: 20px; }
+    .card { padding: 24px 26px; }
     .card h2 {
+      margin: 0 0 14px;
+      font-size: 24px;
+      line-height: 1.3;
+    }
+    .card p {
       margin: 0 0 12px;
-      font-size: 20px;
+      color: var(--muted);
     }
     code, pre {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #eef2ff;
+      color: #312e81;
+      font-size: 0.95em;
+    }
     pre {
       margin: 0;
-      padding: 12px 14px;
-      border-radius: 12px;
+      padding: 16px 18px;
+      border-radius: 14px;
       background: #0f172a;
       color: #e2e8f0;
       overflow: auto;
-      font-size: 13px;
+      font-size: 14px;
+      line-height: 1.7;
     }
-    ol, ul { padding-left: 20px; margin: 10px 0 0; }
-    li + li { margin-top: 6px; }
+    ol, ul { padding-left: 22px; margin: 12px 0 0; }
+    li + li { margin-top: 8px; }
     .health {
       display: flex;
-      gap: 10px;
+      gap: 12px;
       align-items: center;
-      margin: 14px 0 0;
+      margin: 18px 0 0;
       flex-wrap: wrap;
     }
     .pill {
       display: inline-flex;
       align-items: center;
       border-radius: 999px;
-      padding: 6px 12px;
+      padding: 8px 14px;
       background: #eef2ff;
       color: var(--primary);
       font-weight: 600;
+      font-size: 14px;
     }
     .btn {
       border: 0;
-      border-radius: 10px;
-      padding: 10px 14px;
+      border-radius: 12px;
+      padding: 12px 18px;
       cursor: pointer;
       font-weight: 600;
       background: var(--primary);
       color: #fff;
+      font-size: 15px;
     }
     .muted { color: var(--muted); }
     a { color: var(--primary); }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      background: #fafbff;
+    }
+    .step strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+    .step span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media (max-width: 700px) {
+      .wrap {
+        padding: 20px 14px 48px;
+      }
+      .hero, .card {
+        border-radius: 14px;
+      }
+      .hero {
+        padding: 22px 18px;
+      }
+      .hero h1 {
+        font-size: 30px;
+      }
+      .card {
+        padding: 18px;
+      }
+      .card h2 {
+        font-size: 20px;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="hero">
       <h1>Ai-agent</h1>
-      <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。它可以作为独立说明页打开，也可以通过 <code>widget.js</code> 注入到宿主项目页面。</p>
+      <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。你可以把它当成一个独立的本地服务，也可以把聊天入口嵌入到宿主项目页面里。</p>
       <div class="health">
         <span class="pill" id="health-status">Checking...</span>
         <button class="btn" id="open-widget">打开悬浮聊天框</button>
@@ -104,16 +160,29 @@
     <div class="grid">
       <section class="card">
         <h2>快速开始</h2>
-        <ol>
-          <li>在 <code>.env</code> 里填入 <code>CURSOR_API_KEY</code>。</li>
-          <li>运行 <code>bash run.sh</code> 启动服务。</li>
-          <li>访问当前页面确认服务和网络都正常。</li>
-          <li>需要嵌入宿主项目时，在页面模板里引入 <code>/static/widget.js</code>。</li>
-        </ol>
+        <div class="steps">
+          <div class="step">
+            <strong>1. 配置密钥</strong>
+            <span>在 <code>.env</code> 中填入 <code>CURSOR_API_KEY</code>。</span>
+          </div>
+          <div class="step">
+            <strong>2. 启动服务</strong>
+            <span>执行 <code>bash run.sh</code>，默认端口是 <code>8765</code>。</span>
+          </div>
+          <div class="step">
+            <strong>3. 访问首页</strong>
+            <span>用当前页面确认网络、模型和 API 都正常。</span>
+          </div>
+          <div class="step">
+            <strong>4. 嵌入项目</strong>
+            <span>在宿主项目模板中引入 <code>/static/widget.js</code>。</span>
+          </div>
+        </div>
       </section>
 
       <section class="card">
         <h2>接口说明</h2>
+        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。</p>
         <ul>
           <li><code>GET /api/health</code>：健康检查</li>
           <li><code>POST /api/chat</code>：同步对话</li>
@@ -125,13 +194,14 @@
 
     <section class="card" style="margin-bottom: 20px;">
       <h2>直接嵌入宿主项目</h2>
-      <p class="muted">把下面这行插入到宿主项目页面模板的 <code>&lt;/body&gt;</code> 前：</p>
+      <p class="muted">把下面这行插入到宿主项目页面模板的 <code>&lt;/body&gt;</code> 前。宿主页面右下角会出现一个 AI 按钮。</p>
       <pre>&lt;script src="http://10.130.214.58:8765/static/widget.js"
   data-api-base="http://10.130.214.58:8765"&gt;&lt;/script&gt;</pre>
     </section>
 
     <section class="card">
       <h2>命令行测试</h2>
+      <p class="muted">不嵌页面时，也可以直接用 API 验证 Agent 是否能工作。</p>
       <pre>curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"先看看这个项目是干什么的"}'</pre>

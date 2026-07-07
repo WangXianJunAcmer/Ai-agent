@@ -91,7 +91,8 @@ def main():
         "backend.main:app",
         host=settings["host"],
         port=settings["port"],
-        reload=False,
+        reload=settings["reload"],
+        reload_dirs=[str(ROOT)],
     )
 
 

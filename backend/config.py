@@ -29,6 +29,7 @@ def load_settings() -> dict:
         "api_key": api_key,
         "host": server.get("host", "127.0.0.1"),
         "port": int(server.get("port", 8765)),
+        "reload": bool(server.get("reload", False)),
         "model": agent.get("model", "composer-2.5"),
         "runtime": agent.get("runtime", "local"),
         "cloud_repo_url": (cloud.get("repo_url") or "").strip(),
