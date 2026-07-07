@@ -80,6 +80,26 @@
       margin: 18px 0 0;
       flex-wrap: wrap;
     }
+    .model-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .model-picker select {
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+    }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -152,6 +172,13 @@
       <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。你可以把它当成一个独立的本地服务，也可以把聊天入口嵌入到宿主项目页面里。</p>
       <div class="health">
         <span class="pill" id="health-status">Checking...</span>
+        <label class="model-picker">
+          <span>模型</span>
+          <select id="model-select">
+            <option value="composer-2.5">composer-2.5</option>
+            <option value="auto">auto</option>
+          </select>
+        </label>
         <button class="btn" id="open-widget">打开悬浮聊天框</button>
         <a href="/api/health" target="_blank" rel="noreferrer">查看健康检查 JSON</a>
       </div>
@@ -182,7 +209,7 @@
 
       <section class="card">
         <h2>接口说明</h2>
-        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。</p>
+        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。页面与 API 都支持选择模型。</p>
         <ul>
           <li><code>GET /api/health</code>：健康检查</li>
           <li><code>POST /api/chat</code>：同步对话</li>
@@ -204,18 +231,32 @@
       <p class="muted">不嵌页面时，也可以直接用 API 验证 Agent 是否能工作。</p>
       <pre>curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"先看看这个项目是干什么的"}'</pre>
+  -d '{"message":"先看看这个项目是干什么的","model":"composer-2.5"}'</pre>
     </section>
   </div>
 
   <script>
+    var selectedModel = "composer-2.5";
+
     async function checkHealth() {
       const el = document.getElementById("health-status");
+      const modelSelect = document.getElementById("model-select");
       try {
         const res = await fetch("/api/health");
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         el.textContent = "OK · " + data.runtime + " · " + data.model;
+        if (Array.isArray(data.model_options) && data.model_options.length) {
+          modelSelect.innerHTML = "";
+          data.model_options.forEach(function (model) {
+            var option = document.createElement("option");
+            option.value = model;
+            option.textContent = model;
+            modelSelect.appendChild(option);
+          });
+        }
+        selectedModel = data.model || selectedModel;
+        modelSelect.value = selectedModel;
       } catch (err) {
         el.textContent = "Health check failed";
         el.style.background = "#fef2f2";
@@ -228,6 +269,7 @@
         const script = document.createElement("script");
         script.src = "/static/widget.js";
         script.setAttribute("data-api-base", window.location.origin);
+        script.setAttribute("data-default-model", selectedModel);
         script.onload = function () {
           const trigger = document.getElementById("ai-agent-trigger");
           if (trigger) trigger.click();
@@ -237,6 +279,12 @@
       }
       const trigger = document.getElementById("ai-agent-trigger");
       if (trigger) trigger.click();
+    });
+
+    document.getElementById("model-select").addEventListener("change", function (e) {
+      selectedModel = e.target.value;
+      var widgetModelSelect = document.getElementById("ai-agent-model");
+      if (widgetModelSelect) widgetModelSelect.value = selectedModel;
     });
 
     checkHealth();

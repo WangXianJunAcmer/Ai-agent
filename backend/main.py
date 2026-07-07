@@ -45,6 +45,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
+    model: str | None = None
 
 
 @app.get("/")
@@ -59,12 +60,13 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
+        "model_options": ["composer-2.5", "auto"],
     }
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    result = await sessions.send(req.session_id, req.message.strip())
+    result = await sessions.send(req.session_id, req.message.strip(), req.model)
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -73,7 +75,7 @@ async def chat(req: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     async def event_gen():
-        async for event in sessions.stream(req.session_id, req.message.strip()):
+        async for event in sessions.stream(req.session_id, req.message.strip(), req.model):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

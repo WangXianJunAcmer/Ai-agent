@@ -16,6 +16,7 @@ from cursor_sdk import AsyncClient, CloudAgentOptions, CloudRepository, CursorAg
 class Session:
     session_id: str
     agent: object
+    model: str
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -45,13 +46,13 @@ class SessionManager:
     self._client = None
     self._started = False
 
-  def _agent_options(self):
+  def _agent_options(self, model: str):
     s = self.settings
     if s["runtime"] == "cloud":
       if not s["cloud_repo_url"]:
         raise RuntimeError("agent.runtime is cloud but agent.cloud.repo_url is empty")
       return {
-        "model": s["model"],
+        "model": model,
         "api_key": s["api_key"],
         "cloud": CloudAgentOptions(
           repos=[CloudRepository(url=s["cloud_repo_url"], starting_ref=s["cloud_starting_ref"])],
@@ -59,7 +60,7 @@ class SessionManager:
         ),
       }
     return {
-      "model": s["model"],
+      "model": model,
       "api_key": s["api_key"],
       "local": LocalAgentOptions(cwd=str(s["host_root"])),
     }
@@ -69,22 +70,27 @@ class SessionManager:
     if close:
       await close()
 
-  async def get_or_create(self, session_id: str | None) -> Session:
+  async def get_or_create(self, session_id: str | None, model: str | None = None) -> Session:
     await self.start()
+    selected_model = model or self.settings["model"]
     if session_id and session_id in self._sessions:
-      return self._sessions[session_id]
+      session = self._sessions[session_id]
+      if session.model == selected_model:
+        return session
+      await self._close_agent(session.agent)
+      del self._sessions[session_id]
 
     sid = session_id or uuid.uuid4().hex
     assert self._client is not None
     agent = await self._stack.enter_async_context(
-      await self._client.agents.create(**self._agent_options())
+      await self._client.agents.create(**self._agent_options(selected_model))
     )
-    session = Session(session_id=sid, agent=agent)
+    session = Session(session_id=sid, agent=agent, model=selected_model)
     self._sessions[sid] = session
     return session
 
-  async def send(self, session_id: str | None, message: str) -> dict:
-    session = await self.get_or_create(session_id)
+  async def send(self, session_id: str | None, message: str, model: str | None = None) -> dict:
+    session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
         run = await session.agent.send(message)
@@ -98,6 +104,7 @@ class SessionManager:
           "status": result.status,
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
+          "model": session.model,
         }
       except CursorAgentError as err:
         return {
@@ -105,15 +112,16 @@ class SessionManager:
           "reply": f"Agent startup failed: {err.message}",
           "status": "error",
           "error": err.message,
+          "model": session.model,
         }
 
-  async def stream(self, session_id: str | None, message: str) -> AsyncIterator[dict]:
-    session = await self.get_or_create(session_id)
+  async def stream(self, session_id: str | None, message: str, model: str | None = None) -> AsyncIterator[dict]:
+    session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
         run = await session.agent.send(message)
         async for chunk in run.iter_text():
-          yield {"type": "text", "content": chunk, "session_id": session.session_id}
+          yield {"type": "text", "content": chunk, "session_id": session.session_id, "model": session.model}
         result = await run.wait()
         yield {
           "type": "done",
@@ -121,10 +129,12 @@ class SessionManager:
           "status": result.status,
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
+          "model": session.model,
         }
       except CursorAgentError as err:
         yield {
           "type": "error",
           "session_id": session.session_id,
           "content": err.message,
+          "model": session.model,
         }

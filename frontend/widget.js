@@ -1,6 +1,7 @@
 (function () {
   var script = document.currentScript;
   var apiBase = (script && script.getAttribute("data-api-base")) || "http://127.0.0.1:8765";
+  var defaultModel = (script && script.getAttribute("data-default-model")) || "composer-2.5";
   var sessionId = localStorage.getItem("ai-agent-session-id") || "";
 
   var styles = `
@@ -47,6 +48,20 @@
     .ai-agent-msg.system pre { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
     #ai-agent-footer {
       padding: 14px; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; background: #fff;
+      flex-direction: column;
+    }
+    #ai-agent-toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    #ai-agent-toolbar label {
+      color: #64748b; font-size: 13px; font-weight: 600;
+    }
+    #ai-agent-model {
+      margin-left: 8px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 8px;
+      font: inherit; background: #fff; color: #0f172a;
+    }
+    #ai-agent-compose {
+      display: flex; gap: 10px;
     }
     #ai-agent-input {
       flex: 1; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 10px; outline: none;
@@ -74,8 +89,18 @@
       </div>
       <div id="ai-agent-messages"></div>
       <div id="ai-agent-footer">
-        <input id="ai-agent-input" type="text" placeholder="输入你的需求" />
-        <button id="ai-agent-send">发送</button>
+        <div id="ai-agent-toolbar">
+          <label>模型
+            <select id="ai-agent-model">
+              <option value="composer-2.5">composer-2.5</option>
+              <option value="auto">auto</option>
+            </select>
+          </label>
+        </div>
+        <div id="ai-agent-compose">
+          <input id="ai-agent-input" type="text" placeholder="输入你的需求" />
+          <button id="ai-agent-send">发送</button>
+        </div>
       </div>
     </div>
   `;
@@ -87,7 +112,9 @@
   var closeBtn = document.getElementById("ai-agent-close");
   var sendBtn = document.getElementById("ai-agent-send");
   var inputField = document.getElementById("ai-agent-input");
+  var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
+  modelField.value = defaultModel;
 
   function openSidebar() {
     sidebar.classList.add("open");
@@ -116,6 +143,7 @@
   function setBusy(busy) {
     sendBtn.disabled = busy;
     inputField.disabled = busy;
+    modelField.disabled = busy;
   }
 
   async function sendMessage() {
@@ -134,7 +162,7 @@
       var res = await fetch(apiBase + "/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, session_id: sessionId || null }),
+        body: JSON.stringify({ message: text, session_id: sessionId || null, model: modelField.value }),
       });
 
       if (!res.ok || !res.body) {
