@@ -38,14 +38,46 @@
     .ai-agent-msg.user .role { color: #334155; }
     .ai-agent-msg.agent .role { color: #4f46e5; }
     .ai-agent-msg.system .role { color: #b45309; }
-    .ai-agent-msg pre {
-      margin: 0; white-space: pre-wrap; word-break: break-word;
+    .ai-agent-msg .body {
+      white-space: pre-wrap; word-break: break-word;
       font: inherit; color: #0f172a; background: #fff; border: 1px solid #dbe3ee;
       border-radius: 12px; padding: 12px 14px; line-height: 1.7;
     }
-    .ai-agent-msg.user pre { background: #f8fafc; border-color: #cbd5e1; }
-    .ai-agent-msg.agent pre { background: #eef2ff; border-color: #c7d2fe; color: #1e1b4b; }
-    .ai-agent-msg.system pre { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+    .ai-agent-msg.user .body { background: #f8fafc; border-color: #cbd5e1; }
+    .ai-agent-msg.agent .body { background: #eef2ff; border-color: #c7d2fe; color: #1e1b4b; }
+    .ai-agent-msg.system .body { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+    .ai-agent-msg .body > :first-child { margin-top: 0; }
+    .ai-agent-msg .body > :last-child { margin-bottom: 0; }
+    .ai-agent-msg .body p,
+    .ai-agent-msg .body ul,
+    .ai-agent-msg .body ol,
+    .ai-agent-msg .body pre,
+    .ai-agent-msg .body blockquote,
+    .ai-agent-msg .body h1,
+    .ai-agent-msg .body h2,
+    .ai-agent-msg .body h3 { margin: 0 0 10px; }
+    .ai-agent-msg .body ul,
+    .ai-agent-msg .body ol { padding-left: 22px; }
+    .ai-agent-msg .body li + li { margin-top: 4px; }
+    .ai-agent-msg .body h1,
+    .ai-agent-msg .body h2,
+    .ai-agent-msg .body h3 { line-height: 1.35; }
+    .ai-agent-msg .body h1 { font-size: 22px; }
+    .ai-agent-msg .body h2 { font-size: 19px; }
+    .ai-agent-msg .body h3 { font-size: 17px; }
+    .ai-agent-msg .body strong { font-weight: 800; }
+    .ai-agent-msg .body code {
+      padding: 2px 6px; border-radius: 6px; background: rgba(15, 23, 42, .08);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95em;
+    }
+    .ai-agent-msg .body pre {
+      padding: 12px 14px; border-radius: 10px; overflow: auto; background: #0f172a; color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+    }
+    .ai-agent-msg .body pre code { background: transparent; padding: 0; color: inherit; }
+    .ai-agent-msg .body blockquote {
+      padding-left: 12px; border-left: 3px solid rgba(79, 70, 229, .35); color: #475569;
+    }
     #ai-agent-footer {
       padding: 14px; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; background: #fff;
       flex-direction: column;
@@ -150,11 +182,119 @@
   closeBtn.onclick = closeSidebar;
   backdrop.onclick = closeSidebar;
 
-  function appendMessage(role, text, className) {
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function renderMarkdown(text) {
+    var escaped = escapeHtml(text).replace(/\r\n/g, "\n");
+    var codeBlocks = [];
+    escaped = escaped.replace(/```([\s\S]*?)```/g, function (_, code) {
+      codeBlocks.push('<pre><code>' + code.trim() + '</code></pre>');
+      return "%%CODEBLOCK_" + (codeBlocks.length - 1) + "%%";
+    });
+
+    var lines = escaped.split("\n");
+    var html = [];
+    var inList = false;
+    var listType = "";
+
+    function closeList() {
+      if (inList) {
+        html.push("</" + listType + ">");
+        inList = false;
+        listType = "";
+      }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var trimmed = line.trim();
+
+      if (!trimmed) {
+        closeList();
+        continue;
+      }
+      if (/^%%CODEBLOCK_\d+%%$/.test(trimmed)) {
+        closeList();
+        html.push(trimmed);
+        continue;
+      }
+      if (/^###\s+/.test(trimmed)) {
+        closeList();
+        html.push("<h3>" + trimmed.replace(/^###\s+/, "") + "</h3>");
+        continue;
+      }
+      if (/^##\s+/.test(trimmed)) {
+        closeList();
+        html.push("<h2>" + trimmed.replace(/^##\s+/, "") + "</h2>");
+        continue;
+      }
+      if (/^#\s+/.test(trimmed)) {
+        closeList();
+        html.push("<h1>" + trimmed.replace(/^#\s+/, "") + "</h1>");
+        continue;
+      }
+      if (/^>\s+/.test(trimmed)) {
+        closeList();
+        html.push("<blockquote>" + trimmed.replace(/^>\s+/, "") + "</blockquote>");
+        continue;
+      }
+      if (/^[-*]\s+/.test(trimmed)) {
+        if (!inList || listType !== "ul") {
+          closeList();
+          html.push("<ul>");
+          inList = true;
+          listType = "ul";
+        }
+        html.push("<li>" + trimmed.replace(/^[-*]\s+/, "") + "</li>");
+        continue;
+      }
+      if (/^\d+\.\s+/.test(trimmed)) {
+        if (!inList || listType !== "ol") {
+          closeList();
+          html.push("<ol>");
+          inList = true;
+          listType = "ol";
+        }
+        html.push("<li>" + trimmed.replace(/^\d+\.\s+/, "") + "</li>");
+        continue;
+      }
+
+      closeList();
+      html.push("<p>" + trimmed + "</p>");
+    }
+    closeList();
+
+    var joined = html.join("\n");
+    joined = joined
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+    return joined.replace(/%%CODEBLOCK_(\d+)%%/g, function (_, index) {
+      return codeBlocks[Number(index)] || "";
+    });
+  }
+
+  function setMessageBody(msg, text, renderAsMarkdown) {
+    var body = msg.querySelector(".body");
+    if (renderAsMarkdown) {
+      body.innerHTML = renderMarkdown(text);
+    } else {
+      body.textContent = text;
+    }
+  }
+
+  function appendMessage(role, text, className, renderAsMarkdown) {
     var msg = document.createElement("div");
     msg.className = "ai-agent-msg " + (className || role.toLowerCase());
-    msg.innerHTML = '<div class="role">' + role + '</div><pre></pre>';
-    msg.querySelector("pre").textContent = text;
+    msg.innerHTML = '<div class="role">' + role + '</div><div class="body"></div>';
+    setMessageBody(msg, text, !!renderAsMarkdown);
     messagesDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     return msg;
@@ -170,12 +310,11 @@
     var text = inputField.value.trim();
     if (!text) return;
 
-    appendMessage("You", text, "user");
+    appendMessage("You", text, "user", false);
     inputField.value = "";
     setBusy(true);
 
-    var agentMsg = appendMessage("Agent", "思考中...", "agent");
-    var agentPre = agentMsg.querySelector("pre");
+    var agentMsg = appendMessage("Agent", "思考中...", "agent", true);
     var reply = "";
 
     try {
@@ -212,17 +351,17 @@
 
           if (payload.type === "text") {
             reply += payload.content || "";
-            agentPre.textContent = reply || "…";
+            setMessageBody(agentMsg, reply || "…", true);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           } else if (payload.type === "error") {
-            agentPre.textContent = "错误: " + (payload.content || "unknown");
+            setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
-            agentPre.textContent = "(完成，状态: " + (payload.status || "unknown") + ")";
+            setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
           }
         }
       }
     } catch (err) {
-      agentPre.textContent = "无法连接 Agent 服务 (" + apiBase + ")。请先启动 Ai-agent/run.sh";
+      setMessageBody(agentMsg, "无法连接 Agent 服务 (" + apiBase + ")。请先启动 Ai-agent/run.sh", false);
     } finally {
       setBusy(false);
     }
