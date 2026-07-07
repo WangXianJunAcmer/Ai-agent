@@ -55,10 +55,21 @@ app.add_middleware(
 )
 
 
+class ImagePayload(BaseModel):
+    data: str = Field(description="Base64-encoded image data (no data: prefix)")
+    mime_type: str = Field(description="MIME type, e.g. image/png")
+    name: str | None = None
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1)
+    message: str | None = None
+    text: str | None = None
     session_id: str | None = None
     model: str | None = None
+    images: list[ImagePayload] | None = None
+
+    def prompt_text(self) -> str:
+        return (self.message or self.text or "").strip()
 
 
 @app.get("/")
@@ -78,9 +89,23 @@ async def health():
     }
 
 
+def _images_payload(images: list[ImagePayload] | None) -> list[dict] | None:
+    if not images:
+        return None
+    return [
+        {"data": img.data, "mime_type": img.mime_type, "name": img.name or "image"}
+        for img in images
+    ]
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    result = await sessions.send(req.session_id, req.message.strip(), req.model)
+    prompt = req.prompt_text()
+    if not prompt and not req.images:
+        raise HTTPException(status_code=422, detail="message/text or images is required")
+    result = await sessions.send(
+        req.session_id, prompt, req.model, _images_payload(req.images)
+    )
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -88,8 +113,13 @@ async def chat(req: ChatRequest):
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
+    prompt = req.prompt_text()
+    if not prompt and not req.images:
+        raise HTTPException(status_code=422, detail="message/text or images is required")
+    images = _images_payload(req.images)
+
     async def event_gen():
-        async for event in sessions.stream(req.session_id, req.message.strip(), req.model):
+        async for event in sessions.stream(req.session_id, prompt, req.model, images):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

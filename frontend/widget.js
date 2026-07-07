@@ -30,8 +30,61 @@
     }
     #ai-agent-header strong { font-size: 17px; }
     #ai-agent-close { cursor: pointer; font-size: 22px; line-height: 1; opacity: .9; }
+    #ai-agent-statusbar {
+      padding: 10px 18px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
     #ai-agent-messages {
       flex: 1; overflow-y: auto; padding: 18px; background: #f8fafc;
+    }
+    #ai-agent-process {
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+    #ai-agent-process-toggle {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      padding: 12px 18px;
+      font: 700 13px/1.4 system-ui, sans-serif;
+      color: #334155;
+    }
+    #ai-agent-process-body {
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 0 18px 14px;
+      display: none;
+    }
+    #ai-agent-process.open #ai-agent-process-body { display: block; }
+    .ai-agent-step {
+      border-left: 3px solid #cbd5e1;
+      padding: 8px 0 8px 12px;
+      color: #475569;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .ai-agent-step + .ai-agent-step { margin-top: 6px; }
+    .ai-agent-step.thinking { border-left-color: #a78bfa; }
+    .ai-agent-step.tool_call { border-left-color: #60a5fa; }
+    .ai-agent-step.status { border-left-color: #34d399; }
+    .ai-agent-step.task { border-left-color: #f59e0b; }
+    .ai-agent-step.upload { border-left-color: #818cf8; }
+    .ai-agent-step .meta { font-weight: 700; color: #0f172a; display: block; margin-bottom: 2px; }
+    .ai-agent-msg-images {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    }
+    .ai-agent-msg-images img {
+      width: 96px; height: 96px; object-fit: cover;
+      border-radius: 10px; border: 1px solid #cbd5e1; background: #fff;
     }
     .ai-agent-msg { margin-bottom: 14px; }
     .ai-agent-msg .role { font-weight: 700; margin-bottom: 6px; font-size: 14px; }
@@ -95,6 +148,29 @@
     #ai-agent-compose {
       display: flex; gap: 10px;
     }
+    #ai-agent-attachments {
+      display: flex; flex-wrap: wrap; gap: 8px; min-height: 0;
+    }
+    #ai-agent-attachments:empty { display: none; }
+    .ai-agent-thumb {
+      position: relative; width: 72px; height: 72px;
+    }
+    .ai-agent-thumb img {
+      width: 100%; height: 100%; object-fit: cover;
+      border-radius: 10px; border: 1px solid #cbd5e1; background: #fff;
+    }
+    .ai-agent-thumb button {
+      position: absolute; top: -6px; right: -6px;
+      width: 20px; height: 20px; border: 0; border-radius: 50%;
+      background: #ef4444; color: #fff; cursor: pointer;
+      font: 700 12px/1 system-ui, sans-serif;
+    }
+    #ai-agent-pick-image {
+      border: 1px solid #cbd5e1; background: #fff; color: #334155;
+      border-radius: 10px; padding: 12px 14px; cursor: pointer; font-weight: 600;
+    }
+    #ai-agent-pick-image:disabled { opacity: .6; cursor: not-allowed; }
+    #ai-agent-image-input { display: none; }
     #ai-agent-input {
       flex: 1; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 10px; outline: none;
       font: inherit;
@@ -119,6 +195,14 @@
         <strong>Dev Agent</strong>
         <span id="ai-agent-close" title="Close">×</span>
       </div>
+      <div id="ai-agent-statusbar">
+        <span id="ai-agent-run-state">空闲</span>
+        <span id="ai-agent-current-model"></span>
+      </div>
+      <div id="ai-agent-process">
+        <button id="ai-agent-process-toggle" type="button">过程面板（展开）</button>
+        <div id="ai-agent-process-body"></div>
+      </div>
       <div id="ai-agent-messages"></div>
       <div id="ai-agent-footer">
         <div id="ai-agent-toolbar">
@@ -129,8 +213,11 @@
             </select>
           </label>
         </div>
+        <div id="ai-agent-attachments"></div>
         <div id="ai-agent-compose">
-          <input id="ai-agent-input" type="text" placeholder="输入你的需求" />
+          <input id="ai-agent-image-input" type="file" accept="image/*" multiple />
+          <button id="ai-agent-pick-image" type="button" title="上传图片">📷</button>
+          <input id="ai-agent-input" type="text" placeholder="输入你的需求，可附带图片" />
           <button id="ai-agent-send">发送</button>
         </div>
       </div>
@@ -146,7 +233,17 @@
   var inputField = document.getElementById("ai-agent-input");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
+  var processPanel = document.getElementById("ai-agent-process");
+  var processBody = document.getElementById("ai-agent-process-body");
+  var processToggle = document.getElementById("ai-agent-process-toggle");
+  var runState = document.getElementById("ai-agent-run-state");
+  var currentModel = document.getElementById("ai-agent-current-model");
+  var attachmentsDiv = document.getElementById("ai-agent-attachments");
+  var pickImageBtn = document.getElementById("ai-agent-pick-image");
+  var imageInput = document.getElementById("ai-agent-image-input");
+  var pendingImages = [];
   modelField.value = defaultModel;
+  currentModel.textContent = "模型: " + defaultModel;
 
   async function loadModelOptions() {
     try {
@@ -186,6 +283,10 @@
   trigger.onclick = openSidebar;
   closeBtn.onclick = closeSidebar;
   backdrop.onclick = closeSidebar;
+  processToggle.onclick = function () {
+    processPanel.classList.toggle("open");
+    processToggle.textContent = processPanel.classList.contains("open") ? "过程面板（收起）" : "过程面板（展开）";
+  };
 
   function escapeHtml(text) {
     return text
@@ -295,29 +396,131 @@
     }
   }
 
-  function appendMessage(role, text, className, renderAsMarkdown) {
+  function appendMessage(role, text, className, renderAsMarkdown, imageUrls) {
     var msg = document.createElement("div");
     msg.className = "ai-agent-msg " + (className || role.toLowerCase());
     msg.innerHTML = '<div class="role">' + role + '</div><div class="body"></div>';
     setMessageBody(msg, text, !!renderAsMarkdown);
+    if (imageUrls && imageUrls.length) {
+      var gallery = document.createElement("div");
+      gallery.className = "ai-agent-msg-images";
+      imageUrls.forEach(function (url) {
+        var img = document.createElement("img");
+        img.src = url;
+        img.alt = "uploaded image";
+        gallery.appendChild(img);
+      });
+      msg.appendChild(gallery);
+    }
     messagesDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     return msg;
+  }
+
+  function renderAttachmentPreview() {
+    attachmentsDiv.innerHTML = "";
+    pendingImages.forEach(function (item, index) {
+      var wrap = document.createElement("div");
+      wrap.className = "ai-agent-thumb";
+      wrap.innerHTML = '<img alt="" /><button type="button" title="移除">×</button>';
+      wrap.querySelector("img").src = item.previewUrl;
+      wrap.querySelector("button").onclick = function () {
+        URL.revokeObjectURL(item.previewUrl);
+        pendingImages = pendingImages.filter(function (x) { return x !== item; });
+        renderAttachmentPreview();
+      };
+      attachmentsDiv.appendChild(wrap);
+    });
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var result = String(reader.result || "");
+        var comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageSelection(files) {
+    var list = Array.from(files || []);
+    for (var i = 0; i < list.length; i++) {
+      var file = list[i];
+      if (!file.type || !file.type.startsWith("image/")) continue;
+      var data = await readFileAsBase64(file);
+      pendingImages.push({
+        name: file.name,
+        mime_type: file.type,
+        data: data,
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+    renderAttachmentPreview();
+    imageInput.value = "";
+  }
+
+  function clearPendingImages(revokeUrls) {
+    if (revokeUrls !== false) {
+      pendingImages.forEach(function (item) {
+        URL.revokeObjectURL(item.previewUrl);
+      });
+    }
+    pendingImages = [];
+    renderAttachmentPreview();
+  }
+
+  function buildImagePayload() {
+    return pendingImages.map(function (item) {
+      return {
+        name: item.name,
+        mime_type: item.mime_type,
+        data: item.data,
+      };
+    });
   }
 
   function setBusy(busy) {
     sendBtn.disabled = busy;
     inputField.disabled = busy;
     modelField.disabled = busy;
+    pickImageBtn.disabled = busy;
+    runState.textContent = busy ? "运行中" : "空闲";
+    currentModel.textContent = "模型: " + modelField.value;
+  }
+
+  function clearProcess() {
+    processBody.innerHTML = "";
+  }
+
+  function appendProcessStep(kind, title, content) {
+    var step = document.createElement("div");
+    step.className = "ai-agent-step " + kind;
+    step.innerHTML = '<span class="meta"></span><div class="content"></div>';
+    step.querySelector(".meta").textContent = title;
+    step.querySelector(".content").textContent = content || "";
+    processBody.appendChild(step);
+    processBody.scrollTop = processBody.scrollHeight;
+    if (!processPanel.classList.contains("open")) {
+      processPanel.classList.add("open");
+      processToggle.textContent = "过程面板（收起）";
+    }
   }
 
   async function sendMessage() {
     var text = inputField.value.trim();
-    if (!text) return;
+    if (!text && !pendingImages.length) return;
 
-    appendMessage("You", text, "user", false);
+    var sentPreviewUrls = pendingImages.map(function (item) { return item.previewUrl; });
+    appendMessage("You", text || "(图片)", "user", false, sentPreviewUrls);
+    var imagesPayload = buildImagePayload();
     inputField.value = "";
+    clearPendingImages(false);
     setBusy(true);
+    clearProcess();
 
     var agentMsg = appendMessage("Agent", "思考中...", "agent", true);
     var reply = "";
@@ -326,7 +529,12 @@
       var res = await fetch(apiBase + "/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, session_id: sessionId || null, model: modelField.value }),
+        body: JSON.stringify({
+          message: text || "请分析我上传的图片。",
+          session_id: sessionId || null,
+          model: modelField.value,
+          images: imagesPayload.length ? imagesPayload : null,
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -353,15 +561,35 @@
             sessionId = payload.session_id;
             localStorage.setItem("ai-agent-session-id", sessionId);
           }
+          if (payload.model) {
+            currentModel.textContent = "模型: " + payload.model;
+          }
 
           if (payload.type === "text") {
             reply += payload.content || "";
             setMessageBody(agentMsg, reply || "…", true);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          } else if (payload.type === "upload") {
+            var names = (payload.images || []).map(function (img) { return img.name || "image"; }).join(", ");
+            appendProcessStep("upload", "Uploaded " + (payload.images || []).length + " image(s)", names);
+          } else if (payload.type === "thinking") {
+            appendProcessStep("thinking", "Thinking", payload.content || "");
+          } else if (payload.type === "tool_call") {
+            var toolText = (payload.args ? "args:\n" + payload.args : "");
+            if (payload.result) {
+              toolText += (toolText ? "\n\n" : "") + "result:\n" + payload.result;
+            }
+            appendProcessStep("tool_call", (payload.name || "tool") + " · " + (payload.status || "unknown"), toolText);
+          } else if (payload.type === "status") {
+            appendProcessStep("status", "Status · " + (payload.status || "unknown"), payload.content || "");
+          } else if (payload.type === "task") {
+            appendProcessStep("task", "Task · " + (payload.status || "unknown"), payload.content || "");
           } else if (payload.type === "error") {
             setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
+          } else if (payload.type === "done") {
+            appendProcessStep("status", "Done", "status: " + (payload.status || "unknown"));
           }
         }
       }
@@ -373,6 +601,10 @@
   }
 
   sendBtn.onclick = sendMessage;
+  pickImageBtn.onclick = function () { imageInput.click(); };
+  imageInput.addEventListener("change", function (e) {
+    handleImageSelection(e.target.files);
+  });
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter") sendMessage();
   });

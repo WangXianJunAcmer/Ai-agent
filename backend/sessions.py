@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
+from collections import deque
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
-from cursor_sdk import AsyncClient, CloudAgentOptions, CloudRepository, CursorAgentError, LocalAgentOptions
+from cursor_sdk import (
+  AsyncClient,
+  CloudAgentOptions,
+  CloudRepository,
+  CursorAgentError,
+  LocalAgentOptions,
+  SDKImage,
+  UserMessage,
+)
 
 
 @dataclass
@@ -19,6 +29,7 @@ class Session:
     model: str
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
 
 
 class SessionManager:
@@ -70,6 +81,90 @@ class SessionManager:
     if close:
       await close()
 
+  def _stringify(self, value) -> str:
+    if value is None:
+      return ""
+    if isinstance(value, str):
+      return value
+    try:
+      return json.dumps(value, ensure_ascii=False, indent=2)
+    except Exception:
+      return str(value)
+
+  def _assistant_text(self, message) -> str:
+    content = getattr(getattr(message, "message", None), "content", None) or []
+    parts: list[str] = []
+    for block in content:
+      if getattr(block, "type", None) == "text":
+        text = getattr(block, "text", "")
+        if text:
+          parts.append(text)
+    return "".join(parts)
+
+  def _image_message(self, text: str, images: list[dict] | None):
+    prompt = text.strip() if text else ""
+    if not prompt and images:
+      prompt = "请分析我上传的图片。"
+    if not images:
+      return prompt
+    sdk_images = [
+      SDKImage.data_image(image["data"], image["mime_type"])
+      for image in images
+      if image.get("data") and image.get("mime_type")
+    ]
+    return UserMessage(text=prompt, images=sdk_images)
+
+  def _remember_images(self, session: Session, images: list[dict] | None) -> list[dict]:
+    if not images:
+      return []
+    remembered = []
+    for image in images:
+      item = {
+        "name": image.get("name") or "image",
+        "mime_type": image.get("mime_type") or "application/octet-stream",
+      }
+      session.recent_images.append(item)
+      remembered.append(item)
+    return remembered
+
+  async def _stream_run_messages(self, run, session: Session) -> AsyncIterator[dict]:
+    async for message in run.messages():
+      msg_type = getattr(message, "type", None)
+      if msg_type == "assistant":
+        text = self._assistant_text(message)
+        if text:
+          yield {"type": "text", "content": text, "session_id": session.session_id, "model": session.model}
+      elif msg_type == "thinking":
+        text = getattr(message, "text", "")
+        if text:
+          yield {"type": "thinking", "content": text, "session_id": session.session_id, "model": session.model}
+      elif msg_type == "tool_call":
+        yield {
+          "type": "tool_call",
+          "session_id": session.session_id,
+          "model": session.model,
+          "name": getattr(message, "name", "tool"),
+          "status": getattr(message, "status", "unknown"),
+          "args": self._stringify(getattr(message, "args", None)),
+          "result": self._stringify(getattr(message, "result", None)),
+        }
+      elif msg_type == "status":
+        yield {
+          "type": "status",
+          "session_id": session.session_id,
+          "model": session.model,
+          "status": getattr(message, "status", "unknown"),
+          "content": getattr(message, "message", "") or getattr(message, "status", ""),
+        }
+      elif msg_type == "task":
+        yield {
+          "type": "task",
+          "session_id": session.session_id,
+          "model": session.model,
+          "status": getattr(message, "status", "unknown"),
+          "content": getattr(message, "text", ""),
+        }
+
   async def get_or_create(self, session_id: str | None, model: str | None = None) -> Session:
     await self.start()
     selected_model = model or self.settings["model"]
@@ -89,14 +184,16 @@ class SessionManager:
     self._sessions[sid] = session
     return session
 
-  async def send(self, session_id: str | None, message: str, model: str | None = None) -> dict:
+  async def send(self, session_id: str | None, message: str, model: str | None = None, images: list[dict] | None = None) -> dict:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        run = await session.agent.send(message)
+        self._remember_images(session, images)
+        run = await session.agent.send(self._image_message(message, images))
         parts: list[str] = []
-        async for chunk in run.iter_text():
-          parts.append(chunk)
+        async for event in self._stream_run_messages(run, session):
+          if event["type"] == "text":
+            parts.append(event["content"])
         result = await run.wait()
         return {
           "session_id": session.session_id,
@@ -105,6 +202,7 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
+          "recent_images": list(session.recent_images),
         }
       except CursorAgentError as err:
         return {
@@ -113,15 +211,25 @@ class SessionManager:
           "status": "error",
           "error": err.message,
           "model": session.model,
+          "recent_images": list(session.recent_images),
         }
 
-  async def stream(self, session_id: str | None, message: str, model: str | None = None) -> AsyncIterator[dict]:
+  async def stream(self, session_id: str | None, message: str, model: str | None = None, images: list[dict] | None = None) -> AsyncIterator[dict]:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        run = await session.agent.send(message)
-        async for chunk in run.iter_text():
-          yield {"type": "text", "content": chunk, "session_id": session.session_id, "model": session.model}
+        remembered = self._remember_images(session, images)
+        if remembered:
+          yield {
+            "type": "upload",
+            "session_id": session.session_id,
+            "model": session.model,
+            "images": remembered,
+            "recent_images": list(session.recent_images),
+          }
+        run = await session.agent.send(self._image_message(message, images))
+        async for event in self._stream_run_messages(run, session):
+          yield event
         result = await run.wait()
         yield {
           "type": "done",
@@ -130,6 +238,7 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
+          "recent_images": list(session.recent_images),
         }
       except CursorAgentError as err:
         yield {
@@ -137,4 +246,5 @@ class SessionManager:
           "session_id": session.session_id,
           "content": err.message,
           "model": session.model,
+          "recent_images": list(session.recent_images),
         }

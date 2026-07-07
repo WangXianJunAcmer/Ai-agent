@@ -169,7 +169,7 @@
   <div class="wrap">
     <section class="hero">
       <h1>Ai-agent</h1>
-      <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。你可以把它当成一个独立的本地服务，也可以把聊天入口嵌入到宿主项目页面里。</p>
+      <p>一个可嵌入任意项目的 Cursor Dev Agent sidecar。支持<strong>文本 + 图片</strong>多模态对话，并展示 Agent 的思考与工具调用过程。你可以把它当成一个独立的本地服务，也可以把聊天入口嵌入到宿主项目页面里。</p>
       <div class="health">
         <span class="pill" id="health-status">Checking...</span>
         <label class="model-picker">
@@ -208,15 +208,34 @@
 
       <section class="card">
         <h2>接口说明</h2>
-        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。页面与 API 都支持选择模型。</p>
+        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。页面与 API 都支持选择模型，并可在请求体中附带图片（base64）。</p>
         <ul>
           <li><code>GET /api/health</code>：健康检查</li>
-          <li><code>POST /api/chat</code>：同步对话</li>
-          <li><code>POST /api/chat/stream</code>：SSE 流式对话</li>
-          <li><code>GET /static/widget.js</code>：可嵌入聊天组件</li>
+          <li><code>POST /api/chat</code>：同步对话（支持 <code>images[]</code>）</li>
+          <li><code>POST /api/chat/stream</code>：SSE 流式对话（支持图片 + 过程事件）</li>
+          <li><code>GET /static/widget.js</code>：可嵌入聊天组件（含图片上传）</li>
         </ul>
       </section>
     </div>
+
+    <section class="card" style="margin-bottom: 20px;">
+      <h2>图片上传</h2>
+      <p class="muted">悬浮聊天框左下角有 📷 按钮，可选 1 张或多张图片与文本一起发送。同一会话内 Agent 会保留对话上下文，后续追问仍可参考之前上传的图片。</p>
+      <p class="muted">API 调用时在 JSON 中附带 <code>images</code> 数组，每项包含 <code>data</code>（base64）、<code>mime_type</code> 和可选的 <code>name</code>。</p>
+      <pre>curl -X POST http://127.0.0.1:8765/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "这张截图里报错是什么意思？",
+    "model": "composer-2.5",
+    "images": [
+      {
+        "name": "screenshot.png",
+        "mime_type": "image/png",
+        "data": "&lt;base64-encoded-image-data&gt;"
+      }
+    ]
+  }'</pre>
+    </section>
 
     <section class="card" style="margin-bottom: 20px;">
       <h2>直接嵌入宿主项目</h2>

@@ -1,6 +1,6 @@
 # Ai-agent
 
-可嵌入任意项目的 Cursor Dev Agent sidecar。clone 到宿主项目根目录后，启动本地服务并在网页里注入聊天侧边栏，Agent 会直接读写宿主项目代码。
+可嵌入任意项目的 Cursor Dev Agent sidecar。clone 到宿主项目根目录后，启动本地服务并在网页里注入聊天侧边栏，Agent 会直接读写宿主项目代码。支持**文本 + 图片**多模态对话，并展示 thinking / tool_call 等 Agent 过程。
 
 ## 环境要求
 
@@ -55,7 +55,7 @@ http://127.0.0.1:8765/
 <script src="http://127.0.0.1:8765/static/widget.js" data-api-base="http://127.0.0.1:8765"></script>
 ```
 
-刷新页面后右下角出现 **AI** 按钮，点击展开侧边栏即可对话。
+刷新页面后右下角出现 **AI** 按钮，点击展开侧边栏即可对话。侧边栏支持 📷 图片上传，可与文本一起发送给 Agent 分析。
 
 纯后端项目也可以不用 widget，直接调 API：
 
@@ -63,6 +63,24 @@ http://127.0.0.1:8765/
 curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"列出项目顶层目录结构"}'
+```
+
+带图片的请求示例：
+
+```bash
+curl -X POST http://127.0.0.1:8765/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "这张截图里报错是什么意思？",
+    "model": "composer-2.5",
+    "images": [
+      {
+        "name": "screenshot.png",
+        "mime_type": "image/png",
+        "data": "<base64-encoded-image-data>"
+      }
+    ]
+  }'
 ```
 
 ## 配置说明
@@ -81,9 +99,9 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 
 - `GET /api/health` — 健康检查
 - `GET /` — 简易首页 / 使用说明
-- `POST /api/chat` — 同步对话 `{ "message": "...", "session_id": "可选" }`
-- `POST /api/chat/stream` — SSE 流式对话（widget 使用）
-- `GET /static/widget.js` — 可嵌入的前端组件
+- `POST /api/chat` — 同步对话 `{ "message": "...", "session_id": "可选", "model": "可选", "images": [{ "data": "...", "mime_type": "image/png", "name": "可选" }] }`
+- `POST /api/chat/stream` — SSE 流式对话（widget 使用；支持图片与过程事件：thinking / tool_call / status / task）
+- `GET /static/widget.js` — 可嵌入的前端组件（含图片上传与过程面板）
 
 ## 安全提示
 
