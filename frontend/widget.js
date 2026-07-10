@@ -550,13 +550,141 @@
   var queueSeq = 0;
   var activeAbort = null;
   var stopRequested = false;
+  var serverBootId = "";
+  var HISTORY_KEY = "ai-agent-chat-history";
+  var historySaveTimer = null;
   modelField.value = defaultModel;
+
+  function serializeWorklog(msg) {
+    return Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-card")).map(function (card) {
+      var data = card.__cardData || {};
+      return {
+        kind: data.kind || "tool",
+        title: data.title || (card.querySelector(".ai-agent-card-title") || {}).textContent || "",
+        detail: data.detail || "",
+        paths: data.paths || [],
+      };
+    }).filter(function (card) {
+      return card.title || card.detail;
+    });
+  }
+
+  function collectHistoryMessages() {
+    return Array.prototype.slice.call(threadDiv.querySelectorAll(".ai-agent-msg")).map(function (msg) {
+      var body = msg.querySelector(".body");
+      var kind = "agent";
+      if (msg.classList.contains("user")) kind = "user";
+      else if (msg.classList.contains("system")) kind = "system";
+      var role = kind === "user" ? "You" : (kind === "system" ? "System" : "Agent");
+      var attachments = [];
+      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
+        attachments.push({ kind: "image", name: img.alt || "image", mime_type: "image/*" });
+      });
+      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip span")).forEach(function (span) {
+        attachments.push({ kind: "file", name: span.textContent || "file", mime_type: "" });
+      });
+      return {
+        role: role,
+        kind: kind,
+        text: body ? (body.getAttribute("data-raw-text") || body.textContent || "") : "",
+        markdown: kind === "agent",
+        worklog: kind === "agent" ? serializeWorklog(msg) : [],
+        attachments: attachments,
+      };
+    });
+  }
+
+  function clearChatHistory() {
+    try { localStorage.removeItem(HISTORY_KEY); } catch (err) {}
+  }
+
+  function saveChatHistory() {
+    if (!serverBootId) return;
+    try {
+      var payload = {
+        bootId: serverBootId,
+        sessionId: sessionId || "",
+        model: modelField.value || defaultModel,
+        messages: collectHistoryMessages(),
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(payload));
+    } catch (err) {
+      // ponytail: quota / private mode — skip persistence
+    }
+  }
+
+  function scheduleSaveChatHistory() {
+    if (historySaveTimer) clearTimeout(historySaveTimer);
+    historySaveTimer = setTimeout(function () {
+      historySaveTimer = null;
+      saveChatHistory();
+    }, 200);
+  }
+
+  function restoreWorklog(msg, cards) {
+    (cards || []).forEach(function (card, index) {
+      upsertCard(msg, "restored-" + index + "-" + (card.title || "step"), {
+        kind: card.kind || "tool",
+        title: card.title || "Step",
+        meta: "",
+        detail: card.detail || "",
+        paths: card.paths || [],
+        live: false,
+        forceCollapsed: true,
+      });
+    });
+  }
+
+  function restoreChatHistory(bootId) {
+    var raw = "";
+    try { raw = localStorage.getItem(HISTORY_KEY) || ""; } catch (err) { return false; }
+    if (!raw) return false;
+    var data = null;
+    try { data = JSON.parse(raw); } catch (err) {
+      clearChatHistory();
+      return false;
+    }
+    if (!data || data.bootId !== bootId) {
+      // Service restarted — drop stale UI history (backend sessions are gone).
+      clearChatHistory();
+      sessionId = "";
+      try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
+      return false;
+    }
+    if (data.sessionId) {
+      sessionId = data.sessionId;
+      try { localStorage.setItem("ai-agent-session-id", sessionId); } catch (err) {}
+    }
+    if (data.model && Array.from(modelField.options).some(function (option) { return option.value === data.model; })) {
+      modelField.value = data.model;
+    }
+    threadDiv.innerHTML = "";
+    (data.messages || []).forEach(function (item) {
+      var msg = appendMessage(
+        item.role || (item.kind === "user" ? "You" : "Agent"),
+        item.text || "",
+        item.kind || "agent",
+        !!item.markdown,
+        item.attachments || []
+      );
+      if (item.kind === "agent" || (!item.kind && item.role !== "You")) {
+        restoreWorklog(msg, item.worklog || []);
+      }
+    });
+    if (threadDiv.children.length) {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      return true;
+    }
+    return false;
+  }
 
   async function loadModelOptions() {
     try {
       var res = await fetch(apiBase + "/api/health");
       if (!res.ok) throw new Error("HTTP " + res.status);
       var data = await res.json();
+      serverBootId = data.boot_id || "";
       if (Array.isArray(data.model_options) && data.model_options.length) {
         modelField.innerHTML = "";
         data.model_options.forEach(function (model) {
@@ -570,6 +698,7 @@
       if (preferredModel && Array.from(modelField.options).some(function (option) { return option.value === preferredModel; })) {
         modelField.value = preferredModel;
       }
+      if (serverBootId) restoreChatHistory(serverBootId);
     } catch (err) {
       modelField.value = defaultModel;
     }
@@ -878,14 +1007,18 @@
       body.style.display = "none";
       body.innerHTML = "";
       body.textContent = "";
+      body.removeAttribute("data-raw-text");
+      scheduleSaveChatHistory();
       return;
     }
     body.style.display = "";
+    body.setAttribute("data-raw-text", text);
     if (renderAsMarkdown) {
       body.innerHTML = renderMarkdown(text);
     } else {
       body.textContent = text;
     }
+    scheduleSaveChatHistory();
   }
 
   function appendMessage(role, text, className, renderAsMarkdown, attachments) {
@@ -903,7 +1036,10 @@
     var main = msg.querySelector(".ai-agent-msg-main");
     var items = attachments || [];
     var images = items.filter(function (item) { return item.kind === "image" && item.previewUrl; });
-    var files = items.filter(function (item) { return item.kind !== "image"; });
+    var files = items.filter(function (item) {
+      // Live uploads: non-images. Restored history: names only (no previewUrl).
+      return item.kind !== "image" || !item.previewUrl;
+    });
     if (images.length) {
       var gallery = document.createElement("div");
       gallery.className = "ai-agent-msg-images";
@@ -929,6 +1065,7 @@
     }
     threadDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scheduleSaveChatHistory();
     return msg;
   }
 
@@ -940,6 +1077,7 @@
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
+        planningDetail: "",
       };
     }
     return msg.__runMeta;
@@ -1126,12 +1264,29 @@
     }
     applyCardExpansion(card, merged, options);
     if (merged.live) messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    if (!merged.live) scheduleSaveChatHistory();
     return card;
   }
 
   function appendCard(msg, options) {
     var meta = getRunMeta(msg);
     return upsertCard(msg, "card-" + (meta.nextIndex + 1) + "-" + Date.now(), options);
+  }
+
+  function removeCard(msg, key) {
+    var worklog = ensureWorklog(msg);
+    var card = worklog.querySelector('.ai-agent-card[data-card-key="' + key + '"]');
+    if (card) {
+      card.remove();
+      scheduleSaveChatHistory();
+    }
+  }
+
+  function finalizePlanCard(msg) {
+    // Cursor: "Planning next move" is ephemeral — gone when the next step starts.
+    var meta = getRunMeta(msg);
+    removeCard(msg, "plan-live");
+    meta.planningDetail = "";
   }
 
   function finalizeThoughtCard(msg) {
@@ -1155,19 +1310,48 @@
   }
 
   function noteThinking(msg, detail) {
+    finalizePlanCard(msg);
     var meta = getRunMeta(msg);
+    var chunk = detail || "";
     if (!meta.thinkingStartedAt) {
       meta.thinkingStartedAt = Date.now();
-      meta.thinkingDetail = detail || "";
+      meta.thinkingDetail = chunk;
       if (!meta.thinkingTimer) {
         meta.thinkingTimer = setInterval(function () {
           refreshThinkingCard(msg);
         }, 1000);
       }
-    } else if (detail) {
-      meta.thinkingDetail += detail;
+    } else if (chunk) {
+      meta.thinkingDetail += chunk;
     }
     refreshThinkingCard(msg);
+  }
+
+  function notePlanning(msg, detail) {
+    var meta = getRunMeta(msg);
+    var chunk = detail || "";
+    if (chunk) meta.planningDetail = (meta.planningDetail || "") + chunk;
+    upsertCard(msg, "plan-live", {
+      kind: "plan",
+      title: "Planning next move",
+      meta: "",
+      detail: meta.planningDetail || "",
+      paths: [],
+      live: true,
+    });
+  }
+
+  function isNoisyStatus(text) {
+    var upper = String(text || "").trim().toUpperCase();
+    return (
+      !upper ||
+      upper === "RUNNING" ||
+      upper === "FINISHED" ||
+      upper === "COMPLETED" ||
+      upper === "DONE" ||
+      upper === "CANCELLED" ||
+      upper === "CANCELED"
+    );
   }
 
   function renderAttachmentPreview() {
@@ -1411,13 +1595,6 @@
     var agentMsg = appendMessage("Agent", "", "agent", true);
     var reply = "";
     var aborted = false;
-    appendCard(agentMsg, {
-      kind: "plan",
-      title: "Planning next move",
-      meta: "live",
-      detail: "",
-      paths: [],
-    });
 
     var controller = new AbortController();
     activeAbort = controller;
@@ -1462,21 +1639,17 @@
 
           if (payload.type === "text") {
             updateRunState("回复中");
+            finalizePlanCard(agentMsg);
             finalizeThoughtCard(agentMsg);
             reply += payload.content || "";
             setMessageBody(agentMsg, reply || "…", true);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           } else if (payload.type === "planning") {
             updateRunState("规划中");
-            appendCard(agentMsg, {
-              kind: "plan",
-              title: "Planning next move",
-              meta: "",
-              detail: payload.content || "",
-              paths: [],
-            });
+            notePlanning(agentMsg, payload.content || "");
           } else if (payload.type === "upload") {
             updateRunState("已接收附件");
+            finalizePlanCard(agentMsg);
             var names = []
               .concat(payload.images || [])
               .concat(payload.files || [])
@@ -1494,6 +1667,8 @@
             noteThinking(agentMsg, payload.content || "");
           } else if (payload.type === "tool_call") {
             updateRunState("正在调用工具");
+            finalizePlanCard(agentMsg);
+            finalizeThoughtCard(agentMsg);
             var summary = payload.summary || {};
             var toolKey = payload.call_id
               ? ("tool-" + payload.call_id)
@@ -1511,30 +1686,39 @@
               forceCollapsed: !toolRunning,
             });
           } else if (payload.type === "status") {
-            updateRunState(payload.content || "正在处理");
-            appendCard(agentMsg, {
-              kind: "run",
-              title: payload.content || "Processing",
-              meta: payload.status || "",
-              detail: "",
-              paths: [],
-            });
+            var statusText = payload.content || payload.status || "正在处理";
+            updateRunState(statusText);
+            // Cursor hides noisy lifecycle statuses; keep them out of the worklog.
+            if (!isNoisyStatus(statusText)) {
+              finalizePlanCard(agentMsg);
+              appendCard(agentMsg, {
+                kind: "run",
+                title: statusText,
+                meta: "",
+                detail: "",
+                paths: [],
+              });
+            }
           } else if (payload.type === "task") {
             updateRunState(payload.content || "正在执行任务");
+            finalizePlanCard(agentMsg);
             appendCard(agentMsg, {
               kind: "plan",
               title: payload.content || "Task update",
-              meta: payload.status || "",
+              meta: "",
               detail: "",
               paths: [],
             });
           } else if (payload.type === "error") {
+            finalizePlanCard(agentMsg);
             finalizeThoughtCard(agentMsg);
             setMessageBody(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
+            finalizePlanCard(agentMsg);
             finalizeThoughtCard(agentMsg);
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
           } else if (payload.type === "done") {
+            finalizePlanCard(agentMsg);
             finalizeThoughtCard(agentMsg);
           }
         }
@@ -1542,6 +1726,7 @@
     } catch (err) {
       if (err && err.name === "AbortError") {
         aborted = true;
+        finalizePlanCard(agentMsg);
         finalizeThoughtCard(agentMsg);
         setMessageBody(agentMsg, stopRequested ? "(已终止)" : "(已中断，准备发送下一条)", false);
       } else {
@@ -1632,6 +1817,7 @@
     renderQueue();
     sessionId = "";
     localStorage.removeItem("ai-agent-session-id");
+    clearChatHistory();
     threadDiv.innerHTML = "";
     isRunning = false;
     stopRequested = false;
@@ -1640,6 +1826,13 @@
   updateRunState("就绪");
   updateModeUI();
   loadModelOptions();
+  window.addEventListener("beforeunload", function () {
+    if (historySaveTimer) {
+      clearTimeout(historySaveTimer);
+      historySaveTimer = null;
+    }
+    saveChatHistory();
+  });
 
   // ponytail: table self-check — ?mdcheck=1 on host page
   if (/\bmdcheck=1\b/.test(String(location.search || ""))) {

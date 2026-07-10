@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,6 +25,8 @@ from backend.sessions import SessionManager
 settings = load_settings()
 sessions = SessionManager(settings)
 DEFAULT_MODEL_OPTIONS = ["composer-2.5", "auto"]
+# Changes on every process start so clients can drop stale chat UI after restart.
+BOOT_ID = uuid.uuid4().hex
 
 
 def get_model_options() -> list[str]:
@@ -94,6 +97,7 @@ async def favicon():
 async def health():
     return {
         "ok": True,
+        "boot_id": BOOT_ID,
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
