@@ -154,6 +154,68 @@
       margin: 0 auto;
       gap: 22px;
     }
+    #ai-agent-empty {
+      display: none;
+      text-align: center;
+      color: var(--ai-text);
+    }
+    #ai-agent-empty h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      text-align: center;
+    }
+    #ai-agent-empty p {
+      margin: 0;
+      color: var(--ai-muted);
+      font-size: 15px;
+      text-align: center;
+    }
+    /* Fullscreen landing: same column as composer, text centered (host h1 often forces left). */
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-scroll-wrap {
+      flex: 0 0 auto;
+      overflow: visible;
+      margin-top: auto;
+      padding-top: 0;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-messages {
+      flex: 0 0 auto;
+      width: min(var(--ai-content-width), 100%);
+      max-width: 100%;
+      height: auto;
+      overflow: visible;
+      margin: 0 auto;
+      padding: 0 16px;
+      box-sizing: border-box;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      margin: 0 0 18px;
+      padding: 0;
+      text-align: center !important;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty h1,
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty p {
+      width: 100%;
+      text-align: center !important;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-footer {
+      flex: 0 0 auto;
+      margin-bottom: auto;
+      padding: 0 16px max(28px, 8vh);
+      background: transparent;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-composer-wrap {
+      width: min(var(--ai-content-width), 100%);
+      margin: 0 auto;
+    }
+    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-jump-bottom {
+      display: none !important;
+    }
     .ai-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
     .ai-agent-worklog:empty { display: none; }
     .ai-agent-segment-text {
@@ -790,6 +852,10 @@
       </div>
       <div id="ai-agent-scroll-wrap">
         <div id="ai-agent-messages">
+          <div id="ai-agent-empty" aria-hidden="true">
+            <h1>今天想做点什么？</h1>
+            <p>写代码、查问题、改文件，或直接描述你的目标</p>
+          </div>
           <div id="ai-agent-thread"></div>
         </div>
         <button id="ai-agent-jump-bottom" type="button" title="回到底部">↓ 回到底部</button>
@@ -861,6 +927,7 @@
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
+  var emptyEl = document.getElementById("ai-agent-empty");
   var jumpBottomBtn = document.getElementById("ai-agent-jump-bottom");
   var stickToBottom = true;
   var runState = document.getElementById("ai-agent-run-state");
@@ -1067,10 +1134,12 @@
         restoreWorklog(msg, item.worklog || []);
       }
     });
-    if (threadDiv.children.length) {
+    if (threadDiv.querySelector(".ai-agent-msg")) {
+      updateEmptyState();
       scrollToBottom(true);
       return true;
     }
+    updateEmptyState();
     return false;
   }
 
@@ -1271,6 +1340,17 @@
     );
   }
 
+  function isLandingState() {
+    return !threadDiv.querySelector(".ai-agent-msg") && !sendQueue.length;
+  }
+
+  function updateEmptyState() {
+    // Greeting only in fullscreen empty chat (sidebar mode stays plain).
+    var show = isFullscreen() && isLandingState();
+    sidebar.classList.toggle("is-empty", show);
+    if (emptyEl) emptyEl.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
   function setFullscreen(on) {
     sidebar.classList.toggle("is-fullscreen", !!on);
     trigger.classList.toggle("is-hidden", !!on && sidebar.classList.contains("open"));
@@ -1279,6 +1359,7 @@
     localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, on ? "1" : "0");
     syncBackdrop();
     syncPageScrollLock();
+    updateEmptyState();
   }
 
   function openSidebar() {
@@ -1908,6 +1989,7 @@
       main.appendChild(fileRow);
     }
     threadDiv.appendChild(msg);
+    updateEmptyState();
     scrollToBottom(true);
     scheduleSaveChatHistory();
     return msg;
@@ -2409,11 +2491,48 @@
     }
   }
 
+  function sealLiveToolTitle(title) {
+    var t = String(title || "");
+    if (t === "Running") return "Run";
+    if (/^Running\b/i.test(t)) return t.replace(/^Running/i, "Ran");
+    return t || "Run";
+  }
+
+  // Tool cards stay .is-live "Running" until completed — if the stream ends
+  // without tool-call-completed, seal them so the UI doesn't look stuck.
+  function finalizeLiveToolCards(msg) {
+    var cards = Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-card.is-live"));
+    cards.forEach(function (card) {
+      var key = card.getAttribute("data-card-key") || "";
+      if (
+        key === "think-live" ||
+        key === "plan-live" ||
+        key === "explore-live" ||
+        key === "status-live" ||
+        key.indexOf("explore-step-") === 0
+      ) {
+        return;
+      }
+      var data = card.__cardData || {};
+      upsertCard(msg, key, {
+        kind: data.kind || "tool",
+        title: sealLiveToolTitle(data.title),
+        meta: "",
+        detail: data.detail || "",
+        paths: data.paths || [],
+        diff: data.diff || [],
+        live: false,
+        forceCollapsed: true,
+      });
+    });
+  }
+
   function finalizeLiveCards(msg) {
     finalizePlanCard(msg);
     finalizeThoughtCard(msg);
     finalizeExplorePhase(msg);
     finalizeStatusCard(msg);
+    finalizeLiveToolCards(msg);
   }
 
   function noteThinking(msg, detail) {
@@ -2485,6 +2604,7 @@
       };
       attachmentsDiv.appendChild(wrap);
     });
+    updateComposerButtons();
   }
 
   function removeQueueItem(id, revokeFiles) {
@@ -2535,10 +2655,12 @@
     queueDiv.innerHTML = "";
     if (!sendQueue.length) {
       queueDiv.classList.remove("has-items", "is-collapsed");
+      updateEmptyState();
       return;
     }
     queueDiv.classList.add("has-items");
     queueDiv.classList.toggle("is-collapsed", queueCollapsed);
+    updateEmptyState();
 
     var toggle = document.createElement("button");
     toggle.type = "button";
@@ -2674,6 +2796,19 @@
     return msg;
   }
 
+  function composeHasDraft() {
+    return !!(inputField.value.trim() || pendingFiles.length);
+  }
+
+  function updateComposerButtons() {
+    // ponytail: stop only when compose is empty — typing while streaming queues via send
+    var showStop = !!isRunning && !composeHasDraft();
+    sendBtn.classList.toggle("hidden", showStop);
+    stopBtn.classList.toggle("visible", showStop);
+    sendBtn.title = isRunning && !showStop ? "加入队列" : "发送";
+    sendBtn.classList.toggle("is-queue", !!isRunning && !showStop);
+  }
+
   function updateRunState(text) {
     if (text) {
       runState.textContent = text;
@@ -2683,11 +2818,7 @@
       runState.textContent = sendQueue.length ? ("就绪 · 队列 " + sendQueue.length) : "就绪";
     }
     runState.classList.toggle("is-busy", !!isRunning || runState.textContent.indexOf("中") >= 0);
-    sendBtn.textContent = isRunning ? "↑" : "↑";
-    sendBtn.title = isRunning ? "加入队列" : "发送";
-    sendBtn.classList.toggle("is-queue", !!isRunning);
-    sendBtn.classList.toggle("hidden", false);
-    stopBtn.classList.toggle("visible", !!isRunning);
+    updateComposerButtons();
   }
 
   function updateModeUI() {
@@ -3031,7 +3162,10 @@
     inputField.style.height = "auto";
     inputField.style.height = Math.min(inputField.scrollHeight, 140) + "px";
   }
-  inputField.addEventListener("input", autosizeInput);
+  inputField.addEventListener("input", function () {
+    autosizeInput();
+    updateComposerButtons();
+  });
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -3057,8 +3191,10 @@
     threadDiv.innerHTML = "";
     isRunning = false;
     stopRequested = false;
+    updateEmptyState();
     updateRunState("就绪");
   };
+  updateEmptyState();
   updateRunState("就绪");
   updateModeUI();
   loadModelOptions();
