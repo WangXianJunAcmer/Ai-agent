@@ -113,7 +113,10 @@ class SessionManager:
       if isinstance(item, dict):
         for key, nested in item.items():
           lowered = str(key).lower()
-          if lowered in {"path", "paths", "file", "files", "target_file", "target_notebook", "working_directory"}:
+          if lowered in {
+            "path", "paths", "file", "files", "target_file", "target_notebook",
+            "working_directory", "cwd", "glob_pattern", "pattern",
+          }:
             if isinstance(nested, str):
               paths.append(nested)
             elif isinstance(nested, (list, tuple)):
@@ -133,6 +136,102 @@ class SessionManager:
         seen.add(path)
         result.append(path)
     return result[:6]
+
+  def _first_str(self, value, *keys) -> str:
+    if not isinstance(value, dict):
+      return ""
+    for key in keys:
+      nested = value.get(key)
+      if isinstance(nested, str) and nested.strip():
+        return nested.strip()
+    return ""
+
+  def _unwrap_tool_payload(self, value):
+    """SDK puts tool info under update.tool_call, often as {readToolCall: {...}}."""
+    if not isinstance(value, dict) or not value:
+      return value
+    if any(k in value for k in ("name", "toolName", "tool_name", "args", "arguments", "input", "result", "output")):
+      return value
+    if len(value) == 1:
+      only = next(iter(value.values()))
+      if isinstance(only, dict):
+        return only
+    for key, nested in value.items():
+      if isinstance(nested, dict) and key.lower().endswith(("toolcall", "tool_call", "call")):
+        return nested
+    return value
+
+  def _tool_name_from_payload(self, tool_call, payload) -> str:
+    for source in (tool_call, payload):
+      if not isinstance(source, dict):
+        continue
+      for key in ("name", "toolName", "tool_name", "tool", "functionName", "function_name"):
+        val = source.get(key)
+        if isinstance(val, str) and val.strip():
+          return val.strip()
+    if isinstance(tool_call, dict):
+      for key in tool_call:
+        lowered = str(key)
+        if lowered.endswith("ToolCall"):
+          return lowered[: -len("ToolCall")]
+        if lowered.endswith("_tool_call"):
+          return lowered[: -len("_tool_call")]
+        if lowered.endswith("Tool"):
+          return lowered[: -len("Tool")]
+    return "tool"
+
+  def _tool_args_from_payload(self, payload):
+    if not isinstance(payload, dict):
+      return payload
+    for key in ("args", "arguments", "input", "params", "parameters"):
+      if key in payload and payload[key] is not None:
+        return payload[key]
+    # common shell / read shapes live at top level
+    keep = {}
+    for key in (
+      "command", "cmd", "path", "paths", "file", "files", "target_file",
+      "glob_pattern", "pattern", "query", "search_term", "url", "description",
+      "working_directory", "cwd", "old_string", "new_string", "patch",
+    ):
+      if key in payload:
+        keep[key] = payload[key]
+    return keep or payload
+
+  def _tool_result_from_payload(self, payload):
+    if not isinstance(payload, dict):
+      return payload
+    for key in ("result", "output", "response", "content", "stdout"):
+      if key in payload and payload[key] is not None:
+        return payload[key]
+    return None
+
+  def _extract_tool_fields(self, update) -> tuple[str, object, object]:
+    tool_call = getattr(update, "tool_call", None)
+    if tool_call is None and isinstance(update, dict):
+      tool_call = update.get("tool_call") or update.get("toolCall")
+    if not isinstance(tool_call, dict):
+      tool_call = {}
+    payload = self._unwrap_tool_payload(tool_call)
+    name = self._tool_name_from_payload(tool_call, payload if isinstance(payload, dict) else {})
+    # fallback to legacy attrs if present
+    if name == "tool":
+      legacy = getattr(update, "name", None)
+      if isinstance(legacy, str) and legacy.strip():
+        name = legacy.strip()
+    args = self._tool_args_from_payload(payload if isinstance(payload, dict) else {})
+    if args in (None, {}, "") and getattr(update, "args", None) is not None:
+      args = getattr(update, "args")
+    result = self._tool_result_from_payload(payload if isinstance(payload, dict) else {})
+    if result is None and getattr(update, "result", None) is not None:
+      result = getattr(update, "result")
+    return name, args, result
+
+  def _command_preview(self, args) -> str:
+    cmd = self._first_str(args, "command", "cmd") if isinstance(args, dict) else ""
+    if not cmd and isinstance(args, str):
+      cmd = args
+    cmd = " ".join(str(cmd).split())
+    return (cmd[:120] + "…") if len(cmd) > 120 else cmd
 
   def _extract_patch_targets(self, text: str) -> list[str]:
     if not text:
@@ -163,8 +262,13 @@ class SessionManager:
     return previews[:3]
 
   def _tool_summary(self, name: str, args=None, result=None, status: str = "unknown") -> dict:
-    lowered = (name or "tool").lower()
+    raw_name = (name or "tool").strip() or "tool"
+    lowered = re.sub(r"[^a-z0-9]", "", raw_name.lower())
     paths = self._collect_paths(args) or self._collect_paths(result)
+    cmd = self._command_preview(args)
+    query = ""
+    if isinstance(args, dict):
+      query = self._first_str(args, "query", "search_term", "pattern", "glob_pattern", "url", "description")
     patch_text = ""
     if isinstance(args, str):
       patch_text = args
@@ -177,34 +281,55 @@ class SessionManager:
     if patch_paths:
       paths = patch_paths
     patch_preview = self._extract_patch_preview(patch_text)
+    path_detail = ", ".join(paths) if paths else ""
+    detail = path_detail or query or cmd or raw_name
 
-    if lowered in {"readfile", "glob", "rg"}:
+    if lowered in {"read", "readfile", "readfiles", "cat"}:
       return {
         "kind": "explore",
-        "title": f"Explored {max(1, len(paths))} file{'s' if len(paths) != 1 else ''}",
-        "detail": ", ".join(paths) if paths else name,
+        "title": f"Read {paths[0] if paths else 'file'}",
+        "detail": detail,
         "paths": paths,
       }
-    if lowered in {"applypatch", "editnotebook", "delete"}:
+    if lowered in {"glob", "find", "ls", "listdir", "list_dir"}:
+      return {
+        "kind": "explore",
+        "title": f"List {query or (paths[0] if paths else 'files')}",
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"rg", "grep", "search", "ripgrep", "websearch", "webfetch"}:
+      return {
+        "kind": "explore",
+        "title": f"Search {query or raw_name}",
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"applypatch", "editnotebook", "delete", "write", "strreplace", "edit", "searchreplace"}:
       return {
         "kind": "edit",
-        "title": "Edit attempted" if status == "running" else "Edited code",
-        "detail": ", ".join(paths) if paths else name,
+        "title": ("Editing " if status == "running" else "Edited ") + (paths[0] if paths else "code"),
+        "detail": detail,
         "paths": paths,
         "diff": patch_preview,
       }
-    if lowered in {"todowrite"}:
-      return {"kind": "plan", "title": "Updated plan", "detail": "Refreshed task list", "paths": []}
-    if lowered in {"readlints"}:
-      return {"kind": "verify", "title": "Checked diagnostics", "detail": ", ".join(paths) if paths else name, "paths": paths}
-    if lowered in {"shell", "awaitshell"}:
+    if lowered in {"todowrite", "todo", "task"}:
+      return {"kind": "plan", "title": "Updated plan", "detail": detail or "Refreshed task list", "paths": []}
+    if lowered in {"readlints", "lint", "diagnostics"}:
+      return {"kind": "verify", "title": "Checked diagnostics", "detail": detail, "paths": paths}
+    if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd"}:
       return {
         "kind": "run",
-        "title": "Ran command" if status == "running" else "Command finished",
-        "detail": ", ".join(paths) if paths else name,
+        "title": ("Running: " if status == "running" else "Ran: ") + (cmd or raw_name),
+        "detail": detail,
         "paths": paths,
       }
-    return {"kind": "tool", "title": name or "Tool call", "detail": ", ".join(paths) if paths else "", "paths": paths}
+    return {
+      "kind": "tool",
+      "title": raw_name,
+      "detail": detail if detail != raw_name else self._stringify(args)[:200],
+      "paths": paths,
+    }
 
   def _assistant_text(self, message) -> str:
     content = getattr(getattr(message, "message", None), "content", None) or []
@@ -260,44 +385,25 @@ class SessionManager:
         "session_id": session.session_id,
         "model": session.model,
       }
-    if update_type == "tool-call-started":
-      summary = self._tool_summary(
-        getattr(update, "name", "tool"),
-        getattr(update, "args", None),
-        None,
-        "running",
-      )
-      return {
+    if update_type in {"tool-call-started", "partial-tool-call", "tool-call-completed"}:
+      name, args, result = self._extract_tool_fields(update)
+      status = "completed" if update_type == "tool-call-completed" else "running"
+      summary = self._tool_summary(name, args, result, status)
+      event = {
         "type": "tool_call",
         "session_id": session.session_id,
         "model": session.model,
-        "call_id": getattr(update, "call_id", ""),
-        "name": getattr(update, "name", "tool"),
-        "status": "running",
-        "args": self._stringify(getattr(update, "args", None)),
-        "result": "",
+        "call_id": getattr(update, "call_id", "") or "",
+        "name": name,
+        "status": status,
+        "args": self._stringify(args) if status == "running" else "",
+        "result": self._stringify(result) if status == "completed" else "",
         "summary": summary,
-        "args_json": self._jsonable(getattr(update, "args", None)),
+        "args_json": self._jsonable(args),
       }
-    if update_type == "tool-call-completed":
-      summary = self._tool_summary(
-        getattr(update, "name", "tool"),
-        None,
-        getattr(update, "result", None),
-        "completed",
-      )
-      return {
-        "type": "tool_call",
-        "session_id": session.session_id,
-        "model": session.model,
-        "call_id": getattr(update, "call_id", ""),
-        "name": getattr(update, "name", "tool"),
-        "status": "completed",
-        "args": "",
-        "result": self._stringify(getattr(update, "result", None)),
-        "summary": summary,
-        "result_json": self._jsonable(getattr(update, "result", None)),
-      }
+      if status == "completed":
+        event["result_json"] = self._jsonable(result)
+      return event
     if update_type == "text-delta":
       return {
         "type": "text",
@@ -325,6 +431,25 @@ class SessionManager:
           "model": session.model,
           "status": getattr(message, "status", "unknown"),
           "content": getattr(message, "text", ""),
+        }
+      elif msg_type == "tool_call":
+        name = getattr(message, "name", None) or "tool"
+        status = getattr(message, "status", "running") or "running"
+        args = getattr(message, "args", None)
+        result = getattr(message, "result", None)
+        summary = self._tool_summary(name, args, result, status)
+        yield {
+          "type": "tool_call",
+          "session_id": session.session_id,
+          "model": session.model,
+          "call_id": getattr(message, "call_id", "") or "",
+          "name": name,
+          "status": "completed" if status == "completed" else "running",
+          "args": self._stringify(args),
+          "result": self._stringify(result),
+          "summary": summary,
+          "args_json": self._jsonable(args),
+          "result_json": self._jsonable(result),
         }
 
   async def _stream_run(self, run, session: Session) -> AsyncIterator[dict]:

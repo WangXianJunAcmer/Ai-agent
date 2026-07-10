@@ -521,6 +521,7 @@
     if (kind === "edit") return "Edit";
     if (kind === "run") return "Run";
     if (kind === "verify") return "Check";
+    if (kind === "tool") return "Tool";
     return "Step";
   }
 
@@ -797,11 +798,14 @@
           } else if (payload.type === "tool_call") {
             updateRunState("正在调用工具");
             var summary = payload.summary || {};
-            appendCard(agentMsg, {
+            var toolKey = payload.call_id
+              ? ("tool-" + payload.call_id)
+              : ("tool-" + (payload.name || "tool") + "-" + Date.now());
+            upsertCard(agentMsg, toolKey, {
               kind: summary.kind || "tool",
               title: summary.title || (payload.name || "tool"),
               meta: payload.status === "running" ? "running" : "done",
-              detail: summary.detail || "",
+              detail: summary.detail || payload.args || payload.result || "",
               paths: summary.paths || [],
               diff: summary.diff || [],
             });
