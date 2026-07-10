@@ -35,6 +35,7 @@ class Session:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
     recent_files: deque[dict] = field(default_factory=lambda: deque(maxlen=10))
+    context_tokens: int = 0
 
 
 class SessionManager:
@@ -353,6 +354,17 @@ class SessionManager:
           parts.append(text)
     return "".join(parts)
 
+  def _usage_payload(self, usage) -> dict | None:
+    if usage is None:
+      return None
+    return {
+      "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+      "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+      "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+      "cache_read_tokens": int(getattr(usage, "cache_read_tokens", 0) or 0),
+      "cache_write_tokens": int(getattr(usage, "cache_write_tokens", 0) or 0),
+    }
+
   def _is_image(self, mime_type: str) -> bool:
     return (mime_type or "").startswith("image/")
 
@@ -625,6 +637,12 @@ class SessionManager:
           yield event
         await task
         result = await run.wait()
+        usage = self._usage_payload(getattr(result, "usage", None))
+        if usage:
+          session.context_tokens = max(
+            session.context_tokens,
+            int(usage.get("input_tokens") or 0),
+          )
         yield {
           "type": "done",
           "session_id": session.session_id,
@@ -632,6 +650,8 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
+          "usage": usage,
+          "context_tokens": session.context_tokens,
           "recent_images": list(session.recent_images),
           "recent_files": list(session.recent_files),
         }

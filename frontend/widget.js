@@ -62,19 +62,49 @@
     }
     #ai-agent-run-state.is-busy { color: #10a37f; }
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    #ai-agent-model {
-      appearance: none;
-      border: 1px solid var(--ai-border);
-      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 10px center no-repeat;
-      padding: 7px 28px 7px 12px; border-radius: 999px;
-      font: 13px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 160px;
-    }
     #ai-agent-new-chat, #ai-agent-close {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 7px 12px; font: 13px/1.2 inherit; cursor: pointer;
     }
     #ai-agent-new-chat:hover, #ai-agent-close:hover { background: var(--ai-surface); }
     #ai-agent-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 18px; }
+    #ai-agent-composer-meta {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 0 4px 2px;
+    }
+    #ai-agent-composer-left, #ai-agent-composer-right {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+    }
+    #ai-agent-model {
+      appearance: none;
+      border: 1px solid var(--ai-border);
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 10px center no-repeat;
+      padding: 6px 26px 6px 10px; border-radius: 999px;
+      font: 12px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 180px;
+    }
+    #ai-agent-context {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--ai-border); background: #fff; color: var(--ai-muted);
+      border-radius: 999px; padding: 5px 10px 5px 8px; font: 12px/1 inherit; cursor: default;
+    }
+    #ai-agent-context-ring {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: conic-gradient(#10a37f var(--ctx-deg, 0deg), #e5e5e5 0);
+      position: relative; flex: 0 0 auto;
+    }
+    #ai-agent-context-ring::after {
+      content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff;
+    }
+    #ai-agent-stop {
+      width: 36px; height: 36px; border-radius: 999px; border: 0; cursor: pointer;
+      flex: 0 0 auto; display: none; place-items: center;
+      background: #0d0d0d; color: #fff;
+    }
+    #ai-agent-stop.visible { display: grid; }
+    #ai-agent-stop:hover { background: #2a2a2a; }
+    #ai-agent-stop-square {
+      width: 10px; height: 10px; border-radius: 2px; background: #fff;
+    }
     #ai-agent-messages {
       flex: 1 1 auto; overflow-y: auto; padding: 18px 16px 12px;
       background: var(--ai-bg); scroll-behavior: smooth;
@@ -281,6 +311,7 @@
     #ai-agent-send { background: #0d0d0d; color: #fff; font-size: 16px; }
     #ai-agent-send:hover { background: #2a2a2a; }
     #ai-agent-send.is-queue { font-size: 11px; font-weight: 700; }
+    #ai-agent-send.hidden { display: none; }
     #ai-agent-hint {
       margin: 2px 4px 0; text-align: center; font-size: 12px; color: #9a9a9a;
     }
@@ -303,10 +334,6 @@
           <span id="ai-agent-run-state">就绪</span>
         </div>
         <div id="ai-agent-top-actions">
-          <select id="ai-agent-model" title="模型">
-            <option value="composer-2.5">composer-2.5</option>
-            <option value="auto">auto</option>
-          </select>
           <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
           <button id="ai-agent-close" type="button" title="Close">×</button>
         </div>
@@ -322,8 +349,23 @@
           <button id="ai-agent-pick-file" type="button" title="上传图片或文件">＋</button>
           <input id="ai-agent-input" type="text" placeholder="给 Ai-agent 发送消息" />
           <button id="ai-agent-send" type="button" title="发送">↑</button>
+          <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
         </div>
-        <div id="ai-agent-hint">Enter 发送/排队 · 队列项可 ✎编辑 · ↑立即发送 · 🗑删除</div>
+        <div id="ai-agent-composer-meta">
+          <div id="ai-agent-composer-left">
+            <select id="ai-agent-model" title="模型">
+              <option value="composer-2.5">composer-2.5</option>
+              <option value="auto">auto</option>
+            </select>
+          </div>
+          <div id="ai-agent-composer-right">
+            <div id="ai-agent-context" title="上下文用量（估算）">
+              <span id="ai-agent-context-ring"></span>
+              <span id="ai-agent-context-label">0%</span>
+            </div>
+          </div>
+        </div>
+        <div id="ai-agent-hint">Enter 发送/排队 · ■ 终止 · 队列可编辑/立即发送/删除</div>
       </div>
       <span id="ai-agent-current-model"></span>
     </div>
@@ -346,11 +388,18 @@
   var pickFileBtn = document.getElementById("ai-agent-pick-file");
   var fileInput = document.getElementById("ai-agent-file-input");
   var newChatBtn = document.getElementById("ai-agent-new-chat");
+  var stopBtn = document.getElementById("ai-agent-stop");
+  var contextRing = document.getElementById("ai-agent-context-ring");
+  var contextLabel = document.getElementById("ai-agent-context-label");
+  var contextEl = document.getElementById("ai-agent-context");
   var pendingFiles = [];
   var sendQueue = [];
   var isRunning = false;
   var queueSeq = 0;
   var activeAbort = null;
+  var stopRequested = false;
+  var contextTokens = 0;
+  var contextWindow = 200000; // ponytail: SDK rarely exposes window size; 200k is a Cursor-like default
   modelField.value = defaultModel;
   currentModel.textContent = defaultModel;
 
@@ -849,6 +898,14 @@
     });
   }
 
+  function updateContextUsage(tokens) {
+    if (typeof tokens === "number" && tokens >= 0) contextTokens = tokens;
+    var pct = Math.max(0, Math.min(100, Math.round((contextTokens / contextWindow) * 100)));
+    contextRing.style.setProperty("--ctx-deg", (pct * 3.6) + "deg");
+    contextLabel.textContent = pct + "%";
+    contextEl.title = "上下文约 " + contextTokens.toLocaleString() + " / " + contextWindow.toLocaleString() + " tokens";
+  }
+
   function updateRunState(text) {
     if (text) {
       runState.textContent = text;
@@ -862,6 +919,8 @@
     sendBtn.textContent = isRunning ? "…" : "↑";
     sendBtn.title = isRunning ? "加入队列" : "发送";
     sendBtn.classList.toggle("is-queue", !!isRunning);
+    sendBtn.classList.toggle("hidden", !!isRunning);
+    stopBtn.classList.toggle("visible", !!isRunning);
   }
 
   function enqueueCurrentCompose() {
@@ -1010,8 +1069,12 @@
           } else if (payload.type === "done" && !reply) {
             finalizeThoughtCard(agentMsg);
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
+            if (typeof payload.context_tokens === "number") updateContextUsage(payload.context_tokens);
+            else if (payload.usage && typeof payload.usage.input_tokens === "number") updateContextUsage(payload.usage.input_tokens);
           } else if (payload.type === "done") {
             finalizeThoughtCard(agentMsg);
+            if (typeof payload.context_tokens === "number") updateContextUsage(payload.context_tokens);
+            else if (payload.usage && typeof payload.usage.input_tokens === "number") updateContextUsage(payload.usage.input_tokens);
           }
         }
       }
@@ -1019,7 +1082,7 @@
       if (err && err.name === "AbortError") {
         aborted = true;
         finalizeThoughtCard(agentMsg);
-        setMessageBody(agentMsg, "(已中断，准备发送下一条)", false);
+        setMessageBody(agentMsg, stopRequested ? "(已终止)" : "(已中断，准备发送下一条)", false);
       } else {
         var detail = (err && err.message) ? err.message : String(err);
         setMessageBody(
@@ -1040,15 +1103,26 @@
   async function drainQueue() {
     if (isRunning) return;
     isRunning = true;
+    stopRequested = false;
     updateRunState("处理中");
     while (sendQueue.length) {
+      if (stopRequested) break;
       var item = sendQueue.shift();
       renderQueue();
       updateRunState("处理中");
       await runOne(item);
+      if (stopRequested) break;
     }
     isRunning = false;
+    stopRequested = false;
     updateRunState("就绪");
+  }
+
+  function stopConversation() {
+    if (!isRunning && !sendQueue.length) return;
+    stopRequested = true;
+    if (activeAbort) activeAbort.abort();
+    updateRunState("正在终止");
   }
 
   function sendMessage() {
@@ -1057,6 +1131,7 @@
   }
 
   sendBtn.onclick = sendMessage;
+  stopBtn.onclick = stopConversation;
   pickFileBtn.onclick = function () { fileInput.click(); };
   fileInput.addEventListener("change", function (e) {
     handleFileSelection(e.target.files);
@@ -1068,6 +1143,8 @@
     if (isRunning || sendQueue.length) {
       if (!confirm("当前有进行中的任务或排队消息，确认清空并开始新对话？")) return;
     }
+    stopRequested = true;
+    if (activeAbort) activeAbort.abort();
     sendQueue.forEach(function (item) {
       item.files.forEach(function (file) {
         if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
@@ -1080,8 +1157,12 @@
     localStorage.removeItem("ai-agent-session-id");
     threadDiv.innerHTML = "";
     isRunning = false;
+    stopRequested = false;
+    contextTokens = 0;
+    updateContextUsage(0);
     updateRunState("就绪");
   };
+  updateContextUsage(0);
   updateRunState("就绪");
   loadModelOptions();
 })();
