@@ -35,7 +35,6 @@ class Session:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
     recent_files: deque[dict] = field(default_factory=lambda: deque(maxlen=10))
-    context_tokens: int = 0
 
 
 class SessionManager:
@@ -354,16 +353,18 @@ class SessionManager:
           parts.append(text)
     return "".join(parts)
 
-  def _usage_payload(self, usage) -> dict | None:
-    if usage is None:
-      return None
-    return {
-      "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
-      "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
-      "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
-      "cache_read_tokens": int(getattr(usage, "cache_read_tokens", 0) or 0),
-      "cache_write_tokens": int(getattr(usage, "cache_write_tokens", 0) or 0),
-    }
+  def _friendly_error(self, message: str) -> str:
+    msg = (message or "").strip() or "unknown"
+    lower = msg.lower()
+    if (
+      ("context" in lower and any(k in lower for k in ("limit", "length", "window", "overflow", "exceed", "too long")))
+      or "maximum context" in lower
+      or "prompt is too long" in lower
+      or ("token" in lower and "limit" in lower)
+      or ("上下文" in msg and ("超" in msg or "过长" in msg))
+    ):
+      return "上下文已超限，请点击「新对话」清空后重试，或缩短本次输入/附件。原始错误: " + msg
+    return msg
 
   def _is_image(self, mime_type: str) -> bool:
     return (mime_type or "").startswith("image/")
@@ -588,9 +589,9 @@ class SessionManager:
       except CursorAgentError as err:
         return {
           "session_id": session.session_id,
-          "reply": f"Agent startup failed: {err.message}",
+          "reply": f"Agent startup failed: {self._friendly_error(err.message)}",
           "status": "error",
-          "error": err.message,
+          "error": self._friendly_error(err.message),
           "model": session.model,
           "recent_images": list(session.recent_images),
           "recent_files": list(session.recent_files),
@@ -637,12 +638,6 @@ class SessionManager:
           yield event
         await task
         result = await run.wait()
-        usage = self._usage_payload(getattr(result, "usage", None))
-        if usage:
-          session.context_tokens = max(
-            session.context_tokens,
-            int(usage.get("input_tokens") or 0),
-          )
         yield {
           "type": "done",
           "session_id": session.session_id,
@@ -650,8 +645,6 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
-          "usage": usage,
-          "context_tokens": session.context_tokens,
           "recent_images": list(session.recent_images),
           "recent_files": list(session.recent_files),
         }
@@ -659,7 +652,7 @@ class SessionManager:
         yield {
           "type": "error",
           "session_id": session.session_id,
-          "content": err.message,
+          "content": self._friendly_error(err.message),
           "model": session.model,
           "recent_images": list(session.recent_images),
           "recent_files": list(session.recent_files),

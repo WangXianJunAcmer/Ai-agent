@@ -69,11 +69,8 @@
     #ai-agent-new-chat:hover, #ai-agent-close:hover { background: var(--ai-surface); }
     #ai-agent-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 18px; }
     #ai-agent-composer-meta {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      display: flex; align-items: center; justify-content: flex-start; gap: 10px;
       padding: 0 4px 2px;
-    }
-    #ai-agent-composer-left, #ai-agent-composer-right {
-      display: flex; align-items: center; gap: 8px; min-width: 0;
     }
     #ai-agent-model {
       appearance: none;
@@ -81,19 +78,6 @@
       background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 10px center no-repeat;
       padding: 6px 26px 6px 10px; border-radius: 999px;
       font: 12px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 180px;
-    }
-    #ai-agent-context {
-      display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid var(--ai-border); background: #fff; color: var(--ai-muted);
-      border-radius: 999px; padding: 5px 10px 5px 8px; font: 12px/1 inherit; cursor: default;
-    }
-    #ai-agent-context-ring {
-      width: 14px; height: 14px; border-radius: 50%;
-      background: conic-gradient(#10a37f var(--ctx-deg, 0deg), #e5e5e5 0);
-      position: relative; flex: 0 0 auto;
-    }
-    #ai-agent-context-ring::after {
-      content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff;
     }
     #ai-agent-stop {
       width: 36px; height: 36px; border-radius: 999px; border: 0; cursor: pointer;
@@ -352,18 +336,10 @@
           <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
         </div>
         <div id="ai-agent-composer-meta">
-          <div id="ai-agent-composer-left">
-            <select id="ai-agent-model" title="模型">
-              <option value="composer-2.5">composer-2.5</option>
-              <option value="auto">auto</option>
-            </select>
-          </div>
-          <div id="ai-agent-composer-right">
-            <div id="ai-agent-context" title="上下文用量（估算）">
-              <span id="ai-agent-context-ring"></span>
-              <span id="ai-agent-context-label">0%</span>
-            </div>
-          </div>
+          <select id="ai-agent-model" title="模型">
+            <option value="composer-2.5">composer-2.5</option>
+            <option value="auto">auto</option>
+          </select>
         </div>
         <div id="ai-agent-hint">Enter 发送/排队 · ■ 终止 · 队列可编辑/立即发送/删除</div>
       </div>
@@ -389,17 +365,12 @@
   var fileInput = document.getElementById("ai-agent-file-input");
   var newChatBtn = document.getElementById("ai-agent-new-chat");
   var stopBtn = document.getElementById("ai-agent-stop");
-  var contextRing = document.getElementById("ai-agent-context-ring");
-  var contextLabel = document.getElementById("ai-agent-context-label");
-  var contextEl = document.getElementById("ai-agent-context");
   var pendingFiles = [];
   var sendQueue = [];
   var isRunning = false;
   var queueSeq = 0;
   var activeAbort = null;
   var stopRequested = false;
-  var contextTokens = 0;
-  var contextWindow = 200000; // ponytail: SDK rarely exposes window size; 200k is a Cursor-like default
   modelField.value = defaultModel;
   currentModel.textContent = defaultModel;
 
@@ -898,12 +869,19 @@
     });
   }
 
-  function updateContextUsage(tokens) {
-    if (typeof tokens === "number" && tokens >= 0) contextTokens = tokens;
-    var pct = Math.max(0, Math.min(100, Math.round((contextTokens / contextWindow) * 100)));
-    contextRing.style.setProperty("--ctx-deg", (pct * 3.6) + "deg");
-    contextLabel.textContent = pct + "%";
-    contextEl.title = "上下文约 " + contextTokens.toLocaleString() + " / " + contextWindow.toLocaleString() + " tokens";
+  function formatAgentError(raw) {
+    var msg = String(raw || "unknown");
+    var lower = msg.toLowerCase();
+    if (
+      lower.indexOf("context") >= 0 && (lower.indexOf("limit") >= 0 || lower.indexOf("length") >= 0 || lower.indexOf("window") >= 0 || lower.indexOf("overflow") >= 0 || lower.indexOf("too long") >= 0 || lower.indexOf("exceed") >= 0)
+      || lower.indexOf("maximum context") >= 0
+      || lower.indexOf("prompt is too long") >= 0
+      || lower.indexOf("token") >= 0 && lower.indexOf("limit") >= 0
+      || msg.indexOf("上下文") >= 0 && (msg.indexOf("超") >= 0 || msg.indexOf("过长") >= 0)
+    ) {
+      return "上下文已超限，请点击「新对话」清空后重试，或缩短本次输入/附件。\n原始错误: " + msg;
+    }
+    return msg;
   }
 
   function updateRunState(text) {
@@ -1065,16 +1043,12 @@
             });
           } else if (payload.type === "error") {
             finalizeThoughtCard(agentMsg);
-            setMessageBody(agentMsg, "错误: " + (payload.content || "unknown"), false);
+            setMessageBody(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
           } else if (payload.type === "done" && !reply) {
             finalizeThoughtCard(agentMsg);
             setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
-            if (typeof payload.context_tokens === "number") updateContextUsage(payload.context_tokens);
-            else if (payload.usage && typeof payload.usage.input_tokens === "number") updateContextUsage(payload.usage.input_tokens);
           } else if (payload.type === "done") {
             finalizeThoughtCard(agentMsg);
-            if (typeof payload.context_tokens === "number") updateContextUsage(payload.context_tokens);
-            else if (payload.usage && typeof payload.usage.input_tokens === "number") updateContextUsage(payload.usage.input_tokens);
           }
         }
       }
@@ -1084,7 +1058,7 @@
         finalizeThoughtCard(agentMsg);
         setMessageBody(agentMsg, stopRequested ? "(已终止)" : "(已中断，准备发送下一条)", false);
       } else {
-        var detail = (err && err.message) ? err.message : String(err);
+        var detail = formatAgentError((err && err.message) ? err.message : String(err));
         setMessageBody(
           agentMsg,
           "请求失败 (" + apiBase + "): " + detail + "。请确认已用 python start.py 或 ./run.sh 启动服务（默认 http://127.0.0.1:8765）。",
@@ -1158,11 +1132,8 @@
     threadDiv.innerHTML = "";
     isRunning = false;
     stopRequested = false;
-    contextTokens = 0;
-    updateContextUsage(0);
     updateRunState("就绪");
   };
-  updateContextUsage(0);
   updateRunState("就绪");
   loadModelOptions();
 })();
