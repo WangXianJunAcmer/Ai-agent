@@ -2009,6 +2009,7 @@
         thinkingTimer: null,
         planningDetail: "",
         sealedReplyLen: 0,
+        interimSkipLen: 0,
         needNewWorklog: false,
         activeTextEl: null,
       };
@@ -2034,9 +2035,53 @@
     return worklog;
   }
 
+  function isInterimReplyText(text) {
+    var t = String(text || "").trim();
+    if (!t) return true;
+    if (t.length > 80) return false;
+    // Only ephemeral status lines — real openers like "先看一下项目结构…" must
+    // enter the timeline immediately, or later Explored keeps updating above them.
+    // Bare "正在…" / "读取您上传的…" leak when tools split one status phrase mid-stream.
+    if (/^正在(为您)?$/.test(t)) return true;
+    if (/^(正在|正在为您)(搜索|查询|获取|联网|处理|分析|读取|查找|查看|打开|解析)/.test(t)) return true;
+    if (/^(读取|查看|打开|解析)(您|你)?(上传的)?(文档|文件|附件|图片|内容)/.test(t)) return true;
+    if (/^(Searching|Fetching|Looking|Checking|Querying|Reading)\b/i.test(t)) return true;
+    if (/^(正在)?(查询|搜索|获取|联网|读取|查看)(中)?[…\.。]*$/.test(t)) return true;
+    return false;
+  }
+
+  function scrubInterimSegments(msg) {
+    // Drop status fragments already painted ("正在" / "读取您上传的文档内容。").
+    Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-segment-text")).forEach(function (el) {
+      var raw = (el.getAttribute("data-raw-text") || el.textContent || "").trim();
+      if (!isInterimReplyText(raw) && !/^正在/.test(raw)) return;
+      if (el.parentNode) el.remove();
+    });
+    var meta = getRunMeta(msg);
+    if (meta.activeTextEl && !meta.activeTextEl.parentNode) meta.activeTextEl = null;
+  }
+
+  function clearLeakedInterimText(msg) {
+    scrubInterimSegments(msg);
+  }
+
   // After assistant text, later tools open a new worklog *below* that text.
   function beginToolSegment(msg) {
     var meta = getRunMeta(msg);
+    // Tools often interrupt mid-status ("正在" … later "读取您上传的…") — never seal those.
+    clearLeakedInterimText(msg);
+    if (meta.interimSkipLen) {
+      meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.interimSkipLen);
+      meta.interimSkipLen = 0;
+    }
+    if (meta.activeTextEl) {
+      var raw = (meta.activeTextEl.getAttribute("data-raw-text") || meta.activeTextEl.textContent || "").trim();
+      if (isInterimReplyText(raw) || /^正在/.test(raw)) {
+        if (meta.activeTextEl.parentNode) meta.activeTextEl.remove();
+        meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.activeTextEl.__replyEnd || meta.sealedReplyLen);
+        meta.activeTextEl = null;
+      }
+    }
     if (meta.activeTextEl) {
       meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.activeTextEl.__replyEnd || 0);
       meta.activeTextEl = null;
@@ -2434,18 +2479,6 @@
       upper === "CANCELLED" ||
       upper === "CANCELED"
     );
-  }
-
-  function isInterimReplyText(text) {
-    var t = String(text || "").trim();
-    if (!t) return true;
-    if (t.length > 80) return false;
-    // Only ephemeral status lines — real openers like "先看一下项目结构…" must
-    // enter the timeline immediately, or later Explored keeps updating above them.
-    if (/^(正在|正在为您)(搜索|查询|获取|联网|处理|分析|读取|查找)/.test(t)) return true;
-    if (/^(Searching|Fetching|Looking|Checking|Querying|Reading)\b/i.test(t)) return true;
-    if (/^(正在)?(查询|搜索|获取|联网)(中)?[…\.。]*$/.test(t)) return true;
-    return false;
   }
 
   function finalizePlanCard(msg) {
@@ -2950,14 +2983,22 @@
 
           if (payload.type === "text") {
             reply += payload.content || "";
-            if (isInterimReplyText(reply)) {
-              // Short status-like lines stay in the header only.
-              updateRunState(reply.trim() || "搜索中");
+            var textMeta = getRunMeta(agentMsg);
+            var pendingChunk = reply.slice(Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen || 0));
+            // Full reply OR the post-tool slice may be a status fragment.
+            if (isInterimReplyText(reply) || isInterimReplyText(pendingChunk)) {
+              clearLeakedInterimText(agentMsg);
+              textMeta.interimSkipLen = reply.length;
+              updateRunState((pendingChunk || reply).trim() || "搜索中");
               finalizePlanCard(agentMsg);
               finalizeThoughtCard(agentMsg);
               finalizeStatusCard(agentMsg);
               scrollToBottom(false);
             } else {
+              if (textMeta.interimSkipLen) {
+                textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen);
+                textMeta.interimSkipLen = 0;
+              }
               updateRunState("回复中");
               streamTimelineText(agentMsg, reply, true);
               scrollToBottom(false);
@@ -3042,10 +3083,17 @@
             streamStandaloneText(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
           } else if (payload.type === "done") {
             finished = true;
+            clearLeakedInterimText(agentMsg);
             finalizeLiveCards(agentMsg);
             var doneStatus = String(payload.status || "").toLowerCase();
             var doneErr = payload.error || payload.result || "";
-            if (reply) {
+            var doneMeta = getRunMeta(agentMsg);
+            if (doneMeta.interimSkipLen) {
+              doneMeta.sealedReplyLen = Math.max(doneMeta.sealedReplyLen, doneMeta.interimSkipLen);
+              doneMeta.interimSkipLen = 0;
+            }
+            var visibleReply = reply ? reply.slice(doneMeta.sealedReplyLen).trim() : "";
+            if (visibleReply && !isInterimReplyText(visibleReply)) {
               streamTimelineText(agentMsg, reply, true);
             } else if (doneStatus === "error" || doneStatus === "failed") {
               streamStandaloneText(
@@ -3055,7 +3103,7 @@
               );
             } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
               streamStandaloneText(agentMsg, doneErr, false);
-            } else if (!agentMsg.querySelector(".ai-agent-segment-text")) {
+            } else if (!agentMsg.querySelector(".ai-agent-segment-text") && !visibleReply) {
               streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
             }
           }
