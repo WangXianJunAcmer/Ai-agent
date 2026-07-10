@@ -319,11 +319,26 @@
     .ai-agent-msg .body strong { font-weight: 650; }
     .ai-agent-msg .body em { font-style: italic; }
     .ai-agent-msg .body del { text-decoration: line-through; color: var(--ai-muted); }
-    .ai-agent-msg .body a {
-      color: #2563eb; text-decoration: underline; text-underline-offset: 2px;
+    /* Beat host CSS (e.g. layui a{color:#333}) so links stay visibly blue. */
+    #ai-agent-sidebar .ai-agent-msg a,
+    #ai-agent-sidebar .ai-agent-msg .body a,
+    #ai-agent-sidebar .ai-agent-segment-text a {
+      color: #2563eb !important;
+      text-decoration: underline !important;
+      text-underline-offset: 2px;
       word-break: break-word;
+      cursor: pointer;
     }
-    .ai-agent-msg .body a:hover { color: #1d4ed8; }
+    #ai-agent-sidebar .ai-agent-msg a:visited,
+    #ai-agent-sidebar .ai-agent-msg .body a:visited,
+    #ai-agent-sidebar .ai-agent-segment-text a:visited {
+      color: #2563eb !important;
+    }
+    #ai-agent-sidebar .ai-agent-msg a:hover,
+    #ai-agent-sidebar .ai-agent-msg .body a:hover,
+    #ai-agent-sidebar .ai-agent-segment-text a:hover {
+      color: #1d4ed8 !important;
+    }
     .ai-agent-msg .body hr {
       border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
     }
@@ -1336,7 +1351,12 @@
     });
     out = out
       .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-      .replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>')
+      .replace(/(^|[^"'>=])(https?:\/\/[^\s<]+)/g, function (_, lead, url) {
+        // Trim trailing punctuation that is usually not part of the URL.
+        var clean = url.replace(/[),.，。；;:：!?！？]+$/g, "");
+        var trail = url.slice(clean.length);
+        return lead + '<a href="' + clean + '" target="_blank" rel="noopener noreferrer">' + clean + "</a>" + trail;
+      })
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/__(.+?)__/g, "<strong>$1</strong>")
       .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>")
