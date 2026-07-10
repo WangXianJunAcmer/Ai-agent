@@ -285,18 +285,15 @@
     #ai-agent-compose-left, #ai-agent-compose-right {
       display: flex; align-items: center; gap: 6px; min-width: 0;
     }
-    #ai-agent-mode-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      border: 1px solid var(--ai-border); background: #f4f4f4; color: var(--ai-text);
-      border-radius: 999px; padding: 5px 10px; font: 12px/1.2 inherit; white-space: nowrap;
-    }
+    /* SDK only exposes agent/plan; no Cursor-style mode menu here. */
     #ai-agent-model {
       appearance: none;
       border: 0;
-      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 2px center no-repeat;
-      padding: 5px 18px 5px 4px; border-radius: 999px;
-      font: 12px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 180px;
+      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 0 center no-repeat;
+      padding: 2px 16px 2px 0;
+      font: 12px/1.2 inherit; color: var(--ai-muted); cursor: pointer; max-width: 220px;
     }
+    #ai-agent-model:hover { color: var(--ai-text); }
     #ai-agent-file-input { display: none; }
     #ai-agent-pick-file, #ai-agent-send {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
@@ -344,7 +341,6 @@
           <textarea id="ai-agent-input" rows="1" placeholder="Plan, @ for context, / for commands"></textarea>
           <div id="ai-agent-compose-toolbar">
             <div id="ai-agent-compose-left">
-              <span id="ai-agent-mode-pill" title="Agent 模式">∞ Agent</span>
               <select id="ai-agent-model" title="模型">
                 <option value="composer-2.5">composer-2.5</option>
                 <option value="auto">auto</option>
