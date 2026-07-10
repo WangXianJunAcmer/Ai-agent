@@ -22,6 +22,7 @@ from cursor_sdk import (
   SendOptions,
   UserMessage,
 )
+from cursor_sdk.errors import AgentBusyError
 
 from backend.model_catalog import model_display_name, normalize_model_id
 
@@ -34,8 +35,11 @@ class Session:
     agent: object
     model: str
     model_key: str = ""
+    model_selection: str | dict | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_run: object | None = None
+    # Bumped on cancel so a dying stream knows it was interrupted.
+    turn: int = 0
 
 
 class SessionManager:
@@ -87,7 +91,13 @@ class SessionManager:
     assert self._client is not None
     # Manage close() ourselves — stacking every agent on AsyncExitStack leaks on model switch.
     agent = await self._client.agents.create(**self._agent_options(model_selection))
-    session = Session(session_id=sid, agent=agent, model=selected_model, model_key=model_key)
+    session = Session(
+      session_id=sid,
+      agent=agent,
+      model=selected_model,
+      model_key=model_key,
+      model_selection=model_selection,
+    )
     self._sessions[sid] = session
     return session
 
@@ -141,15 +151,66 @@ class SessionManager:
       cancel = getattr(run, "cancel", None)
       if cancel:
         await cancel()
+      # Wait until bridge marks the run terminal (up to ~5s).
+      for _ in range(100):
+        status = getattr(run, "status", None) or "running"
+        if status in _TERMINAL_RUN_STATUSES:
+          return
+        await asyncio.sleep(0.05)
     except Exception:
       pass
 
-  async def _cancel_session_run(self, session: Session) -> None:
+  async def _cancel_session_run(self, session: Session, *, bump: bool = True) -> None:
+    # bump=True only for explicit /cancel — preparatory cleanup in _start_run must
+    # not bump, or a cancel during send-setup gets absorbed when stream re-syncs turn.
+    if bump:
+      session.turn += 1
     run = session.active_run
     if run is None:
       return
-    await self._cancel_run(run)
     session.active_run = None
+    await self._cancel_run(run)
+
+  async def cancel(self, session_id: str | None) -> None:
+    if not session_id or session_id not in self._sessions:
+      return
+    session = self._sessions[session_id]
+    await self._cancel_session_run(session, bump=True)
+
+  async def _recycle_agent(self, session: Session) -> None:
+    """Close the busy agent and create a fresh one (keeps session_id)."""
+    await self._cancel_session_run(session, bump=False)
+    old = session.agent
+    assert self._client is not None
+    selection = session.model_selection or session.model or self.settings["model"]
+    session.agent = await self._client.agents.create(**self._agent_options(selection))
+    await self._close_agent(old)
+
+  def _is_busy_error(self, err: Exception) -> bool:
+    msg = (getattr(err, "message", None) or str(err) or "").lower()
+    if isinstance(err, AgentBusyError):
+      return True
+    return (
+      "agent_busy" in msg
+      or "agent is busy" in msg
+      or msg.strip() == "internal error"
+      or "internal error" in msg
+    )
+
+  async def _start_run(self, session: Session, payload, mode: str, on_delta=None):
+    """Send with one recycle+retry if the previous turn left the agent busy."""
+    await self._cancel_session_run(session, bump=False)
+    # Brief pause so the bridge can drop the cancelled run before the next send.
+    await asyncio.sleep(0.15)
+    opts = SendOptions(on_delta=on_delta, mode=mode) if on_delta is not None else SendOptions(mode=mode)
+    try:
+      return await session.agent.send(payload, opts)
+    except CursorAgentError as err:
+      if not self._is_busy_error(err):
+        raise
+      await self._recycle_agent(session)
+      await asyncio.sleep(0.15)
+      return await session.agent.send(payload, opts)
 
   def _stringify(self, value) -> str:
     if value is None:
@@ -315,9 +376,53 @@ class SessionManager:
       else:
         cmd = " ".join(text.split())
         return (cmd[:120] + "…") if len(cmd) > 120 else cmd
-    cmd = self._first_str(args, "command", "cmd") if isinstance(args, dict) else ""
+    cmd = self._first_str(args, "command", "cmd", "script", "code", "input") if isinstance(args, dict) else ""
     cmd = " ".join(str(cmd).split())
     return (cmd[:120] + "…") if len(cmd) > 120 else cmd
+
+  def _shell_command_raw(self, args) -> str:
+    if isinstance(args, str):
+      text = args.strip()
+      if text.startswith("{") and text.endswith("}"):
+        try:
+          parsed = json.loads(text)
+          if isinstance(parsed, dict):
+            args = parsed
+          else:
+            return text
+        except json.JSONDecodeError:
+          return text
+      else:
+        return text
+    if not isinstance(args, dict):
+      return ""
+    for key in ("command", "cmd", "script", "code", "input"):
+      value = args.get(key)
+      if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+  def _shell_title(self, cmd: str, status: str, description: str = "") -> str:
+    """Cursor worklog: › Run / › Running — command only in expanded detail."""
+    desc = (description or "").strip()
+    if desc:
+      return desc[:80]
+    return "Running" if status == "running" else "Run"
+
+  def _shell_looks_like_explore(self, cmd: str) -> bool:
+    head = (cmd or "").strip()
+    # removeprefix — lstrip("sudo ") treats the arg as a char set and mangles od/du/…
+    while head.lower().startswith("sudo "):
+      head = head[5:].lstrip()
+    head = head.split("\n", 1)[0].strip()
+    return bool(
+      re.match(
+        r"^(ls|ll|find|cat|head|tail|rg|grep|egrep|fgrep|git\s+(status|log|diff|show|branch|remote)|"
+        r"wc|file|stat|tree|pwd|which|type|echo|realpath|readlink|basename|dirname)\b",
+        head,
+        re.I,
+      )
+    )
 
   def _is_network_command(self, cmd: str) -> bool:
     if not cmd:
@@ -376,10 +481,19 @@ class SessionManager:
     detail = path_detail or query or cmd or raw_name
 
     if lowered == "tool" and cmd:
+      desc = self._first_str(args, "description") if isinstance(args, dict) else ""
+      full = self._shell_command_raw(args) or cmd
+      if self._shell_looks_like_explore(cmd):
+        return {
+          "kind": "explore",
+          "title": ("Running " if status == "running" else "Ran ") + (cmd.split()[0] if cmd.split() else "command"),
+          "detail": full,
+          "paths": paths,
+        }
       return {
         "kind": "run",
-        "title": ("Running: " if status == "running" else "Ran: ") + cmd,
-        "detail": cmd,
+        "title": self._shell_title(cmd, status, desc),
+        "detail": full,
         "paths": paths,
       }
     if lowered in {"read", "readfile", "readfiles", "cat"}:
@@ -481,22 +595,36 @@ class SessionManager:
     if lowered in {"readlints", "lint", "diagnostics"}:
       return {"kind": "verify", "title": "Read lints", "detail": detail, "paths": paths}
     if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd", "runterminal"}:
+      desc = self._first_str(args, "description") if isinstance(args, dict) else ""
+      full_cmd = self._shell_command_raw(args) or cmd
+      shell_detail = full_cmd or detail
       if self._is_network_command(cmd):
         return {
           "kind": "explore",
-          "title": ("Fetching " if status == "running" else "Fetched ") + (cmd[:80] or "web"),
-          "detail": detail,
+          "title": ("Fetching " if status == "running" else "Fetched ") + "web",
+          "detail": shell_detail,
+          "paths": paths,
+        }
+      if self._shell_looks_like_explore(full_cmd or cmd):
+        return {
+          "kind": "explore",
+          "title": ("Running " if status == "running" else "Ran ") + ((full_cmd or cmd).split()[0] if (full_cmd or cmd).split() else "command"),
+          "detail": shell_detail,
           "paths": paths,
         }
       return {
         "kind": "run",
-        "title": ("Running: " if status == "running" else "Ran: ") + (cmd or raw_name),
-        "detail": detail,
+        "title": self._shell_title(full_cmd or cmd, status, desc),
+        "detail": shell_detail,
         "paths": paths,
       }
     return {
       "kind": "tool",
-      "title": (("Running " if status == "running" else "Ran ") + raw_name) if raw_name != "tool" else (("Running: " if status == "running" else "Ran: ") + (cmd or detail or "command")),
+      "title": (
+        (("Running " if status == "running" else "Ran ") + raw_name)
+        if raw_name != "tool"
+        else self._shell_title(cmd or detail or "command", status)
+      ),
       "detail": detail if detail != raw_name else self._stringify(args)[:200],
       "paths": paths,
     }
@@ -721,11 +849,20 @@ class SessionManager:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       run = None
+      turn = session.turn
       try:
-        await self._cancel_session_run(session)
         payload, files = self._build_message(message, attachments)
         upload_meta = self._upload_meta(attachments, files)
-        run = await session.agent.send(payload, SendOptions(mode=mode))
+        run = await self._start_run(session, payload, mode)
+        if session.turn != turn:
+          await self._cancel_run(run)
+          return {
+            "session_id": session.session_id,
+            "reply": "",
+            "status": "cancelled",
+            "model": session.model,
+            **upload_meta,
+          }
         session.active_run = run
         result = await run.wait()
         reply = await run.text()
@@ -765,8 +902,8 @@ class SessionManager:
     async with session.lock:
       run = None
       forward_task = None
+      turn = session.turn
       try:
-        await self._cancel_session_run(session)
         payload, files = self._build_message(message, attachments)
         upload_meta = self._upload_meta(attachments, files)
         if upload_meta["images"] or upload_meta["files"]:
@@ -784,10 +921,11 @@ class SessionManager:
           if event:
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
-        run = await session.agent.send(
-          payload,
-          SendOptions(on_delta=on_delta, mode=mode),
-        )
+        run = await self._start_run(session, payload, mode, on_delta=on_delta)
+        # Keep pre-start turn: cancel during send-setup bumps turn and must abort here.
+        if session.turn != turn:
+          await self._cancel_run(run)
+          return
         session.active_run = run
 
         async def forward_messages() -> None:
@@ -800,7 +938,14 @@ class SessionManager:
         forward_task = asyncio.create_task(forward_messages())
         try:
           while True:
-            event = await queue.get()
+            if session.turn != turn:
+              # Cancelled by /api/chat/cancel or a newer turn.
+              await self._cancel_run(run)
+              break
+            try:
+              event = await asyncio.wait_for(queue.get(), timeout=0.25)
+            except asyncio.TimeoutError:
+              continue
             if event is None:
               break
             yield event
@@ -811,6 +956,9 @@ class SessionManager:
               await forward_task
             except asyncio.CancelledError:
               pass
+
+        if session.turn != turn:
+          return
 
         result = await run.wait()
         resolved = self._model_id_from_selection(getattr(result, "model", None))
@@ -836,3 +984,11 @@ class SessionManager:
       finally:
         if session.active_run is run:
           session.active_run = None
+        # Client disconnect / interrupt: make sure the SDK run is dead before
+        # releasing the session lock so the next queued send can start cleanly.
+        if run is not None and session.turn != turn:
+          await self._cancel_run(run)
+        elif run is not None:
+          status = getattr(run, "status", None) or "running"
+          if status not in _TERMINAL_RUN_STATUSES:
+            await self._cancel_run(run)

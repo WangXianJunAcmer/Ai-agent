@@ -12,317 +12,203 @@
       --text: #0d0d0d;
       --muted: #6b6b6b;
       --line: rgba(0,0,0,.08);
-      --primary: #0d0d0d;
-      --accent: #10a37f;
-      --link: #1e9fff;
+      --code-bg: #f0f0f2;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
     }
-    .wrap {
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 36px 24px 72px;
-    }
-    .hero, .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
-    }
-    .hero { padding: 30px 32px; margin-bottom: 24px; }
-    .hero h1 { margin: 0 0 12px; font-size: 36px; line-height: 1.2; }
-    .hero p { margin: 10px 0; color: var(--muted); font-size: 17px; }
-    .grid {
-      display: grid;
-      gap: 24px;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      margin-bottom: 24px;
-    }
-    .card { padding: 24px 26px; }
-    .card h2 {
-      margin: 0 0 14px;
-      font-size: 24px;
-      line-height: 1.3;
-    }
-    .card p {
-      margin: 0 0 12px;
-      color: var(--muted);
-    }
-    code, pre {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-    code {
-      padding: 2px 6px;
-      border-radius: 6px;
-      background: rgba(0,0,0,.06);
-      color: var(--text);
-      font-size: 0.95em;
-    }
-    pre {
-      margin: 0;
-      padding: 16px 18px;
-      border-radius: 14px;
-      background: #0d0d0d;
-      color: #f5f5f5;
-      overflow: auto;
-      font-size: 14px;
-      line-height: 1.7;
-    }
-    ol, ul { padding-left: 22px; margin: 12px 0 0; }
-    li + li { margin-top: 8px; }
-    .health {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      margin: 18px 0 0;
-      flex-wrap: wrap;
-    }
-    .health-main {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex: 1 1 520px;
-      min-width: 0;
-      flex-wrap: wrap;
-    }
-    .health-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex: 0 0 auto;
-      flex-wrap: wrap;
-    }
-    .model-picker {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #fff;
-      color: var(--muted);
-      font-size: 14px;
-      flex: 0 0 auto;
-    }
-    .model-picker select {
-      border: 0;
-      background: transparent;
-      color: var(--text);
-      font: inherit;
-      font-weight: 600;
-      outline: none;
-      cursor: pointer;
-      width: auto;
-      min-width: 7ch;
-      max-width: 350px;
+    .wrap { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      margin-bottom: 28px; padding: 12px 14px;
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     }
     .pill {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 8px 14px;
-      background: #f4f4f4;
-      color: var(--text);
-      font-weight: 600;
-      font-size: 14px;
-      flex: 1 1 280px;
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      display: inline-flex; align-items: center;
+      padding: 5px 10px; border-radius: 999px;
+      background: #ecfdf5; color: #047857; font-size: 12px; font-weight: 600;
     }
-    .pill.ok { color: var(--accent); background: #ecfdf5; }
+    .model-picker {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px;
+      background: #fff; color: var(--muted); font-size: 13px;
+    }
+    .model-picker select {
+      border: 0; background: transparent; color: var(--text);
+      font: inherit; font-weight: 600; outline: none; cursor: pointer;
+    }
     .btn {
-      border: 0;
-      border-radius: 999px;
-      padding: 12px 18px;
-      cursor: pointer;
-      font-weight: 600;
-      background: var(--primary);
-      color: #fff;
-      font-size: 15px;
+      border: 0; border-radius: 999px; padding: 8px 14px;
+      background: #0d0d0d; color: #fff; font: 600 13px/1.2 inherit; cursor: pointer;
+      margin-left: auto;
     }
     .btn:hover { background: #2a2a2a; }
-    .muted { color: var(--muted); }
-    a { color: var(--link); }
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin-top: 8px;
+    h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.2; }
+    .lead { margin: 0 0 28px; color: var(--muted); }
+    h2 {
+      margin: 32px 0 12px; font-size: 18px; line-height: 1.3;
+      padding-top: 8px; border-top: 1px solid var(--line);
     }
-    .step {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px;
-      background: #fafafa;
+    h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+    p, li { color: var(--text); }
+    p { margin: 0 0 12px; }
+    ul, ol { margin: 0 0 12px; padding-left: 1.25em; }
+    li { margin: 0 0 6px; }
+    a { color: #0b57d0; }
+    pre {
+      margin: 0 0 16px; padding: 14px 16px; overflow-x: auto;
+      background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .step strong {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 16px;
+    code {
+      padding: 1px 5px; border-radius: 5px; background: var(--code-bg);
+      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .step span {
-      color: var(--muted);
+    pre code { padding: 0; background: transparent; }
+    table {
+      width: 100%; border-collapse: collapse; margin: 0 0 16px;
       font-size: 14px;
     }
-    @media (max-width: 700px) {
-      .wrap {
-        padding: 20px 14px 48px;
-      }
-      .hero, .card {
-        border-radius: 14px;
-      }
-      .hero {
-        padding: 22px 18px;
-      }
-      .hero h1 {
-        font-size: 30px;
-      }
-      .card {
-        padding: 18px;
-      }
-      .card h2 {
-        font-size: 20px;
-      }
+    th, td {
+      text-align: left; vertical-align: top;
+      padding: 8px 10px; border: 1px solid var(--line);
+    }
+    th { background: #fafafa; font-weight: 600; }
+    .muted { color: var(--muted); }
+    @media (max-width: 640px) {
+      .wrap { padding: 24px 16px 64px; }
+      h1 { font-size: 26px; }
+      .btn { margin-left: 0; }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <section class="hero">
-      <h1>Ai-agent</h1>
-      <p>一个可嵌入任意项目的 Cursor Ai-agent sidecar。支持<strong>文本 + 图片/文件</strong>，回复过程中可继续编辑并排队下一条（可撤销），并展示 Agent 的思考与工具调用过程。你可以把它当成一个独立的本地服务，也可以把聊天入口嵌入到宿主项目页面里。</p>
-      <div class="health">
-        <div class="health-main">
-          <span class="pill" id="health-status">Checking...</span>
-          <label class="model-picker">
-            <span>模型</span>
-            <select id="model-select">
-              <option value="composer-2.5">加载中...</option>
-            </select>
-          </label>
-        </div>
-        <div class="health-actions">
-          <button class="btn" id="open-widget">打开悬浮聊天框</button>
-          <a href="/api/health" target="_blank" rel="noreferrer">查看健康检查 JSON</a>
-        </div>
-      </div>
-    </section>
-
-    <div class="grid">
-      <section class="card">
-        <h2>快速开始</h2>
-        <div class="steps">
-          <div class="step">
-            <strong>1. 配置密钥</strong>
-            <span>在 <code>.env</code> 中填入 <code>CURSOR_API_KEY</code>。</span>
-          </div>
-          <div class="step">
-            <strong>2. 启动服务</strong>
-            <span>执行 <code>./run.sh</code> 或 <code>python start.py</code>（需 Python 3.10+ / conda 环境 <code>ai-agent</code>），默认端口 <code>8765</code>。</span>
-          </div>
-          <div class="step">
-            <strong>3. 访问首页</strong>
-            <span>用当前页面确认网络、模型和 API 都正常。</span>
-          </div>
-          <div class="step">
-            <strong>4. 嵌入项目</strong>
-            <span>在宿主项目模板中引入 <code>/static/widget.js</code>。</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>接口说明</h2>
-        <p>浏览器能直接打开的是 <code>GET</code> 路由；聊天接口需要用 <code>POST</code> 调用。页面与 API 都支持选择模型，并可在请求体中附带图片/文件（base64）。</p>
-        <ul>
-          <li><code>GET /api/health</code>：健康检查</li>
-          <li><code>POST /api/chat</code>：同步对话（支持 <code>files[]</code> / <code>images[]</code>）</li>
-          <li><code>POST /api/chat/stream</code>：SSE 流式对话（支持附件 + 过程事件）</li>
-          <li><code>GET /static/widget.js</code>：可嵌入聊天组件（附件上传 + 发送队列）</li>
-        </ul>
-      </section>
+    <div class="toolbar">
+      <span class="pill" id="health-status">Checking...</span>
+      <label class="model-picker">
+        <span>模型</span>
+        <select id="model-select">
+          <option value="composer-2.5">加载中...</option>
+        </select>
+      </label>
+      <button class="btn" id="open-widget" type="button">打开聊天</button>
     </div>
 
-    <section class="card" style="margin-bottom: 20px;">
-      <h2>附件与排队</h2>
-      <p class="muted">悬浮聊天框 📎「添加文件」可附带图片或任意文件。Agent 回复时输入框仍可编辑；再点发送会进入待发送列表，可编辑/立即发送/删除。非图片文件会落到宿主项目 <code>.ai-agent-uploads/</code>，由 Agent 按路径读取。</p>
-      <p class="muted">API 优先使用 <code>files</code> 数组（兼容旧字段 <code>images</code>），每项含 <code>data</code>（base64）、<code>mime_type</code> 和可选 <code>name</code>。</p>
-      <pre>curl -X POST http://&lt;ai-agent-host&gt;:8765/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "message": "请阅读这个配置并指出问题",
-    "model": "composer-2.5",
-    "files": [
-      {
-        "name": "config.yaml",
-        "mime_type": "text/yaml",
-        "data": "&lt;base64-encoded-file-data&gt;"
-      }
-    ]
-  }'</pre>
-    </section>
+    <h1>Ai-agent</h1>
+    <p class="lead">可嵌入任意项目的 Cursor Agent sidecar。clone 到宿主项目根目录后启动本地服务，在网页注入聊天侧边栏，Agent 直接读写宿主项目代码。</p>
 
-    <section class="card" style="margin-bottom: 20px;">
-      <h2>直接嵌入宿主项目</h2>
-      <p class="muted">把下面这行插入到宿主项目页面模板的 <code>&lt;/body&gt;</code> 前。宿主页面右下角会出现一个 AI 按钮。</p>
-      <pre>&lt;script src="http://&lt;ai-agent-host&gt;:8765/static/widget.js"&gt;&lt;/script&gt;</pre>
-      <p class="muted">如果宿主页面和 Ai-agent 不在同一域名下，可以额外传 <code>data-api-base</code> 指向 API 地址。</p>
-    </section>
+    <h2>环境要求</h2>
+    <ul>
+      <li><strong>Python 3.10+</strong>（cursor-sdk 硬性要求）</li>
+      <li>Cursor API Key（<a href="https://cursor.com/dashboard/integrations" target="_blank" rel="noopener">Integrations</a>）</li>
+    </ul>
 
-    <section class="card">
-      <h2>命令行测试</h2>
-      <p class="muted">不嵌页面时，也可以直接用 API 验证 Agent 是否能工作。</p>
-      <pre>curl -X POST http://&lt;ai-agent-host&gt;:8765/api/chat \
+    <h2>快速开始</h2>
+    <pre><code># 1. 放入宿主项目
+cd /path/to/your-project
+git clone &lt;this-repo-url&gt; Ai-agent
+
+# 2. 创建虚拟环境并安装依赖
+cd Ai-agent
+python3.10 -m venv ai
+./ai/bin/pip install -r requirements.txt
+
+# 3. 配置
+cp .env.example .env
+# 编辑 .env，填入 CURSOR_API_KEY
+
+# 4. 启动
+./ai/bin/python start.py</code></pre>
+
+    <p>自检（不依赖 API Key）：</p>
+    <pre><code>./ai/bin/python backend/check.py</code></pre>
+
+    <p>确认服务正常：</p>
+    <pre><code>curl http://127.0.0.1:8765/api/health</code></pre>
+
+    <p class="muted">本页即服务首页：<code>http://127.0.0.1:8765/</code></p>
+
+    <h2>嵌入宿主项目前端</h2>
+    <p>在宿主 HTML 模板的 <code>&lt;/body&gt;</code> 前加一行：</p>
+    <pre><code>&lt;script src="http://&lt;ai-agent-host&gt;:8765/static/widget.js"&gt;&lt;/script&gt;</code></pre>
+
+    <p>跨域时显式传 <code>data-api-base</code>：</p>
+    <pre><code>&lt;script
+  src="http://&lt;ai-agent-host&gt;:8765/static/widget.js"
+  data-api-base="http://&lt;ai-agent-host&gt;:8765"
+&gt;&lt;/script&gt;</code></pre>
+
+    <p>刷新宿主页后右下角出现 AI 按钮，展开侧边栏即可对话（支持图片上传）。</p>
+
+    <p>纯后端也可直接调 API：</p>
+    <pre><code>curl -X POST http://&lt;ai-agent-host&gt;:8765/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"先看看这个项目是干什么的","model":"composer-2.5"}'</pre>
-    </section>
+  -d '{"message":"列出项目顶层目录结构"}'</code></pre>
+
+    <h2>配置说明</h2>
+    <p><code>config.yaml</code>：</p>
+    <table>
+      <thead>
+        <tr><th>字段</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>host_project_root</code></td><td>宿主项目根目录，相对 Ai-agent 目录</td></tr>
+        <tr><td><code>server.host</code> / <code>server.port</code></td><td>本地服务地址，默认 <code>127.0.0.1:8765</code></td></tr>
+        <tr><td><code>agent.model</code></td><td>Cursor 模型，默认 <code>composer-2.5</code></td></tr>
+        <tr><td><code>agent.runtime</code></td><td><code>local</code>（本机改代码）或 <code>cloud</code></td></tr>
+        <tr><td><code>agent.cloud.repo_url</code></td><td>cloud 模式下的 GitHub 仓库 URL</td></tr>
+      </tbody>
+    </table>
+
+    <h2>API</h2>
+    <ul>
+      <li><code>GET /api/health</code> — 健康检查</li>
+      <li><code>GET /</code> — 本页（部署说明）</li>
+      <li><code>POST /api/chat</code> — 同步对话</li>
+      <li><code>POST /api/chat/stream</code> — SSE 流式对话（widget 使用）</li>
+      <li><code>GET /static/widget.js</code> — 可嵌入前端组件</li>
+    </ul>
+
+    <h2>安全提示</h2>
+    <ul>
+      <li>默认绑定便于局域网联调；公网请改回 <code>127.0.0.1</code></li>
+      <li>Agent 可读写宿主项目并执行命令，仅用于本地开发</li>
+      <li><code>CURSOR_API_KEY</code> 不要提交到 git</li>
+    </ul>
+
+    <h2>目录结构</h2>
+    <pre><code>Ai-agent/
+├── backend/          # FastAPI + Cursor SDK
+├── frontend/         # widget.js + 本页
+├── config.yaml
+├── .env.example
+├── requirements.txt
+├── start.py
+└── run.sh</code></pre>
   </div>
 
   <script>
     var selectedModel = "composer-2.5";
-    var currentRuntime = "local";
-
-    function formatRuntimeLabel(runtime) {
-      if (runtime === "cloud") return "云端 Agent";
-      if (runtime === "local") return "本机 Agent";
-      return runtime || "未知模式";
-    }
-
-    function syncStatusPill(runtime) {
-      var el = document.getElementById("health-status");
-      currentRuntime = runtime || currentRuntime;
-      el.textContent = "服务在线 · " + formatRuntimeLabel(currentRuntime);
-      el.classList.add("ok");
-      el.style.background = "";
-      el.style.color = "";
-    }
 
     async function checkHealth() {
-      const el = document.getElementById("health-status");
-      const modelSelect = document.getElementById("model-select");
+      var el = document.getElementById("health-status");
+      var modelSelect = document.getElementById("model-select");
       try {
-        const res = await fetch("/api/health");
+        var res = await fetch("/api/health");
         if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
+        var data = await res.json();
         if (Array.isArray(data.model_options) && data.model_options.length) {
           modelSelect.innerHTML = "";
           data.model_options.forEach(function (model) {
-            var id = "";
-            var label = "";
-            if (typeof model === "string") {
-              id = model;
-              label = model;
-            } else if (model && typeof model === "object") {
-              id = typeof model.id === "string" ? model.id : "";
-              label = typeof model.display_name === "string" ? model.display_name : id;
-            }
+            var id = typeof model === "string" ? model : (model && model.id) || "";
+            var label = typeof model === "string"
+              ? model
+              : ((model && model.display_name) || id);
             if (!id) return;
             var option = document.createElement("option");
             option.value = id;
@@ -330,13 +216,13 @@
             modelSelect.appendChild(option);
           });
         }
-        if (!Array.from(modelSelect.options).some(function (option) { return option.value === selectedModel; })) {
+        if (!Array.from(modelSelect.options).some(function (o) { return o.value === selectedModel; })) {
           selectedModel = data.model || selectedModel;
         }
         modelSelect.value = selectedModel;
-        syncStatusPill(data.runtime);
+        el.textContent = "在线";
       } catch (err) {
-        el.textContent = "Health check failed";
+        el.textContent = "离线";
         el.style.background = "#fef2f2";
         el.style.color = "#b91c1c";
       }
@@ -344,29 +230,25 @@
 
     document.getElementById("open-widget").addEventListener("click", function () {
       if (!document.getElementById("ai-agent-trigger")) {
-        const script = document.createElement("script");
+        var script = document.createElement("script");
         script.src = "/static/widget.js";
         script.setAttribute("data-api-base", window.location.origin);
         script.setAttribute("data-default-model", selectedModel);
         script.onload = function () {
-          const trigger = document.getElementById("ai-agent-trigger");
+          var trigger = document.getElementById("ai-agent-trigger");
           if (trigger) trigger.click();
         };
         document.body.appendChild(script);
         return;
       }
-      const trigger = document.getElementById("ai-agent-trigger");
+      var trigger = document.getElementById("ai-agent-trigger");
       if (trigger) trigger.click();
     });
 
     document.getElementById("model-select").addEventListener("change", function (e) {
       selectedModel = e.target.value;
-      syncStatusPill(currentRuntime);
       if (typeof window.__aiAgentSetModel === "function") {
         window.__aiAgentSetModel(selectedModel);
-      } else {
-        var widgetModelSelect = document.getElementById("ai-agent-model");
-        if (widgetModelSelect) widgetModelSelect.value = selectedModel;
       }
     });
 

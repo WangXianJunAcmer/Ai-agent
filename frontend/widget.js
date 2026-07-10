@@ -86,12 +86,18 @@
       color: #fff; display: grid; place-items: center;
       font: 700 12px/1 -apple-system, sans-serif; flex: 0 0 auto;
     }
-    #ai-agent-brand strong { font-size: 15px; font-weight: 600; color: var(--ai-text); }
-    #ai-agent-run-state {
-      font-size: 12px; color: var(--ai-muted); margin-left: 2px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    #ai-agent-brand-text {
+      display: flex; align-items: baseline; gap: 8px; min-width: 0;
     }
-    #ai-agent-run-state.is-busy { color: #10a37f; }
+    #ai-agent-brand strong {
+      font-size: 15px; font-weight: 600; color: var(--ai-text);
+      line-height: 1.2; flex: 0 0 auto;
+    }
+    #ai-agent-run-state {
+      font-size: 12px; line-height: 1.2; color: #10a37f; margin: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+    #ai-agent-run-state.is-busy { color: var(--ai-muted); }
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     #ai-agent-new-chat, #ai-agent-fullscreen, #ai-agent-close {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
@@ -122,11 +128,26 @@
     #ai-agent-stop-square {
       width: 10px; height: 10px; border-radius: 2px; background: #fff;
     }
+    #ai-agent-scroll-wrap {
+      position: relative;
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
     #ai-agent-messages {
       flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 16px 12px;
-      background: var(--ai-bg); scroll-behavior: smooth;
+      background: var(--ai-bg); scroll-behavior: auto;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     }
     #ai-agent-sidebar.is-fullscreen #ai-agent-messages { padding: 24px 16px 12px; }
+    #ai-agent-jump-bottom {
+      position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+      z-index: 6; display: none; align-items: center; gap: 6px;
+      border: 1px solid var(--ai-border); background: #fff; color: #333;
+      border-radius: 999px; padding: 8px 14px; font: 13px/1 inherit; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    }
+    #ai-agent-jump-bottom.visible { display: inline-flex; }
+    #ai-agent-jump-bottom:hover { background: #f7f7f8; }
     #ai-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
     #ai-agent-sidebar.is-fullscreen #ai-agent-thread {
       width: min(var(--ai-content-width), 100%);
@@ -135,6 +156,11 @@
     }
     .ai-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
     .ai-agent-worklog:empty { display: none; }
+    .ai-agent-segment-text {
+      margin: 0 0 12px; font-size: 15px; line-height: 1.7; color: var(--ai-text);
+      word-break: break-word;
+    }
+    .ai-agent-segment-text:last-child { margin-bottom: 0; }
     .ai-agent-card {
       border: 0; border-radius: 8px; background: transparent; overflow: hidden;
     }
@@ -185,6 +211,12 @@
     .ai-agent-card.kind-plan.is-live .ai-agent-card-header,
     .ai-agent-card.kind-explore.is-live .ai-agent-card-header {
       color: var(--ai-muted);
+    }
+    .ai-agent-card.is-explore-step .ai-agent-card-header {
+      padding-left: 18px;
+    }
+    .ai-agent-card.is-explore-step .ai-agent-card-title {
+      font-weight: 400;
     }
     .ai-agent-card-meta {
       font-size: 12px; color: var(--ai-muted); white-space: nowrap; flex: 0 0 auto;
@@ -419,29 +451,70 @@
       width: min(var(--ai-content-width), 100%);
       margin: 0 auto;
     }
-    #ai-agent-queue { display: flex; flex-direction: column; gap: 8px; }
-    #ai-agent-queue:empty { display: none; }
+    #ai-agent-queue {
+      display: none;
+      flex-direction: column;
+      border-radius: 12px;
+      background: var(--ai-surface);
+      color: var(--ai-text);
+      border: 1px solid var(--ai-border);
+      overflow: hidden;
+      font-size: 13px;
+    }
+    #ai-agent-queue.has-items { display: flex; }
+    .ai-agent-queue-toggle {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; border: 0; background: transparent; color: var(--ai-muted);
+      padding: 10px 12px; cursor: pointer; font: inherit; text-align: left;
+    }
+    .ai-agent-queue-toggle:hover { color: var(--ai-text); }
+    .ai-agent-queue-chevron {
+      width: 10px; height: 10px; flex: 0 0 10px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg) translate(-1px, -1px);
+      transition: transform .15s ease;
+    }
+    #ai-agent-queue.is-collapsed .ai-agent-queue-chevron {
+      transform: rotate(-45deg) translate(-1px, 1px);
+    }
+    .ai-agent-queue-count { font-weight: 500; color: var(--ai-text); }
+    .ai-agent-queue-list {
+      display: flex; flex-direction: column;
+      border-top: 1px solid var(--ai-border);
+    }
+    #ai-agent-queue.is-collapsed .ai-agent-queue-list { display: none; }
     .ai-agent-queue-item {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
-      padding: 10px 12px; border: 1px solid var(--ai-border); border-radius: 14px;
-      background: var(--ai-surface); color: var(--ai-text); font-size: 13px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px 8px 12px; min-height: 36px;
     }
-    .ai-agent-queue-item .meta { color: #10a37f; font-size: 12px; margin-bottom: 4px; font-weight: 700; }
-    .ai-agent-queue-item .text {
-      white-space: pre-wrap; word-break: break-word; max-height: 72px; overflow: hidden;
-      cursor: text;
+    .ai-agent-queue-item + .ai-agent-queue-item {
+      border-top: 1px solid var(--ai-border);
     }
-    .ai-agent-queue-item .text:hover { color: #111; }
+    .ai-agent-queue-dot {
+      flex: 0 0 8px; width: 8px; height: 8px;
+      border: 1.5px solid var(--ai-muted); border-radius: 50%;
+    }
+    .ai-agent-queue-text {
+      flex: 1 1 auto; min-width: 0; border: 0; background: transparent;
+      color: var(--ai-text); font: inherit; text-align: left; cursor: pointer;
+      padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ai-agent-queue-text:hover { color: #111; }
     .ai-agent-queue-actions {
-      display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+      display: flex; align-items: center; gap: 2px; flex: 0 0 auto;
     }
     .ai-agent-queue-actions button {
-      width: 28px; height: 28px; border: 0; border-radius: 8px;
-      background: transparent; color: #555; cursor: pointer;
-      display: grid; place-items: center; font-size: 14px; line-height: 1;
+      width: 26px; height: 26px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--ai-muted); cursor: pointer;
+      display: grid; place-items: center; padding: 0;
     }
-    .ai-agent-queue-actions button:hover { background: #fff; color: #111; }
-    .ai-agent-queue-actions button.send-now { font-size: 15px; font-weight: 700; }
+    .ai-agent-queue-actions button svg {
+      width: 14px; height: 14px; display: block;
+    }
+    .ai-agent-queue-actions button:hover {
+      background: rgba(0,0,0,.05); color: var(--ai-text);
+    }
     .ai-agent-queue-actions button.delete:hover { color: #b91c1c; }
     #ai-agent-compose-shell {
       border-radius: 16px;
@@ -656,9 +729,6 @@
     #ai-agent-send:hover { background: #2a2a2a; }
     #ai-agent-send.is-queue { font-size: 11px; font-weight: 700; }
     #ai-agent-send.hidden { display: none; }
-    #ai-agent-hint {
-      margin: 2px 4px 0; text-align: center; font-size: 12px; color: #9a9a9a;
-    }
     body.ai-agent-page-locked { overflow: hidden !important; }
   `;
 
@@ -675,8 +745,10 @@
       <div id="ai-agent-topbar">
         <div id="ai-agent-brand">
           <div id="ai-agent-brand-mark">AI</div>
-          <strong>Ai-agent</strong>
-          <span id="ai-agent-run-state">就绪</span>
+          <div id="ai-agent-brand-text">
+            <strong>Ai-agent</strong>
+            <span id="ai-agent-run-state">就绪</span>
+          </div>
         </div>
         <div id="ai-agent-top-actions">
           <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
@@ -701,21 +773,24 @@
           <button id="ai-agent-close" type="button" title="关闭">×</button>
         </div>
       </div>
-      <div id="ai-agent-messages">
-        <div id="ai-agent-thread"></div>
+      <div id="ai-agent-scroll-wrap">
+        <div id="ai-agent-messages">
+          <div id="ai-agent-thread"></div>
+        </div>
+        <button id="ai-agent-jump-bottom" type="button" title="回到底部">↓ 回到底部</button>
       </div>
       <div id="ai-agent-footer">
         <div id="ai-agent-composer-wrap">
           <div id="ai-agent-queue"></div>
           <div id="ai-agent-compose-shell">
           <div id="ai-agent-attachments"></div>
-          <textarea id="ai-agent-input" rows="1" placeholder="Plan, @ for context, / for commands"></textarea>
+          <textarea id="ai-agent-input" rows="1" placeholder="给 Ai-agent 发送消息"></textarea>
           <div id="ai-agent-compose-toolbar">
             <div id="ai-agent-compose-left">
               <div id="ai-agent-mode-wrap">
                 <select id="ai-agent-mode" title="模式">
-                  <option value="agent" title="Agent：直接执行任务，可修改代码并调用工具。">Agent</option>
-                  <option value="plan" title="Plan：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。">Plan</option>
+                  <option value="agent">Agent</option>
+                  <option value="plan">Plan</option>
                 </select>
               </div>
               <div id="ai-agent-model-wrap">
@@ -745,7 +820,6 @@
             </div>
           </div>
         </div>
-        <div id="ai-agent-hint">Enter 发送/排队 · ■ 终止 · 队列可编辑/立即发送/删除</div>
         </div>
       </div>
     </div>
@@ -772,6 +846,8 @@
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
+  var jumpBottomBtn = document.getElementById("ai-agent-jump-bottom");
+  var stickToBottom = true;
   var runState = document.getElementById("ai-agent-run-state");
   var attachmentsDiv = document.getElementById("ai-agent-attachments");
   var queueDiv = document.getElementById("ai-agent-queue");
@@ -785,6 +861,9 @@
   var queueSeq = 0;
   var activeAbort = null;
   var stopRequested = false;
+  var queueCollapsed = false;
+  // Agent bubble left after ■ stop; removed when the user sends again.
+  var stoppedAgentMsg = null;
   var serverBootId = "";
   var HISTORY_KEY = "ai-agent-chat-history";
   var historySaveTimer = null;
@@ -796,6 +875,59 @@
   var autoResolvedModel = "";
   var autoResolvedLabel = "";
   modelField.value = defaultModel;
+
+  function nearBottom(threshold) {
+    var gap = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
+    return gap <= (threshold || 80);
+  }
+
+  function updateJumpButton() {
+    if (!jumpBottomBtn) return;
+    jumpBottomBtn.classList.toggle("visible", !stickToBottom && !nearBottom(120));
+  }
+
+  function scrollToBottom(force) {
+    if (!force && !stickToBottom) {
+      updateJumpButton();
+      return;
+    }
+    var doScroll = function () {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    };
+    doScroll();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () {
+        doScroll();
+        requestAnimationFrame(doScroll);
+      });
+    } else {
+      setTimeout(doScroll, 0);
+    }
+    stickToBottom = true;
+    updateJumpButton();
+  }
+
+  messagesDiv.addEventListener("scroll", function () {
+    stickToBottom = nearBottom(80);
+    updateJumpButton();
+  }, { passive: true });
+  if (jumpBottomBtn) {
+    jumpBottomBtn.onclick = function () { scrollToBottom(true); };
+  }
+  if (typeof ResizeObserver === "function") {
+    var scrollObserver = new ResizeObserver(function () {
+      if (stickToBottom) scrollToBottom(false);
+      else updateJumpButton();
+    });
+    scrollObserver.observe(threadDiv);
+  }
+  if (typeof MutationObserver === "function") {
+    var mutationObserver = new MutationObserver(function () {
+      if (stickToBottom) scrollToBottom(false);
+      else updateJumpButton();
+    });
+    mutationObserver.observe(threadDiv, { childList: true, subtree: true, characterData: true });
+  }
 
   function serializeWorklog(msg) {
     return Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-card")).map(function (card) {
@@ -828,7 +960,15 @@
       return {
         role: role,
         kind: kind,
-        text: body ? (body.getAttribute("data-raw-text") || body.textContent || "") : "",
+        text: (function () {
+          var parts = [];
+          Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-segment-text, .body")).forEach(function (el) {
+            if (el.classList.contains("ai-agent-worklog")) return;
+            var t = el.getAttribute("data-raw-text") || el.textContent || "";
+            if (t) parts.push(t);
+          });
+          return parts.join("\n\n");
+        })(),
         markdown: kind === "agent",
         worklog: kind === "agent" ? serializeWorklog(msg) : [],
         attachments: attachments,
@@ -913,7 +1053,7 @@
       }
     });
     if (threadDiv.children.length) {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      scrollToBottom(true);
       return true;
     }
     return false;
@@ -960,27 +1100,19 @@
     return prettyModelId(id);
   }
 
-  function resolvedAutoLabelText() {
-    return autoResolvedLabel || (autoResolvedModel ? modelLabelFor(autoResolvedModel) : "");
-  }
-
   function modelPickerLabel(id) {
-    if (id === "auto") {
-      var used = resolvedAutoLabelText();
-      return used ? ("Auto · " + used) : "Auto";
-    }
+    if (id === "auto") return "Auto";
     return modelLabelFor(id);
   }
 
   function applyResolvedModel(payload) {
+    // Keep tracking for debugging if needed, but never surface in the picker UI.
     if (!payload) return;
     var id = payload.resolved_model || "";
     if (!id || id === "auto" || id === "default") return;
     autoResolvedModel = id;
     var labeled = payload.resolved_model_label || "";
-    // Avoid flashing raw ids like "composer-2.5" when catalog label is available.
     autoResolvedLabel = (labeled && labeled !== id) ? labeled : modelLabelFor(id);
-    if ((modelField.value || "") === "auto") syncModelPickerUI();
   }
 
   function knownModelIds() {
@@ -1005,14 +1137,8 @@
     modelWrap.classList.toggle("is-auto", isAuto);
     modelAutoBtn.setAttribute("aria-checked", isAuto ? "true" : "false");
     modelLabel.textContent = modelPickerLabel(id);
-    if (modelAutoResolved) {
-      modelAutoResolved.textContent = isAuto && autoResolvedModel
-        ? ("本次使用 " + resolvedAutoLabelText())
-        : "";
-    }
-    modelBtn.title = isAuto && autoResolvedModel
-      ? ("Auto，实际使用：" + resolvedAutoLabelText())
-      : modelPickerLabel(id);
+    if (modelAutoResolved) modelAutoResolved.textContent = "";
+    modelBtn.title = modelPickerLabel(id);
     Array.prototype.forEach.call(modelList.querySelectorAll(".ai-agent-model-option"), function (btn) {
       btn.classList.toggle("is-selected", !isAuto && btn.getAttribute("data-model-id") === id);
     });
@@ -1456,6 +1582,26 @@
     }).join("");
   }
 
+  function parseCodeFenceInfo(info) {
+    // Cursor citation fences look like: ```143:161:examples/foo.cpp
+    var raw = String(info || "").trim();
+    if (!raw) return { lang: "", label: "code" };
+    var cite = raw.match(/^(\d+):(\d+):(.+)$/);
+    if (cite) {
+      var path = cite[3].trim();
+      var base = path.split(/[\\/]/).pop() || path;
+      var ext = (base.indexOf(".") >= 0 ? base.split(".").pop() : "").toLowerCase();
+      return { lang: ext || "", label: path };
+    }
+    // Bare path / file.ext used as fence info
+    if (/[\\/]/.test(raw) || /\.[A-Za-z0-9]{1,10}$/.test(raw)) {
+      var base2 = raw.split(/[\\/]/).pop() || raw;
+      var ext2 = (base2.indexOf(".") >= 0 ? base2.split(".").pop() : "").toLowerCase();
+      if (ext2 && !/\s/.test(ext2)) return { lang: ext2, label: raw };
+    }
+    return { lang: raw, label: "" };
+  }
+
   function codeLangLabel(lang) {
     var kind = normalizeCodeLang(lang);
     var labels = {
@@ -1482,9 +1628,10 @@
 
   function renderCodeBlock(lang, code) {
     var raw = String(code || "").replace(/\n$/, "");
-    var language = (lang || "").trim();
-    var label = codeLangLabel(language);
-    var cls = language ? ' class="language-' + escapeHtml(language) + '"' : "";
+    var info = parseCodeFenceInfo(lang);
+    var language = info.lang;
+    var label = info.label || codeLangLabel(language);
+    var cls = language ? ' class="language-' + escapeHtml(normalizeCodeLang(language)) + '"' : "";
     var highlighted = highlightCode(raw, language);
     return (
       '<div class="ai-agent-codeblock">' +
@@ -1661,7 +1808,13 @@
   }
 
   function setMessageBody(msg, text, renderAsMarkdown) {
-    var body = msg.querySelector(".body");
+    var body = msg.querySelector(".ai-agent-segment-text.body, .body");
+    if (!body) {
+      var main = msg.querySelector(".ai-agent-msg-main");
+      body = document.createElement("div");
+      body.className = msg.classList.contains("agent") ? "ai-agent-segment-text body" : "body";
+      main.appendChild(body);
+    }
     if (!text) {
       body.style.display = "none";
       body.innerHTML = "";
@@ -1688,12 +1841,23 @@
     var avatarLabel = kind === "agent" ? "AI" : (kind === "user" ? "你" : "!");
     msg.innerHTML =
       '<div class="ai-agent-avatar">' + avatarLabel + '</div>' +
-      '<div class="ai-agent-msg-main">' +
-        '<div class="ai-agent-worklog"></div>' +
-        '<div class="body"></div>' +
-      '</div>';
-    setMessageBody(msg, text, !!renderAsMarkdown);
+      '<div class="ai-agent-msg-main"></div>';
     var main = msg.querySelector(".ai-agent-msg-main");
+    if (kind === "agent") {
+      var worklog = document.createElement("div");
+      worklog.className = "ai-agent-worklog";
+      main.appendChild(worklog);
+    }
+    if (text) {
+      var body = document.createElement("div");
+      body.className = kind === "agent" ? "ai-agent-segment-text body" : "body";
+      main.appendChild(body);
+      setMessageBody(msg, text, !!renderAsMarkdown);
+    } else if (kind !== "agent") {
+      var emptyBody = document.createElement("div");
+      emptyBody.className = "body";
+      main.appendChild(emptyBody);
+    }
     var items = attachments || [];
     var images = items.filter(function (item) { return item.kind === "image" && item.previewUrl; });
     var files = items.filter(function (item) {
@@ -1724,7 +1888,7 @@
       main.appendChild(fileRow);
     }
     threadDiv.appendChild(msg);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom(true);
     scheduleSaveChatHistory();
     return msg;
   }
@@ -1734,18 +1898,96 @@
       msg.__runMeta = {
         nextIndex: 1,
         thinkSeq: 0,
+        exploreSeq: 0,
+        exploreSteps: [],
+        exploreStepKeys: [],
         exploreActive: false,
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
         planningDetail: "",
+        sealedReplyLen: 0,
+        needNewWorklog: false,
+        activeTextEl: null,
       };
     }
     return msg.__runMeta;
   }
 
   function ensureWorklog(msg) {
-    return msg.querySelector(".ai-agent-worklog");
+    var main = msg.querySelector(".ai-agent-msg-main");
+    var meta = getRunMeta(msg);
+    if (meta.needNewWorklog) {
+      meta.needNewWorklog = false;
+      var fresh = document.createElement("div");
+      fresh.className = "ai-agent-worklog";
+      main.appendChild(fresh);
+      return fresh;
+    }
+    var logs = main.querySelectorAll(".ai-agent-worklog");
+    if (logs.length) return logs[logs.length - 1];
+    var worklog = document.createElement("div");
+    worklog.className = "ai-agent-worklog";
+    main.appendChild(worklog);
+    return worklog;
+  }
+
+  // After assistant text, later tools open a new worklog *below* that text.
+  function beginToolSegment(msg) {
+    var meta = getRunMeta(msg);
+    if (meta.activeTextEl) {
+      meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.activeTextEl.__replyEnd || 0);
+      meta.activeTextEl = null;
+      meta.needNewWorklog = true;
+      // Drop any live Exploring still above the sealed text so upserts don't revive it.
+      removeCard(msg, "explore-live");
+      (meta.exploreStepKeys || []).forEach(function (key) { removeCard(msg, key); });
+      removeCard(msg, "think-live");
+      removeCard(msg, "plan-live");
+      removeCard(msg, "status-live");
+      meta.exploreActive = false;
+      meta.exploreSteps = [];
+      meta.exploreStepKeys = [];
+    }
+  }
+
+  function streamTimelineText(msg, fullReply, renderAsMarkdown) {
+    var meta = getRunMeta(msg);
+    finalizePlanCard(msg);
+    finalizeThoughtCard(msg);
+    finalizeExplorePhase(msg);
+    finalizeStatusCard(msg);
+
+    var chunk = fullReply.slice(meta.sealedReplyLen);
+    if (!chunk) {
+      return meta.activeTextEl;
+    }
+    var main = msg.querySelector(".ai-agent-msg-main");
+    if (!meta.activeTextEl) {
+      meta.activeTextEl = document.createElement("div");
+      meta.activeTextEl.className = "ai-agent-segment-text body";
+      main.appendChild(meta.activeTextEl);
+    }
+    meta.activeTextEl.__replyEnd = fullReply.length;
+    meta.activeTextEl.style.display = "";
+    meta.activeTextEl.setAttribute("data-raw-text", chunk);
+    if (renderAsMarkdown) {
+      meta.activeTextEl.innerHTML = renderMarkdown(chunk);
+      bindCodeBlockCopy(meta.activeTextEl);
+    } else {
+      meta.activeTextEl.textContent = chunk;
+    }
+    scheduleSaveChatHistory();
+    return meta.activeTextEl;
+  }
+
+  function streamStandaloneText(msg, text, renderAsMarkdown) {
+    // Error / status lines are not part of the cumulative reply — don't slice by sealedReplyLen.
+    beginToolSegment(msg);
+    var meta = getRunMeta(msg);
+    meta.sealedReplyLen = 0;
+    meta.activeTextEl = null;
+    return streamTimelineText(msg, text, renderAsMarkdown);
   }
 
   function revokeFilePreviews(files) {
@@ -1827,8 +2069,10 @@
     });
   }
 
-  function thinkingTitle(meta, finalized) {
-    var elapsed = Date.now() - meta.thinkingStartedAt;
+  function thinkingTitle(meta, finalized, startedAt) {
+    var base = startedAt || meta.thinkingStartedAt;
+    if (!base) return finalized ? "Thought briefly" : "Thinking";
+    var elapsed = Date.now() - base;
     var seconds = Math.max(1, Math.round(elapsed / 1000));
     if (!finalized) {
       if (elapsed >= 10000) return "Thinking longer than expected";
@@ -1860,7 +2104,7 @@
     });
     var body = card && card.querySelector(".ai-agent-card-body");
     if (body) body.scrollTop = body.scrollHeight;
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom(false);
   }
 
   function buildToolPresentation(payload, summary) {
@@ -1868,31 +2112,48 @@
     var detail = (summary && summary.detail) ? String(summary.detail) : "";
     var argsText = payload.args || "";
     var resultText = payload.result || "";
-    if (!title || /^tool$/i.test(title)) {
+    var kind = (summary && summary.kind) ? String(summary.kind) : "";
+    // Cursor: › Run / › Running — command only in expanded detail.
+    if (kind === "run") {
+      title = payload.status === "running" ? "Running" : "Run";
+    } else if (!title || /^tool$/i.test(title)) {
       var name = (payload.name || "").trim();
-      if (name && !/^tool$/i.test(name)) {
+      if (name && !/^tool$/i.test(name) && !/^(shell|bash|terminal|awaitshell)$/i.test(name)) {
         var pretty = name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ");
         title = pretty.charAt(0).toUpperCase() + pretty.slice(1);
-      } else if (argsText) {
-        title = (payload.status === "running" ? "Running: " : "Ran: ") + argsText.split("\n")[0].slice(0, 96);
+      } else if (argsText || /^(shell|bash|terminal|awaitshell)$/i.test(name)) {
+        title = payload.status === "running" ? "Running" : "Run";
       }
     }
-    if (!detail || detail === payload.name) {
+    var cmd = detail;
+    if (!cmd || cmd === payload.name) cmd = argsText || "";
+    if (kind === "run" || title === "Run" || title === "Running") {
+      if (cmd && resultText && payload.status === "completed") {
+        detail = cmd + "\n\n" + resultText;
+      } else {
+        detail = cmd || resultText || detail;
+      }
+    } else if (!detail || detail === payload.name) {
       if (payload.status === "completed" && resultText) detail = resultText;
       else if (argsText) detail = argsText;
     }
-    return { title: title || "Shell", detail: detail };
+    return { title: title || "Run", detail: detail };
   }
 
   function upsertCard(msg, key, options) {
-    var worklog = ensureWorklog(msg);
-    var selector = '.ai-agent-card[data-card-key="' + key + '"]';
-    var card = worklog.querySelector(selector);
+    var meta = getRunMeta(msg);
+    var existing = msg.querySelector('.ai-agent-card[data-card-key="' + key + '"]');
+    // Don't update a card that still sits above sealed assistant text.
+    if (existing && meta.needNewWorklog) {
+      existing.remove();
+      existing = null;
+    }
+    var worklog = existing ? existing.parentNode : ensureWorklog(msg);
+    var card = existing;
     if (!card) {
       card = document.createElement("div");
       card.className = "ai-agent-card is-collapsed";
       card.setAttribute("data-card-key", key);
-      var meta = getRunMeta(msg);
       card.setAttribute("data-card-index", String(meta.nextIndex++));
       card.innerHTML =
         '<div class="ai-agent-card-header" role="button" tabindex="0" aria-expanded="false">' +
@@ -1919,6 +2180,7 @@
     card.className = "ai-agent-card kind-" + merged.kind;
     card.classList.toggle("is-live", merged.live);
     card.classList.toggle("has-body", cardHasBody(merged));
+    card.classList.toggle("is-explore-step", key.indexOf("explore-step-") === 0);
     var header = card.querySelector(".ai-agent-card-header");
     var expandable = cardHasBody(merged);
     header.setAttribute("tabindex", expandable ? "0" : "-1");
@@ -1939,7 +2201,7 @@
       body.appendChild(extra);
     }
     applyCardExpansion(card, merged, options);
-    if (merged.live) messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    if (merged.live) scrollToBottom(false);
     if (!merged.live) scheduleSaveChatHistory();
     return card;
   }
@@ -1950,8 +2212,7 @@
   }
 
   function removeCard(msg, key) {
-    var worklog = ensureWorklog(msg);
-    var card = worklog.querySelector('.ai-agent-card[data-card-key="' + key + '"]');
+    var card = msg.querySelector('.ai-agent-card[data-card-key="' + key + '"]');
     if (card) {
       card.remove();
       scheduleSaveChatHistory();
@@ -1962,28 +2223,69 @@
     removeCard(msg, "status-live");
   }
 
+  function exploreSummaryTitle(steps) {
+    var files = 0, searches = 0, lists = 0, other = 0;
+    (steps || []).forEach(function (s) {
+      var t = String(s || "").trim().toLowerCase();
+      if (/^read\b/.test(t)) files += 1;
+      else if (/^(grep|grepped|search|searched|sem|fetch|fetched|web)/.test(t)) searches += 1;
+      else if (/^(list|listed)/.test(t)) lists += 1;
+      else other += 1;
+    });
+    var parts = [];
+    if (files) parts.push(files + (files === 1 ? " file" : " files"));
+    if (searches) parts.push(searches + (searches === 1 ? " search" : " searches"));
+    if (lists) parts.push(lists + (lists === 1 ? " listing" : " listings"));
+    if (!parts.length && other) parts.push(other + (other === 1 ? " step" : " steps"));
+    else if (other && parts.length) parts.push(other + " more");
+    return parts.length ? ("Explored " + parts.join(", ")) : "Explored";
+  }
+
   function appendExploredMarker(msg) {
-    appendCard(msg, {
+    var meta = getRunMeta(msg);
+    var steps = (meta.exploreSteps || []).slice();
+    meta.exploreSteps = [];
+    meta.exploreStepKeys = [];
+    if (!steps.length) return;
+    meta.exploreSeq = (meta.exploreSeq || 0) + 1;
+    // Cursor: one collapsed summary row; expand to see Read/Grep/List lines.
+    upsertCard(msg, "explore-done-" + meta.exploreSeq, {
       kind: "explore",
-      title: "Explored",
+      title: exploreSummaryTitle(steps),
       meta: "",
-      detail: "",
+      detail: steps.join("\n"),
       paths: [],
       live: false,
       forceCollapsed: true,
     });
   }
 
-  // ponytail: empty phase marker only — Read/Grepped/Ran cards carry the detail.
+  // Cursor: Exploring (live) + per-step rows → Explored N files… (collapsed).
   function finalizeExplorePhase(msg) {
     var meta = getRunMeta(msg);
     removeCard(msg, "explore-live");
-    if (!meta.exploreActive) return;
+    (meta.exploreStepKeys || []).forEach(function (key) { removeCard(msg, key); });
+    meta.exploreStepKeys = [];
+    if (!meta.exploreActive && !(meta.exploreSteps || []).length) return;
     appendExploredMarker(msg);
     meta.exploreActive = false;
   }
 
-  function noteExploring(msg) {
+  function noteExploring(msg, stepTitle, options) {
+    options = options || {};
+    var meta = getRunMeta(msg);
+    if (!meta.exploreSteps) meta.exploreSteps = [];
+    if (!meta.exploreStepKeys) meta.exploreStepKeys = [];
+    var step = String(stepTitle || "").trim();
+    var callId = String(options.callId || "").trim();
+    var running = !!options.running;
+    var detail = options.detail || "";
+    var stepKey = callId
+      ? ("explore-step-" + callId)
+      : (step ? ("explore-step-" + step) : "");
+
+    meta.exploreActive = true;
+    // Parent keeps shimmering for the whole explore burst.
     upsertCard(msg, "explore-live", {
       kind: "explore",
       title: "Exploring",
@@ -1992,7 +2294,31 @@
       paths: [],
       live: true,
     });
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    if (!step || !stepKey) {
+      scrollToBottom(false);
+      return;
+    }
+    if (meta.exploreStepKeys.indexOf(stepKey) < 0) {
+      meta.exploreStepKeys.push(stepKey);
+      meta.exploreSteps.push(step);
+    } else {
+      // Keep summary title in sync if the completed event has a better label.
+      var idx = meta.exploreStepKeys.indexOf(stepKey);
+      if (idx >= 0 && step) meta.exploreSteps[idx] = step;
+    }
+
+    // Sub-task: shimmer while running; stop shimmer + collapse when done.
+    upsertCard(msg, stepKey, {
+      kind: "explore",
+      title: step,
+      meta: "",
+      detail: detail,
+      paths: options.paths || [],
+      live: running,
+      forceCollapsed: !running,
+    });
+    scrollToBottom(false);
   }
 
   function isNoisyStatus(text) {
@@ -2011,13 +2337,13 @@
   function isInterimReplyText(text) {
     var t = String(text || "").trim();
     if (!t) return true;
-    if (t.length > 160) return false;
-    // Only treat short status-like lines as interim — never hide a real reply
-    // just because it mentions "http" / "search" mid-sentence.
-    if (/^(正在|开始|随后|接下来|我先|正在为您)/.test(t)) return true;
+    if (t.length > 80) return false;
+    // Only ephemeral status lines — real openers like "先看一下项目结构…" must
+    // enter the timeline immediately, or later Explored keeps updating above them.
+    if (/^(正在|正在为您)(搜索|查询|获取|联网|处理|分析|读取|查找)/.test(t)) return true;
     if (/^(Searching|Fetching|Looking|Checking|Querying|Reading)\b/i.test(t)) return true;
-    if (t.length <= 40 && /^(正在)?(查询|搜索|获取|联网)/.test(t)) return true;
-    return t.length <= 80 && /^[^#*_`\n]+$/.test(t) && (t.endsWith("。") || t.endsWith("...") || t.endsWith("…"));
+    if (/^(正在)?(查询|搜索|获取|联网)(中)?[…\.。]*$/.test(t)) return true;
+    return false;
   }
 
   function finalizePlanCard(msg) {
@@ -2034,24 +2360,33 @@
       clearInterval(meta.thinkingTimer);
       meta.thinkingTimer = null;
     }
-    var detail = meta.thinkingDetail || "";
+    var startedAt = meta.thinkingStartedAt;
+    var detail = (meta.thinkingDetail || "").trim();
+    var elapsed = Date.now() - startedAt;
+    meta.thinkingStartedAt = 0;
+    meta.thinkingDetail = "";
+    // Cursor: skip empty brief thoughts — no card clutter.
+    if (!detail && elapsed <= 2000) {
+      removeCard(msg, "think-live");
+      return;
+    }
+    if (!detail) {
+      removeCard(msg, "think-live");
+      return;
+    }
     var card = upsertCard(msg, "think-live", {
       kind: "think",
-      title: thinkingTitle(meta, true),
+      title: thinkingTitle(meta, true, startedAt),
       meta: "",
       detail: detail,
       paths: [],
       live: false,
       forceCollapsed: true,
     });
-    // Archive this thought under a unique key so the next Thinking pass
-    // cannot overwrite earlier thought content.
     if (card) {
       meta.thinkSeq = (meta.thinkSeq || 0) + 1;
       card.setAttribute("data-card-key", "think-done-" + meta.thinkSeq);
     }
-    meta.thinkingStartedAt = 0;
-    meta.thinkingDetail = "";
   }
 
   function finalizeLiveCards(msg) {
@@ -2064,9 +2399,15 @@
   function noteThinking(msg, detail) {
     finalizePlanCard(msg);
     finalizeStatusCard(msg);
-    finalizeExplorePhase(msg);
-    var meta = getRunMeta(msg);
     var chunk = detail || "";
+    var meta = getRunMeta(msg);
+    // Cursor folds think↔read into one Explored burst — don't open Thought mid-explore.
+    if (meta.exploreActive) {
+      if (chunk.trim()) updateRunState("正在思考");
+      return;
+    }
+    // Empty heartbeat deltas must not open a new Thought row.
+    if (!meta.thinkingStartedAt && !chunk.trim()) return;
     if (!meta.thinkingStartedAt) {
       meta.thinkingStartedAt = Date.now();
       meta.thinkingDetail = "";
@@ -2100,7 +2441,7 @@
       body.style.display = "block";
       body.scrollTop = body.scrollHeight;
     }
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom(false);
   }
 
   function renderAttachmentPreview() {
@@ -2160,22 +2501,55 @@
     inputField.focus();
   }
 
-  function sendQueueItemNow(item) {
-    interruptAndSend(item);
+  function queueIcon(name) {
+    if (name === "edit") {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+    }
+    if (name === "send") {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
   }
 
   function renderQueue() {
     queueDiv.innerHTML = "";
-    sendQueue.forEach(function (item, index) {
+    if (!sendQueue.length) {
+      queueDiv.classList.remove("has-items", "is-collapsed");
+      return;
+    }
+    queueDiv.classList.add("has-items");
+    queueDiv.classList.toggle("is-collapsed", queueCollapsed);
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ai-agent-queue-toggle";
+    toggle.setAttribute("aria-expanded", queueCollapsed ? "false" : "true");
+    toggle.innerHTML = '<span class="ai-agent-queue-chevron" aria-hidden="true"></span><span class="ai-agent-queue-count"></span>';
+    toggle.querySelector(".ai-agent-queue-count").textContent =
+      sendQueue.length + (sendQueue.length === 1 ? " Queued" : " Queued");
+    toggle.onclick = function () {
+      queueCollapsed = !queueCollapsed;
+      renderQueue();
+    };
+
+    var list = document.createElement("div");
+    list.className = "ai-agent-queue-list";
+
+    sendQueue.forEach(function (item) {
       var row = document.createElement("div");
       row.className = "ai-agent-queue-item";
-      var left = document.createElement("div");
-      left.innerHTML = '<div class="meta"></div><div class="text" title="点击编辑"></div>';
-      left.querySelector(".meta").textContent =
-        "排队 #" + (index + 1) + " · " + ((item.mode || "agent") === "plan" ? "Plan" : "Agent") +
-        (item.files.length ? " · " + item.files.length + " 个附件" : "");
-      left.querySelector(".text").textContent = item.text || "(仅附件)";
-      left.querySelector(".text").onclick = function () { editQueueItem(item); };
+
+      var dot = document.createElement("span");
+      dot.className = "ai-agent-queue-dot";
+      dot.setAttribute("aria-hidden", "true");
+
+      var textBtn = document.createElement("button");
+      textBtn.type = "button";
+      textBtn.className = "ai-agent-queue-text";
+      var label = item.text || (item.files.length ? "(" + item.files.length + " 个附件)" : "(空消息)");
+      textBtn.textContent = label;
+      textBtn.title = label;
+      textBtn.onclick = function () { editQueueItem(item); };
 
       var actions = document.createElement("div");
       actions.className = "ai-agent-queue-actions";
@@ -2183,30 +2557,34 @@
       var editBtn = document.createElement("button");
       editBtn.type = "button";
       editBtn.title = "编辑";
-      editBtn.textContent = "✎";
+      editBtn.innerHTML = queueIcon("edit");
       editBtn.onclick = function () { editQueueItem(item); };
 
       var sendNowBtn = document.createElement("button");
       sendNowBtn.type = "button";
       sendNowBtn.className = "send-now";
       sendNowBtn.title = "立即发送";
-      sendNowBtn.textContent = "↑";
+      sendNowBtn.innerHTML = queueIcon("send");
       sendNowBtn.onclick = function () { sendQueueItemNow(item); };
 
       var deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
       deleteBtn.className = "delete";
       deleteBtn.title = "删除";
-      deleteBtn.textContent = "🗑";
+      deleteBtn.innerHTML = queueIcon("delete");
       deleteBtn.onclick = function () { removeQueueItem(item.id, true); };
 
       actions.appendChild(editBtn);
       actions.appendChild(sendNowBtn);
       actions.appendChild(deleteBtn);
-      row.appendChild(left);
+      row.appendChild(dot);
+      row.appendChild(textBtn);
       row.appendChild(actions);
-      queueDiv.appendChild(row);
+      list.appendChild(row);
     });
+
+    queueDiv.appendChild(toggle);
+    queueDiv.appendChild(list);
   }
 
   function readFileAsBase64(file) {
@@ -2286,19 +2664,10 @@
     }
     runState.classList.toggle("is-busy", !!isRunning || runState.textContent.indexOf("中") >= 0);
     sendBtn.textContent = isRunning ? "↑" : "↑";
-    sendBtn.title = isRunning ? "中断当前回复并发送" : "发送";
+    sendBtn.title = isRunning ? "加入队列" : "发送";
     sendBtn.classList.toggle("is-queue", !!isRunning);
     sendBtn.classList.toggle("hidden", false);
     stopBtn.classList.toggle("visible", !!isRunning);
-  }
-
-  var MODE_HINTS = {
-    agent: "Agent：直接执行任务，可修改代码并调用工具。",
-    plan: "Plan：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。",
-  };
-
-  function syncModeHint() {
-    modeField.title = MODE_HINTS[modeField.value] || "模式";
   }
 
   function updateModeUI() {
@@ -2320,6 +2689,7 @@
       files: pendingFiles.slice(),
     };
     sendQueue.push(item);
+    queueCollapsed = false;
     inputField.value = "";
     autosizeInput();
     pendingFiles = [];
@@ -2329,7 +2699,16 @@
     return item;
   }
 
+  function clearStoppedAgentOutput() {
+    if (!stoppedAgentMsg) return;
+    if (stoppedAgentMsg.parentNode) stoppedAgentMsg.remove();
+    stoppedAgentMsg = null;
+    scheduleSaveChatHistory();
+  }
+
   async function runOne(item) {
+    // Manual ■ stop kept the incomplete reply visible; next send drops it.
+    clearStoppedAgentOutput();
     var label = item.text || (item.files.length ? "(附件)" : "");
     appendMessage("You", label, "user", false, item.files);
     var filesPayload = buildFilesPayload(item.files);
@@ -2396,23 +2775,24 @@
           if (payload.type === "text") {
             reply += payload.content || "";
             if (isInterimReplyText(reply)) {
-              // Cursor: interim status only in the header, not archived in worklog.
+              // Short status-like lines stay in the header only.
               updateRunState(reply.trim() || "搜索中");
               finalizePlanCard(agentMsg);
               finalizeThoughtCard(agentMsg);
               finalizeStatusCard(agentMsg);
-              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              scrollToBottom(false);
             } else {
               updateRunState("回复中");
-              finalizeLiveCards(agentMsg);
-              setMessageBody(agentMsg, reply, true);
-              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              streamTimelineText(agentMsg, reply, true);
+              scrollToBottom(false);
             }
           } else if (payload.type === "planning") {
             updateRunState("规划中");
+            beginToolSegment(agentMsg);
             notePlanning(agentMsg, payload.content || "");
           } else if (payload.type === "upload") {
             updateRunState("已接收附件");
+            beginToolSegment(agentMsg);
             finalizePlanCard(agentMsg);
             var names = []
               .concat(payload.images || [])
@@ -2428,43 +2808,49 @@
             });
           } else if (payload.type === "thinking") {
             updateRunState("正在思考");
+            beginToolSegment(agentMsg);
             noteThinking(agentMsg, payload.content || "");
           } else if (payload.type === "tool_call") {
             var summary = payload.summary || {};
             var toolView = buildToolPresentation(payload, summary);
             var toolRunning = payload.status === "running";
             updateRunState(toolRunning ? (toolView.title || "执行中") : "执行中");
+            beginToolSegment(agentMsg);
             finalizePlanCard(agentMsg);
-            finalizeThoughtCard(agentMsg);
             finalizeStatusCard(agentMsg);
-            var toolKey = payload.call_id
-              ? ("tool-" + payload.call_id)
-              : ("tool-" + (payload.name || "tool") + "-" + Date.now());
-            if (summary.kind === "explore") {
-              // Keep Exploring live for the whole explore burst; archive on leave.
+            var isExplore = summary.kind === "explore";
+            // Within one Explored burst, keep a single Thought — don't re-archive each Read/Grep.
+            if (!(isExplore && getRunMeta(agentMsg).exploreActive)) finalizeThoughtCard(agentMsg);
+            if (isExplore) {
               getRunMeta(agentMsg).exploreActive = true;
-              noteExploring(agentMsg);
+              noteExploring(agentMsg, toolView.title, {
+                callId: payload.call_id || "",
+                running: toolRunning,
+                detail: toolView.detail || "",
+                paths: summary.paths || [],
+              });
             } else {
               finalizeExplorePhase(agentMsg);
+              var toolKey = payload.call_id
+                ? ("tool-" + payload.call_id)
+                : ("tool-" + (payload.name || "tool") + "-" + Date.now());
+              upsertCard(agentMsg, toolKey, {
+                kind: summary.kind || "tool",
+                title: toolView.title,
+                meta: "",
+                detail: toolView.detail,
+                paths: summary.paths || [],
+                diff: summary.diff || [],
+                live: toolRunning,
+                forceCollapsed: !toolRunning,
+              });
             }
-            upsertCard(agentMsg, toolKey, {
-              kind: summary.kind || "tool",
-              title: toolView.title,
-              meta: "",
-              detail: toolView.detail,
-              paths: summary.paths || [],
-              diff: summary.diff || [],
-              live: toolRunning,
-              forceCollapsed: !toolRunning,
-            });
-            // After non-explore tools, show Planning until the next step.
-            // Explore bursts keep Exploring live until thinking/reply starts.
-            if (!toolRunning && summary.kind !== "explore") notePlanning(agentMsg, "");
           } else if (payload.type === "status") {
             var statusText = payload.content || payload.status || "正在处理";
             if (!isNoisyStatus(statusText)) updateRunState(statusText);
           } else if (payload.type === "task") {
             updateRunState(payload.content || "正在执行任务");
+            beginToolSegment(agentMsg);
             finalizePlanCard(agentMsg);
             finalizeStatusCard(agentMsg);
             appendCard(agentMsg, {
@@ -2477,30 +2863,42 @@
           } else if (payload.type === "error") {
             finished = true;
             finalizeLiveCards(agentMsg);
-            setMessageBody(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
+            streamStandaloneText(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
           } else if (payload.type === "done") {
             finished = true;
             finalizeLiveCards(agentMsg);
             if (reply) {
-              setMessageBody(agentMsg, reply, true);
-            } else {
-              setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
+              streamTimelineText(agentMsg, reply, true);
+            } else if (!agentMsg.querySelector(".ai-agent-segment-text")) {
+              streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
             }
           }
         }
       }
       if (!finished) {
         finalizeLiveCards(agentMsg);
-        if (reply) setMessageBody(agentMsg, reply, true);
+        if (reply) streamTimelineText(agentMsg, reply, true);
       }
     } catch (err) {
       if (err && err.name === "AbortError") {
+        // Keep whatever was already streamed; no "(已终止)/(已中断)" body text.
         finalizeLiveCards(agentMsg);
-        setMessageBody(agentMsg, stopRequested ? "(已终止)" : "(已中断，准备发送下一条)", false);
+        if (reply && reply.trim() && !isInterimReplyText(reply)) {
+          streamTimelineText(agentMsg, reply, true);
+        }
+        if (stopRequested) {
+          // Remember for cleanup on the next send; queue-↑ interrupt keeps it.
+          stoppedAgentMsg = agentMsg;
+          updateRunState("就绪");
+        } else {
+          updateRunState("已中断");
+        }
+        // Always wait for backend cancel so the next queued send doesn't hit a busy agent.
+        await requestCancel();
       } else {
         finalizeLiveCards(agentMsg);
         var detail = formatAgentError((err && err.message) ? err.message : String(err));
-        setMessageBody(
+        streamStandaloneText(
           agentMsg,
           "请求失败 (" + apiBase + "): " + detail + "。请确认已用 python start.py 或 ./run.sh 启动服务（默认 http://127.0.0.1:8765）。",
           false
@@ -2534,22 +2932,43 @@
     if (!isRunning && !sendQueue.length) return;
     stopRequested = true;
     if (activeAbort) activeAbort.abort();
-    updateRunState("正在终止");
+    requestCancel();
+    updateRunState("就绪");
   }
 
-  function interruptAndSend(item) {
+  function requestCancel() {
+    if (!sessionId) return Promise.resolve();
+    return fetch(apiBase + "/api/chat/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    }).catch(function () {});
+  }
+
+  async function interruptAndSend(item) {
+    // Move this item to the front (works for 1st, 2nd, or any queued row).
     sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
     sendQueue.unshift(item);
     renderQueue();
-    if (isRunning && activeAbort) activeAbort.abort();
-    else drainQueue();
+    if (isRunning && activeAbort) {
+      activeAbort.abort();
+      // Wait until backend cancels the SDK run before drainQueue continues.
+      await requestCancel();
+      return;
+    }
+    drainQueue();
+  }
+
+  function sendQueueItemNow(item) {
+    interruptAndSend(item);
   }
 
   function sendMessage() {
     var item = enqueueCurrentCompose();
     if (!item) return;
     if (isRunning) {
-      interruptAndSend(item);
+      renderQueue();
+      updateRunState("处理中");
       return;
     }
     drainQueue();
@@ -2583,9 +3002,7 @@
   syncModelPickerUI();
   modeField.onchange = function () {
     updateModeUI();
-    syncModeHint();
   };
-  modeField.onmouseenter = syncModeHint;
   pickFileBtn.onclick = function () { fileInput.click(); };
   fileInput.addEventListener("change", function (e) {
     handleFileSelection(e.target.files);
@@ -2616,6 +3033,7 @@
     sessionId = "";
     localStorage.removeItem("ai-agent-session-id");
     clearChatHistory();
+    stoppedAgentMsg = null;
     threadDiv.innerHTML = "";
     isRunning = false;
     stopRequested = false;
@@ -2623,7 +3041,6 @@
   };
   updateRunState("就绪");
   updateModeUI();
-  syncModeHint();
   loadModelOptions();
   window.addEventListener("beforeunload", function () {
     if (historySaveTimer) {
@@ -2655,12 +3072,17 @@
       "#include <vector>",
       "void dfs(int u) { vis[u] = true; }",
       "```",
+      "",
+      "```143:161:examples/red_black_tree.cpp",
+      "Node* rotateLeft(Node* x) { return x; }",
+      "```",
     ].join("\n");
     var mdOut = renderMarkdown(mdSample);
     var pyOk = mdOut.indexOf("tok-kw") >= 0 && mdOut.indexOf("def") >= 0;
     var cppOk = mdOut.indexOf("tok-pp") >= 0 || mdOut.indexOf("tok-type") >= 0;
+    var citeOk = mdOut.indexOf("examples/red_black_tree.cpp") >= 0 && mdOut.indexOf("143:161:examples") < 0;
     var copyOk = mdOut.indexOf("ai-agent-codeblock-copy") >= 0 && mdOut.indexOf("ai-agent-codeblock-lang") >= 0;
-    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !copyOk) {
+    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !citeOk || !copyOk) {
       console.error("Ai-agent markdown self-check failed", mdOut);
     } else {
       console.log("Ai-agent markdown self-check ok");

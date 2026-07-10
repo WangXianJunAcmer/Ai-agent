@@ -60,7 +60,9 @@ def check_tool_display() -> None:
         session,
     )
     assert started and started["name"] == "shell", started
-    assert "ls -la apps" in started["summary"]["title"], started["summary"]
+    assert started["summary"]["kind"] == "explore", started["summary"]
+    assert started["summary"]["title"] == "Running ls", started["summary"]
+    assert "ls -la apps" in started["summary"]["detail"], started["summary"]
 
     read_evt = mgr._sse_from_delta(
         _FakeUpdate("tool-call-started", "c2", {"readToolCall": {"args": {"path": "server/app.py"}}}),
@@ -81,7 +83,17 @@ def check_tool_display() -> None:
         session,
     )
     assert typed_shell and typed_shell["name"] == "shell", typed_shell
-    assert "python3" in typed_shell["summary"]["title"], typed_shell["summary"]
+    assert typed_shell["summary"]["kind"] == "run", typed_shell["summary"]
+    assert typed_shell["summary"]["title"] == "Running", typed_shell["summary"]
+    assert "python3" in typed_shell["summary"]["detail"], typed_shell["summary"]
+
+    # lstrip("sudo ") footgun: od/du must stay "run", not get mangled into explore.
+    od_sum = mgr._tool_summary("shell", {"command": "od -An -tx1 file.bin"}, None, "running")
+    assert od_sum["kind"] == "run", od_sum
+    du_sum = mgr._tool_summary("shell", {"command": "du -sh ."}, None, "running")
+    assert du_sum["kind"] == "run", du_sum
+    sudo_ls = mgr._tool_summary("shell", {"command": "sudo ls /tmp"}, None, "running")
+    assert sudo_ls["kind"] == "explore", sudo_ls
 
     running = mgr._tool_call_event(
         session, call_id="c5", name="shell", status="running", args={"command": "ls"}, result=None
@@ -150,11 +162,38 @@ def check_attachments() -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def check_cancel_turn() -> None:
+    """Explicit cancel bumps turn; preparatory cleanup in _start_run must not."""
+    mgr = SessionManager(
+        {"host_root": ".", "api_key": "x", "model": "composer-2.5", "runtime": "local"}
+    )
+
+    class _Sess:
+        turn = 0
+        active_run = None
+
+    sess = _Sess()
+    # Can't await here without a loop — exercise the sync contract via the helper's bump flag.
+    import asyncio
+
+    async def _run() -> None:
+        await mgr._cancel_session_run(sess, bump=False)
+        assert sess.turn == 0, sess.turn
+        await mgr._cancel_session_run(sess, bump=True)
+        assert sess.turn == 1, sess.turn
+        await mgr._cancel_session_run(sess, bump=True)
+        assert sess.turn == 2, sess.turn
+
+    asyncio.run(_run())
+    print("ok cancel turn")
+
+
 def main() -> None:
     check_config()
     check_tool_display()
     check_context_error()
     check_attachments()
+    check_cancel_turn()
     print("ok all")
 
 

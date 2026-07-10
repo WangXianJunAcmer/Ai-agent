@@ -77,6 +77,10 @@ class ChatRequest(BaseModel):
         return self.mode if self.mode in {"agent", "plan"} else "agent"
 
 
+class CancelRequest(BaseModel):
+    session_id: str | None = None
+
+
 @app.get("/")
 async def index():
     return FileResponse(frontend_dir / "index.html")
@@ -127,6 +131,12 @@ async def chat(req: ChatRequest):
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
+
+
+@app.post("/api/chat/cancel")
+async def cancel_chat(req: CancelRequest):
+    await sessions.cancel(req.session_id)
+    return {"ok": True}
 
 
 @app.post("/api/chat/stream")

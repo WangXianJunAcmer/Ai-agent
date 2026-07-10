@@ -4,3 +4,6 @@ __pycache__/
 .venv/
 venv/
 ai/
+# Agent chat scratch (trees, demos, uploads) — do not commit
+examples/
+.ai-agent-uploads/
