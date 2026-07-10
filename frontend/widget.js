@@ -291,7 +291,7 @@
       <div id="ai-agent-topbar">
         <div id="ai-agent-brand">
           <div id="ai-agent-brand-mark">AI</div>
-          <strong>Dev Agent</strong>
+          <strong>Ai-agent</strong>
           <span id="ai-agent-run-state">就绪</span>
         </div>
         <div id="ai-agent-top-actions">
@@ -312,7 +312,7 @@
         <div id="ai-agent-compose">
           <input id="ai-agent-file-input" type="file" multiple />
           <button id="ai-agent-pick-file" type="button" title="上传图片或文件">＋</button>
-          <input id="ai-agent-input" type="text" placeholder="给 Dev Agent 发送消息" />
+          <input id="ai-agent-input" type="text" placeholder="给 Ai-agent 发送消息" />
           <button id="ai-agent-send" type="button" title="发送">↑</button>
         </div>
         <div id="ai-agent-hint">Enter 发送 · 回复中可继续编辑并排队 · 可附带文件</div>

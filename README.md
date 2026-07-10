@@ -1,6 +1,6 @@
 # Ai-agent
 
-可嵌入任意项目的 Cursor Dev Agent sidecar。clone 到宿主项目根目录后，启动本地服务并在网页里注入聊天侧边栏，Agent 会直接读写宿主项目代码。支持**文本 + 图片**多模态对话，并展示 thinking / tool_call 等 Agent 过程。
+可嵌入任意项目的 Cursor Ai-agent sidecar。clone 到宿主项目根目录后，启动本地服务并在网页里注入聊天侧边栏，Agent 会直接读写宿主项目代码。支持**文本 + 图片**多模态对话，并展示 thinking / tool_call 等 Agent 过程。
 
 ## 环境要求
 
