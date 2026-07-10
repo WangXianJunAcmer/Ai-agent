@@ -13,173 +13,151 @@
 
   var styles = `
     #ai-agent-backdrop {
-      position: fixed; inset: 0; background: rgba(15, 23, 42, .2);
+      position: fixed; inset: 0; background: rgba(0,0,0,.18);
       z-index: 2147482999; opacity: 0; pointer-events: none; transition: opacity .2s ease;
     }
     #ai-agent-backdrop.open { opacity: 1; pointer-events: auto; }
     #ai-agent-trigger {
-      position: fixed; bottom: 24px; right: 24px; width: 60px; height: 60px;
-      background: #4f46e5; color: #fff; border-radius: 50%; display: flex;
-      align-items: center; justify-content: center; cursor: pointer;
-      box-shadow: 0 8px 24px rgba(79,70,229,.35); z-index: 2147483000;
-      font: 700 15px/1 system-ui, sans-serif; user-select: none;
+      position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+      background: linear-gradient(135deg, #10a37f, #1a7f64); color: #fff; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      box-shadow: 0 10px 28px rgba(16,163,127,.35); z-index: 2147483000;
+      font: 700 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; user-select: none;
     }
     #ai-agent-sidebar {
+      --ai-bg: #ffffff;
+      --ai-surface: #f7f7f8;
+      --ai-border: rgba(0,0,0,.08);
+      --ai-text: #0d0d0d;
+      --ai-muted: #6b6b6b;
+      --ai-accent: #0d0d0d;
+      --ai-user-bg: #f4f4f4;
+      --ai-composer-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
       position: fixed; top: 0; right: -520px; width: min(520px, 96vw); height: 100%;
-      background: #fff; box-shadow: -8px 0 32px rgba(15,23,42,.12);
+      background: var(--ai-bg); box-shadow: -8px 0 32px rgba(0,0,0,.12);
       z-index: 2147483001; transition: right .25s ease; display: flex;
-      flex-direction: column; font: 15px/1.6 system-ui, sans-serif; color: #0f172a;
-    }
-    #ai-agent-sidebar.open { right: 0; }
-    #ai-agent-header {
-      padding: 18px 20px; background: #4f46e5; color: #fff;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    #ai-agent-header strong { font-size: 17px; }
-    #ai-agent-close { cursor: pointer; font-size: 22px; line-height: 1; opacity: .9; }
-    #ai-agent-statusbar {
-      padding: 10px 18px;
-      border-bottom: 1px solid #e2e8f0;
-      background: #f8fafc;
-      color: #475569;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    #ai-agent-run-state {
-      flex: 0 0 auto;
-      min-width: 48px;
-    }
-    #ai-agent-current-model {
-      flex: 1 1 auto;
-      min-width: 0;
-      text-align: right;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #ai-agent-messages {
-      flex: 1; overflow-y: auto; padding: 18px; background: #f8fafc;
-    }
-    .ai-agent-worklog {
-      display: flex;
       flex-direction: column;
-      gap: 10px;
-      margin-bottom: 10px;
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--ai-text);
     }
+    #ai-agent-sidebar *, #ai-agent-sidebar *::before, #ai-agent-sidebar *::after { box-sizing: border-box; }
+    #ai-agent-sidebar.open { right: 0; }
+    #ai-agent-topbar {
+      flex: 0 0 auto; height: 52px; padding: 0 14px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      border-bottom: 1px solid var(--ai-border);
+      background: rgba(255,255,255,.85); backdrop-filter: blur(10px); z-index: 2;
+    }
+    #ai-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #ai-agent-brand-mark {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(135deg, #10a37f, #1a7f64);
+      color: #fff; display: grid; place-items: center;
+      font: 700 12px/1 -apple-system, sans-serif; flex: 0 0 auto;
+    }
+    #ai-agent-brand strong { font-size: 15px; font-weight: 600; color: var(--ai-text); }
+    #ai-agent-run-state {
+      font-size: 12px; color: var(--ai-muted); margin-left: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #ai-agent-run-state.is-busy { color: #10a37f; }
+    #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    #ai-agent-model {
+      appearance: none;
+      border: 1px solid var(--ai-border);
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 10px center no-repeat;
+      padding: 7px 28px 7px 12px; border-radius: 999px;
+      font: 13px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 160px;
+    }
+    #ai-agent-new-chat, #ai-agent-close {
+      border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
+      border-radius: 999px; padding: 7px 12px; font: 13px/1.2 inherit; cursor: pointer;
+    }
+    #ai-agent-new-chat:hover, #ai-agent-close:hover { background: var(--ai-surface); }
+    #ai-agent-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 18px; }
+    #ai-agent-messages {
+      flex: 1 1 auto; overflow-y: auto; padding: 18px 16px 12px;
+      background: var(--ai-bg); scroll-behavior: smooth;
+    }
+    #ai-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 100%; }
+    .ai-agent-worklog { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+    .ai-agent-worklog:empty { display: none; }
     .ai-agent-card {
-      border: 1px solid #dbe3ee;
-      border-radius: 14px;
-      background: #fff;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
-      overflow: hidden;
+      border: 1px solid var(--ai-border); border-radius: 12px; background: #fafafa; overflow: hidden;
     }
     .ai-agent-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 14px;
-      font-size: 13px;
-      color: #0f172a;
+      display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+      font-size: 13px; color: var(--ai-text); background: transparent;
     }
     .ai-agent-card-title {
-      font-weight: 700;
-      flex: 1 1 auto;
-      min-width: 0;
+      font-weight: 550; flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-card-meta {
-      font-size: 12px;
-      color: #64748b;
-      white-space: nowrap;
-    }
+    .ai-agent-card-meta { font-size: 12px; color: var(--ai-muted); white-space: nowrap; }
     .ai-agent-card-body {
-      border-top: 1px solid #eef2f7;
-      padding: 12px 14px;
-      color: #475569;
-      font-size: 13px;
-      white-space: pre-wrap;
-      word-break: break-word;
+      border-top: 1px solid var(--ai-border); padding: 10px 12px;
+      color: var(--ai-muted); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; background: #fff;
     }
-    .ai-agent-card.kind-plan .ai-agent-card-header { background: #eef2ff; }
-    .ai-agent-card.kind-think .ai-agent-card-header { background: #f5f3ff; }
-    .ai-agent-card.kind-explore .ai-agent-card-header { background: #eff6ff; }
-    .ai-agent-card.kind-edit .ai-agent-card-header { background: #f0fdf4; }
-    .ai-agent-card.kind-run .ai-agent-card-header { background: #fff7ed; }
-    .ai-agent-card.kind-verify .ai-agent-card-header { background: #f8fafc; }
-    .ai-agent-card.kind-tool .ai-agent-card-header { background: #f8fafc; }
     .ai-agent-card-kind {
-      flex: 0 0 auto;
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 11px;
-      font-weight: 700;
-      background: rgba(15, 23, 42, .07);
-      color: #334155;
-      text-transform: uppercase;
-      letter-spacing: .04em;
+      flex: 0 0 auto; border-radius: 999px; padding: 2px 8px;
+      font-size: 10px; font-weight: 650; background: rgba(0,0,0,.05); color: #444;
+      text-transform: uppercase; letter-spacing: .04em;
     }
-    .ai-agent-paths {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 10px;
-    }
+    .ai-agent-card.kind-plan .ai-agent-card-kind { background: #eef2ff; color: #4338ca; }
+    .ai-agent-card.kind-think .ai-agent-card-kind { background: #f5f3ff; color: #6d28d9; }
+    .ai-agent-card.kind-explore .ai-agent-card-kind { background: #eff6ff; color: #1d4ed8; }
+    .ai-agent-card.kind-edit .ai-agent-card-kind { background: #ecfdf5; color: #047857; }
+    .ai-agent-card.kind-run .ai-agent-card-kind { background: #fff7ed; color: #c2410c; }
+    .ai-agent-card.kind-verify .ai-agent-card-kind { background: #f1f5f9; color: #475569; }
+    .ai-agent-paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .ai-agent-path {
-      display: inline-flex;
-      align-items: center;
-      max-width: 100%;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      color: #334155;
+      display: inline-flex; align-items: center; max-width: 100%;
+      padding: 3px 8px; border-radius: 999px;
+      background: #f4f4f4; border: 1px solid var(--ai-border); color: #333;
       font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     .ai-agent-diff {
-      margin-top: 10px;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      overflow: hidden;
-      background: #f8fafc;
+      margin-top: 8px; border: 1px solid var(--ai-border);
+      border-radius: 10px; overflow: hidden; background: #fafafa;
     }
     .ai-agent-diff + .ai-agent-diff { margin-top: 8px; }
     .ai-agent-diff-path {
-      padding: 8px 10px;
-      background: #e2e8f0;
-      color: #0f172a;
-      font: 700 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 7px 10px; background: #eee; color: #111;
+      font: 650 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     .ai-agent-diff-line {
-      display: block;
-      padding: 5px 10px;
+      display: block; padding: 4px 10px;
       font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
+      white-space: pre-wrap; word-break: break-word;
     }
     .ai-agent-diff-line.added { background: #ecfdf5; color: #166534; }
     .ai-agent-diff-line.removed { background: #fef2f2; color: #991b1b; }
-    .ai-agent-msg-images {
-      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    .ai-agent-msg { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
+    .ai-agent-msg.user { justify-content: flex-end; }
+    .ai-agent-msg.agent { justify-content: flex-start; }
+    .ai-agent-avatar {
+      width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto; margin-top: 2px;
+      display: grid; place-items: center; font: 700 11px/1 -apple-system, sans-serif; color: #fff;
     }
-    .ai-agent-msg-images img {
-      width: 96px; height: 96px; object-fit: cover;
-      border-radius: 10px; border: 1px solid #cbd5e1; background: #fff;
-    }
-    .ai-agent-msg { margin-bottom: 14px; }
-    .ai-agent-msg .role { font-weight: 700; margin-bottom: 6px; font-size: 14px; }
-    .ai-agent-msg.user .role { color: #334155; }
-    .ai-agent-msg.agent .role { color: #4f46e5; }
-    .ai-agent-msg.system .role { color: #b45309; }
+    .ai-agent-msg.agent .ai-agent-avatar { background: #10a37f; }
+    .ai-agent-msg.user .ai-agent-avatar { display: none; }
+    .ai-agent-msg-main { min-width: 0; max-width: 100%; }
+    .ai-agent-msg.user .ai-agent-msg-main { max-width: 88%; }
+    .ai-agent-msg .role { display: none; }
     .ai-agent-msg .body {
       white-space: pre-wrap; word-break: break-word;
-      font: inherit; color: #0f172a; background: #fff; border: 1px solid #dbe3ee;
-      border-radius: 12px; padding: 12px 14px; line-height: 1.7;
+      font: inherit; color: var(--ai-text);
+      background: transparent; border: 0; border-radius: 0;
+      padding: 2px 0; line-height: 1.7;
     }
-    .ai-agent-msg.user .body { background: #f8fafc; border-color: #cbd5e1; }
-    .ai-agent-msg.agent .body { background: #eef2ff; border-color: #c7d2fe; color: #1e1b4b; }
-    .ai-agent-msg.system .body { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+    .ai-agent-msg.user .body {
+      background: var(--ai-user-bg); border-radius: 22px; padding: 10px 16px;
+    }
+    .ai-agent-msg.agent .body { padding-top: 4px; }
+    .ai-agent-msg.system .body {
+      background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+      border-radius: 14px; padding: 10px 14px;
+    }
     .ai-agent-msg .body > :first-child { margin-top: 0; }
     .ai-agent-msg .body > :last-child { margin-bottom: 0; }
     .ai-agent-msg .body p,
@@ -195,72 +173,110 @@
     .ai-agent-msg .body li + li { margin-top: 4px; }
     .ai-agent-msg .body h1,
     .ai-agent-msg .body h2,
-    .ai-agent-msg .body h3 { line-height: 1.35; }
+    .ai-agent-msg .body h3 { line-height: 1.35; font-weight: 650; }
     .ai-agent-msg .body h1 { font-size: 22px; }
     .ai-agent-msg .body h2 { font-size: 19px; }
     .ai-agent-msg .body h3 { font-size: 17px; }
-    .ai-agent-msg .body strong { font-weight: 800; }
+    .ai-agent-msg .body strong { font-weight: 650; }
     .ai-agent-msg .body code {
-      padding: 2px 6px; border-radius: 6px; background: rgba(15, 23, 42, .08);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95em;
+      padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.06);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;
     }
     .ai-agent-msg .body pre {
-      padding: 12px 14px; border-radius: 10px; overflow: auto; background: #0f172a; color: #e2e8f0;
+      padding: 14px 16px; border-radius: 12px; overflow: auto;
+      background: #0d0d0d; color: #f5f5f5;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
     }
     .ai-agent-msg .body pre code { background: transparent; padding: 0; color: inherit; }
     .ai-agent-msg .body blockquote {
-      padding-left: 12px; border-left: 3px solid rgba(79, 70, 229, .35); color: #475569;
+      padding-left: 12px; border-left: 3px solid rgba(0,0,0,.15); color: var(--ai-muted);
     }
+    .ai-agent-msg-images {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; justify-content: flex-end;
+    }
+    .ai-agent-msg.agent .ai-agent-msg-images { justify-content: flex-start; }
+    .ai-agent-msg-images img {
+      width: 96px; height: 96px; object-fit: cover;
+      border-radius: 14px; border: 1px solid var(--ai-border); background: #fff;
+    }
+    .ai-agent-msg-files {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end;
+    }
+    .ai-agent-msg.agent .ai-agent-msg-files { justify-content: flex-start; }
+    .ai-agent-file-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ai-border);
+      background: #fff; color: #333; font-size: 12px; max-width: 220px;
+    }
+    .ai-agent-file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #ai-agent-footer {
-      padding: 14px; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; background: #fff;
-      flex-direction: column;
+      flex: 0 0 auto; padding: 8px 14px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28%);
+      display: flex; flex-direction: column; gap: 8px;
     }
-    #ai-agent-toolbar {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    #ai-agent-queue { display: flex; flex-direction: column; gap: 8px; }
+    #ai-agent-queue:empty { display: none; }
+    .ai-agent-queue-item {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border: 1px dashed var(--ai-border); border-radius: 14px;
+      background: var(--ai-surface); color: var(--ai-text); font-size: 13px;
     }
-    #ai-agent-toolbar label {
-      color: #64748b; font-size: 13px; font-weight: 600;
+    .ai-agent-queue-item .meta { color: #10a37f; font-size: 12px; margin-bottom: 4px; font-weight: 700; }
+    .ai-agent-queue-item .text {
+      white-space: pre-wrap; word-break: break-word; max-height: 72px; overflow: hidden;
     }
-    #ai-agent-model {
-      margin-left: 8px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 8px;
-      font: inherit; background: #fff; color: #0f172a;
+    .ai-agent-queue-item button {
+      flex: 0 0 auto; background: #fff; color: var(--ai-text);
+      border: 1px solid var(--ai-border); border-radius: 999px; padding: 6px 10px;
+      cursor: pointer; font-weight: 650; font-size: 12px;
     }
-    #ai-agent-compose {
-      display: flex; gap: 10px;
-    }
-    #ai-agent-attachments {
-      display: flex; flex-wrap: wrap; gap: 8px; min-height: 0;
-    }
+    #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 0 4px; }
     #ai-agent-attachments:empty { display: none; }
-    .ai-agent-thumb {
-      position: relative; width: 72px; height: 72px;
-    }
+    .ai-agent-thumb { position: relative; width: 64px; height: 64px; }
     .ai-agent-thumb img {
       width: 100%; height: 100%; object-fit: cover;
-      border-radius: 10px; border: 1px solid #cbd5e1; background: #fff;
+      border-radius: 12px; border: 1px solid var(--ai-border); background: #fff;
     }
+    .ai-agent-thumb.file {
+      width: auto; min-width: 120px; height: auto;
+      padding: 10px 28px 10px 12px; border: 1px solid var(--ai-border);
+      border-radius: 12px; background: #fff; color: #333; font-size: 12px;
+    }
+    .ai-agent-thumb.file .name {
+      display: block; max-width: 160px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; font-weight: 650;
+    }
+    .ai-agent-thumb.file .kind { color: var(--ai-muted); margin-top: 2px; display: block; }
     .ai-agent-thumb button {
       position: absolute; top: -6px; right: -6px;
       width: 20px; height: 20px; border: 0; border-radius: 50%;
-      background: #ef4444; color: #fff; cursor: pointer;
+      background: #111; color: #fff; cursor: pointer;
       font: 700 12px/1 system-ui, sans-serif;
     }
-    #ai-agent-pick-image {
-      border: 1px solid #cbd5e1; background: #fff; color: #334155;
-      border-radius: 10px; padding: 12px 14px; cursor: pointer; font-weight: 600;
+    #ai-agent-compose {
+      display: flex; align-items: flex-end; gap: 6px;
+      padding: 10px 10px 10px 12px; border-radius: 28px;
+      background: #fff; box-shadow: var(--ai-composer-shadow);
     }
-    #ai-agent-pick-image:disabled { opacity: .6; cursor: not-allowed; }
-    #ai-agent-image-input { display: none; }
+    #ai-agent-file-input { display: none; }
+    #ai-agent-pick-file, #ai-agent-send {
+      width: 36px; height: 36px; border-radius: 999px; border: 0; cursor: pointer;
+      flex: 0 0 auto; display: grid; place-items: center;
+    }
+    #ai-agent-pick-file { background: transparent; color: #555; font-size: 18px; }
+    #ai-agent-pick-file:hover { background: #f3f3f3; }
     #ai-agent-input {
-      flex: 1; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 10px; outline: none;
-      font: inherit;
+      flex: 1 1 auto; border: 0; outline: none; background: transparent;
+      padding: 8px 4px; font: inherit; line-height: 1.45; color: var(--ai-text);
     }
-    #ai-agent-send {
-      padding: 12px 16px; background: #4f46e5; color: #fff; border: none;
-      border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px;
+    #ai-agent-input::placeholder { color: #8e8e8e; }
+    #ai-agent-send { background: #0d0d0d; color: #fff; font-size: 16px; }
+    #ai-agent-send:hover { background: #2a2a2a; }
+    #ai-agent-send.is-queue { font-size: 11px; font-weight: 700; }
+    #ai-agent-hint {
+      margin: 2px 4px 0; text-align: center; font-size: 12px; color: #9a9a9a;
     }
-    #ai-agent-send:disabled { opacity: .6; cursor: not-allowed; }
+    #ai-agent-current-model { display: none; }
   `;
 
   var styleEl = document.createElement("style");
@@ -272,32 +288,36 @@
     <div id="ai-agent-backdrop"></div>
     <div id="ai-agent-trigger" title="AI Agent">AI</div>
     <div id="ai-agent-sidebar">
-      <div id="ai-agent-header">
-        <strong>Dev Agent</strong>
-        <span id="ai-agent-close" title="Close">×</span>
-      </div>
-      <div id="ai-agent-statusbar">
-        <span id="ai-agent-run-state">空闲</span>
-        <span id="ai-agent-current-model"></span>
-      </div>
-      <div id="ai-agent-messages"></div>
-      <div id="ai-agent-footer">
-        <div id="ai-agent-toolbar">
-          <label>模型
-            <select id="ai-agent-model">
-              <option value="composer-2.5">composer-2.5</option>
-              <option value="auto">auto</option>
-            </select>
-          </label>
+      <div id="ai-agent-topbar">
+        <div id="ai-agent-brand">
+          <div id="ai-agent-brand-mark">AI</div>
+          <strong>Dev Agent</strong>
+          <span id="ai-agent-run-state">就绪</span>
         </div>
+        <div id="ai-agent-top-actions">
+          <select id="ai-agent-model" title="模型">
+            <option value="composer-2.5">composer-2.5</option>
+            <option value="auto">auto</option>
+          </select>
+          <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
+          <button id="ai-agent-close" type="button" title="Close">×</button>
+        </div>
+      </div>
+      <div id="ai-agent-messages">
+        <div id="ai-agent-thread"></div>
+      </div>
+      <div id="ai-agent-footer">
+        <div id="ai-agent-queue"></div>
         <div id="ai-agent-attachments"></div>
         <div id="ai-agent-compose">
-          <input id="ai-agent-image-input" type="file" accept="image/*" multiple />
-          <button id="ai-agent-pick-image" type="button" title="上传图片">📷</button>
-          <input id="ai-agent-input" type="text" placeholder="输入你的需求，可附带图片" />
-          <button id="ai-agent-send">发送</button>
+          <input id="ai-agent-file-input" type="file" multiple />
+          <button id="ai-agent-pick-file" type="button" title="上传图片或文件">＋</button>
+          <input id="ai-agent-input" type="text" placeholder="给 Dev Agent 发送消息" />
+          <button id="ai-agent-send" type="button" title="发送">↑</button>
         </div>
+        <div id="ai-agent-hint">Enter 发送 · 回复中可继续编辑并排队 · 可附带文件</div>
       </div>
+      <span id="ai-agent-current-model"></span>
     </div>
   `;
   document.body.appendChild(container);
@@ -310,12 +330,18 @@
   var inputField = document.getElementById("ai-agent-input");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
+  var threadDiv = document.getElementById("ai-agent-thread");
   var runState = document.getElementById("ai-agent-run-state");
   var currentModel = document.getElementById("ai-agent-current-model");
   var attachmentsDiv = document.getElementById("ai-agent-attachments");
-  var pickImageBtn = document.getElementById("ai-agent-pick-image");
-  var imageInput = document.getElementById("ai-agent-image-input");
-  var pendingImages = [];
+  var queueDiv = document.getElementById("ai-agent-queue");
+  var pickFileBtn = document.getElementById("ai-agent-pick-file");
+  var fileInput = document.getElementById("ai-agent-file-input");
+  var newChatBtn = document.getElementById("ai-agent-new-chat");
+  var pendingFiles = [];
+  var sendQueue = [];
+  var isRunning = false;
+  var queueSeq = 0;
   modelField.value = defaultModel;
   currentModel.textContent = defaultModel;
 
@@ -473,23 +499,47 @@
     }
   }
 
-  function appendMessage(role, text, className, renderAsMarkdown, imageUrls) {
+  function appendMessage(role, text, className, renderAsMarkdown, attachments) {
+    var kind = className || role.toLowerCase();
     var msg = document.createElement("div");
-    msg.className = "ai-agent-msg " + (className || role.toLowerCase());
-    msg.innerHTML = '<div class="role">' + role + '</div><div class="ai-agent-worklog"></div><div class="body"></div>';
+    msg.className = "ai-agent-msg " + kind;
+    var avatarLabel = kind === "agent" ? "AI" : (kind === "user" ? "你" : "!");
+    msg.innerHTML =
+      '<div class="ai-agent-avatar">' + avatarLabel + '</div>' +
+      '<div class="ai-agent-msg-main">' +
+        '<div class="role">' + role + '</div>' +
+        '<div class="ai-agent-worklog"></div>' +
+        '<div class="body"></div>' +
+      '</div>';
     setMessageBody(msg, text, !!renderAsMarkdown);
-    if (imageUrls && imageUrls.length) {
+    var main = msg.querySelector(".ai-agent-msg-main");
+    var items = attachments || [];
+    var images = items.filter(function (item) { return item.kind === "image" && item.previewUrl; });
+    var files = items.filter(function (item) { return item.kind !== "image"; });
+    if (images.length) {
       var gallery = document.createElement("div");
       gallery.className = "ai-agent-msg-images";
-      imageUrls.forEach(function (url) {
+      images.forEach(function (item) {
         var img = document.createElement("img");
-        img.src = url;
-        img.alt = "uploaded image";
+        img.src = item.previewUrl;
+        img.alt = item.name || "uploaded image";
         gallery.appendChild(img);
       });
-      msg.appendChild(gallery);
+      main.appendChild(gallery);
     }
-    messagesDiv.appendChild(msg);
+    if (files.length) {
+      var fileRow = document.createElement("div");
+      fileRow.className = "ai-agent-msg-files";
+      files.forEach(function (item) {
+        var chip = document.createElement("div");
+        chip.className = "ai-agent-file-chip";
+        chip.innerHTML = "<span></span>";
+        chip.querySelector("span").textContent = item.name || "file";
+        fileRow.appendChild(chip);
+      });
+      main.appendChild(fileRow);
+    }
+    threadDiv.appendChild(msg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     return msg;
   }
@@ -629,17 +679,52 @@
 
   function renderAttachmentPreview() {
     attachmentsDiv.innerHTML = "";
-    pendingImages.forEach(function (item, index) {
+    pendingFiles.forEach(function (item) {
       var wrap = document.createElement("div");
-      wrap.className = "ai-agent-thumb";
-      wrap.innerHTML = '<img alt="" /><button type="button" title="移除">×</button>';
-      wrap.querySelector("img").src = item.previewUrl;
+      if (item.kind === "image") {
+        wrap.className = "ai-agent-thumb";
+        wrap.innerHTML = '<img alt="" /><button type="button" title="移除">×</button>';
+        wrap.querySelector("img").src = item.previewUrl;
+      } else {
+        wrap.className = "ai-agent-thumb file";
+        wrap.innerHTML = '<span class="name"></span><span class="kind"></span><button type="button" title="移除">×</button>';
+        wrap.querySelector(".name").textContent = item.name || "file";
+        wrap.querySelector(".kind").textContent = item.mime_type || "file";
+      }
       wrap.querySelector("button").onclick = function () {
-        URL.revokeObjectURL(item.previewUrl);
-        pendingImages = pendingImages.filter(function (x) { return x !== item; });
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        pendingFiles = pendingFiles.filter(function (x) { return x !== item; });
         renderAttachmentPreview();
       };
       attachmentsDiv.appendChild(wrap);
+    });
+  }
+
+  function renderQueue() {
+    queueDiv.innerHTML = "";
+    sendQueue.forEach(function (item, index) {
+      var row = document.createElement("div");
+      row.className = "ai-agent-queue-item";
+      var left = document.createElement("div");
+      left.innerHTML = '<div class="meta"></div><div class="text"></div>';
+      left.querySelector(".meta").textContent =
+        "排队 #" + (index + 1) +
+        (item.files.length ? " · " + item.files.length + " 个附件" : "");
+      left.querySelector(".text").textContent = item.text || "(仅附件)";
+      var cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "撤销";
+      cancelBtn.onclick = function () {
+        item.files.forEach(function (file) {
+          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+        });
+        sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
+        renderQueue();
+        updateRunState(isRunning ? "处理中" : "就绪");
+      };
+      row.appendChild(left);
+      row.appendChild(cancelBtn);
+      queueDiv.appendChild(row);
     });
   }
 
@@ -656,35 +741,37 @@
     });
   }
 
-  async function handleImageSelection(files) {
+  async function handleFileSelection(files) {
     var list = Array.from(files || []);
     for (var i = 0; i < list.length; i++) {
       var file = list[i];
-      if (!file.type || !file.type.startsWith("image/")) continue;
       var data = await readFileAsBase64(file);
-      pendingImages.push({
+      var mime = file.type || "application/octet-stream";
+      var isImage = mime.indexOf("image/") === 0;
+      pendingFiles.push({
+        kind: isImage ? "image" : "file",
         name: file.name,
-        mime_type: file.type,
+        mime_type: mime,
         data: data,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl: isImage ? URL.createObjectURL(file) : "",
       });
     }
     renderAttachmentPreview();
-    imageInput.value = "";
+    fileInput.value = "";
   }
 
-  function clearPendingImages(revokeUrls) {
+  function clearPendingFiles(revokeUrls) {
     if (revokeUrls !== false) {
-      pendingImages.forEach(function (item) {
-        URL.revokeObjectURL(item.previewUrl);
+      pendingFiles.forEach(function (item) {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
       });
     }
-    pendingImages = [];
+    pendingFiles = [];
     renderAttachmentPreview();
   }
 
-  function buildImagePayload() {
-    return pendingImages.map(function (item) {
+  function buildFilesPayload(files) {
+    return (files || []).map(function (item) {
       return {
         name: item.name,
         mime_type: item.mime_type,
@@ -693,30 +780,43 @@
     });
   }
 
-  function setBusy(busy) {
-    sendBtn.disabled = busy;
-    inputField.disabled = busy;
-    modelField.disabled = busy;
-    pickImageBtn.disabled = busy;
-    runState.textContent = busy ? "处理中" : "就绪";
-    currentModel.textContent = modelField.value;
-  }
-
   function updateRunState(text) {
-    runState.textContent = text || "处理中";
+    if (text) {
+      runState.textContent = text;
+    } else if (isRunning) {
+      runState.textContent = sendQueue.length ? ("处理中 · 队列 " + sendQueue.length) : "处理中";
+    } else {
+      runState.textContent = sendQueue.length ? ("就绪 · 队列 " + sendQueue.length) : "就绪";
+    }
+    runState.classList.toggle("is-busy", !!isRunning || runState.textContent.indexOf("中") >= 0);
+    currentModel.textContent = modelField.value;
+    sendBtn.textContent = isRunning ? "…" : "↑";
+    sendBtn.title = isRunning ? "加入队列" : "发送";
+    sendBtn.classList.toggle("is-queue", !!isRunning);
   }
 
-  async function sendMessage() {
+  function enqueueCurrentCompose() {
     var text = inputField.value.trim();
-    if (!text && !pendingImages.length) return;
-
-    var sentPreviewUrls = pendingImages.map(function (item) { return item.previewUrl; });
-    appendMessage("You", text || "(图片)", "user", false, sentPreviewUrls);
-    var imagesPayload = buildImagePayload();
+    if (!text && !pendingFiles.length) return null;
+    var item = {
+      id: "q-" + (++queueSeq),
+      text: text,
+      model: modelField.value,
+      files: pendingFiles.slice(),
+    };
+    sendQueue.push(item);
     inputField.value = "";
-    clearPendingImages(false);
-    setBusy(true);
+    pendingFiles = [];
+    renderAttachmentPreview();
+    renderQueue();
+    updateRunState(isRunning ? "处理中" : "就绪");
+    return item;
+  }
 
+  async function runOne(item) {
+    var label = item.text || (item.files.length ? "(附件)" : "");
+    appendMessage("You", label, "user", false, item.files);
+    var filesPayload = buildFilesPayload(item.files);
     var agentMsg = appendMessage("Agent", "", "agent", true);
     var reply = "";
     appendCard(agentMsg, {
@@ -732,10 +832,10 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: text || "请分析我上传的图片。",
+          message: item.text || (item.files.length ? "请查看我上传的附件。" : ""),
           session_id: sessionId || null,
-          model: modelField.value,
-          images: imagesPayload.length ? imagesPayload : null,
+          model: item.model,
+          files: filesPayload.length ? filesPayload : null,
         }),
       });
 
@@ -783,14 +883,18 @@
               paths: [],
             });
           } else if (payload.type === "upload") {
-            updateRunState("已上传图片");
-            var names = (payload.images || []).map(function (img) { return img.name || "image"; }).join(", ");
+            updateRunState("已接收附件");
+            var names = []
+              .concat(payload.images || [])
+              .concat(payload.files || [])
+              .map(function (f) { return f.name || f.path || "file"; })
+              .join(", ");
             appendCard(agentMsg, {
               kind: "run",
-              title: "Uploaded " + (payload.images || []).length + " image(s)",
+              title: "Uploaded attachments",
               meta: "",
               detail: names,
-              paths: [],
+              paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
             });
           } else if (payload.type === "thinking") {
             updateRunState("正在思考");
@@ -846,17 +950,57 @@
         false
       );
     } finally {
-      setBusy(false);
+      item.files.forEach(function (file) {
+        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+      });
     }
   }
 
+  async function drainQueue() {
+    if (isRunning) return;
+    isRunning = true;
+    updateRunState("处理中");
+    while (sendQueue.length) {
+      var item = sendQueue.shift();
+      renderQueue();
+      updateRunState("处理中");
+      await runOne(item);
+    }
+    isRunning = false;
+    updateRunState("就绪");
+  }
+
+  function sendMessage() {
+    if (!enqueueCurrentCompose()) return;
+    drainQueue();
+  }
+
   sendBtn.onclick = sendMessage;
-  pickImageBtn.onclick = function () { imageInput.click(); };
-  imageInput.addEventListener("change", function (e) {
-    handleImageSelection(e.target.files);
+  pickFileBtn.onclick = function () { fileInput.click(); };
+  fileInput.addEventListener("change", function (e) {
+    handleFileSelection(e.target.files);
   });
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter") sendMessage();
   });
+  newChatBtn.onclick = function () {
+    if (isRunning || sendQueue.length) {
+      if (!confirm("当前有进行中的任务或排队消息，确认清空并开始新对话？")) return;
+    }
+    sendQueue.forEach(function (item) {
+      item.files.forEach(function (file) {
+        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+      });
+    });
+    sendQueue = [];
+    clearPendingFiles(true);
+    renderQueue();
+    sessionId = "";
+    localStorage.removeItem("ai-agent-session-id");
+    threadDiv.innerHTML = "";
+    isRunning = false;
+    updateRunState("就绪");
+  };
+  updateRunState("就绪");
   loadModelOptions();
 })();

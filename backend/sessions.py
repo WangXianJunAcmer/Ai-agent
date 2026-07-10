@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import time
@@ -10,6 +11,7 @@ import uuid
 from collections import deque
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import AsyncIterator
 
 from cursor_sdk import (
@@ -32,6 +34,7 @@ class Session:
     created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
+    recent_files: deque[dict] = field(default_factory=lambda: deque(maxlen=10))
 
 
 class SessionManager:
@@ -350,31 +353,83 @@ class SessionManager:
           parts.append(text)
     return "".join(parts)
 
-  def _image_message(self, text: str, images: list[dict] | None):
+  def _is_image(self, mime_type: str) -> bool:
+    return (mime_type or "").startswith("image/")
+
+  def _safe_filename(self, name: str) -> str:
+    base = Path(name or "file").name
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or "file"
+    return cleaned[:120]
+
+  def _materialize_files(self, attachments: list[dict] | None) -> list[dict]:
+    """Write non-image uploads into host workspace; SDK only accepts images natively."""
+    if not attachments:
+      return []
+    host_root = Path(self.settings["host_root"]).resolve()
+    upload_dir = host_root / ".ai-agent-uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[dict] = []
+    for item in attachments:
+      mime = item.get("mime_type") or "application/octet-stream"
+      if self._is_image(mime):
+        continue
+      raw = item.get("data") or ""
+      try:
+        data = base64.b64decode(raw, validate=False)
+      except Exception:
+        continue
+      if not data:
+        continue
+      filename = self._safe_filename(item.get("name") or "file")
+      path = upload_dir / f"{uuid.uuid4().hex[:8]}_{filename}"
+      path.write_bytes(data)
+      rel = str(path.relative_to(host_root))
+      saved.append({"name": filename, "mime_type": mime, "path": rel})
+    return saved
+
+  def _build_message(self, text: str, attachments: list[dict] | None):
     prompt = text.strip() if text else ""
+    images = [
+      item for item in (attachments or [])
+      if self._is_image(item.get("mime_type") or "") and item.get("data")
+    ]
+    files = self._materialize_files(attachments)
+    if files:
+      listing = "\n".join(f"- {f['path']}" for f in files)
+      note = (
+        "用户上传了以下文件（已保存到工作区，请按需读取这些路径）：\n"
+        f"{listing}"
+      )
+      prompt = f"{prompt}\n\n{note}" if prompt else note
     if not prompt and images:
       prompt = "请分析我上传的图片。"
     if not images:
-      return prompt
+      return prompt, files
     sdk_images = [
       SDKImage.data_image(image["data"], image["mime_type"])
       for image in images
-      if image.get("data") and image.get("mime_type")
     ]
-    return UserMessage(text=prompt, images=sdk_images)
+    return UserMessage(text=prompt, images=sdk_images), files
 
-  def _remember_images(self, session: Session, images: list[dict] | None) -> list[dict]:
-    if not images:
-      return []
-    remembered = []
-    for image in images:
-      item = {
-        "name": image.get("name") or "image",
-        "mime_type": image.get("mime_type") or "application/octet-stream",
-      }
-      session.recent_images.append(item)
-      remembered.append(item)
-    return remembered
+  def _remember_attachments(
+    self, session: Session, attachments: list[dict] | None, files: list[dict]
+  ) -> dict:
+    remembered_images = []
+    for item in attachments or []:
+      mime = item.get("mime_type") or "application/octet-stream"
+      if not self._is_image(mime):
+        continue
+      meta = {"name": item.get("name") or "image", "mime_type": mime}
+      session.recent_images.append(meta)
+      remembered_images.append(meta)
+    for item in files:
+      session.recent_files.append(item)
+    return {
+      "images": remembered_images,
+      "files": files,
+      "recent_images": list(session.recent_images),
+      "recent_files": list(session.recent_files),
+    }
 
   def _delta_event(self, update, session: Session) -> dict | None:
     update_type = getattr(update, "type", None)
@@ -500,12 +555,13 @@ class SessionManager:
     self._sessions[sid] = session
     return session
 
-  async def send(self, session_id: str | None, message: str, model: str | None = None, images: list[dict] | None = None) -> dict:
+  async def send(self, session_id: str | None, message: str, model: str | None = None, attachments: list[dict] | None = None) -> dict:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        self._remember_images(session, images)
-        run = await session.agent.send(self._image_message(message, images), SendOptions())
+        payload, files = self._build_message(message, attachments)
+        remembered = self._remember_attachments(session, attachments, files)
+        run = await session.agent.send(payload, SendOptions())
         result = await run.wait()
         reply = await run.text()
         return {
@@ -515,7 +571,7 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
-          "recent_images": list(session.recent_images),
+          **remembered,
         }
       except CursorAgentError as err:
         return {
@@ -525,20 +581,21 @@ class SessionManager:
           "error": err.message,
           "model": session.model,
           "recent_images": list(session.recent_images),
+          "recent_files": list(session.recent_files),
         }
 
-  async def stream(self, session_id: str | None, message: str, model: str | None = None, images: list[dict] | None = None) -> AsyncIterator[dict]:
+  async def stream(self, session_id: str | None, message: str, model: str | None = None, attachments: list[dict] | None = None) -> AsyncIterator[dict]:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        remembered = self._remember_images(session, images)
-        if remembered:
+        payload, files = self._build_message(message, attachments)
+        remembered = self._remember_attachments(session, attachments, files)
+        if remembered["images"] or remembered["files"]:
           yield {
             "type": "upload",
             "session_id": session.session_id,
             "model": session.model,
-            "images": remembered,
-            "recent_images": list(session.recent_images),
+            **remembered,
           }
         loop = asyncio.get_running_loop()
 
@@ -549,7 +606,7 @@ class SessionManager:
 
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
         run = await session.agent.send(
-          self._image_message(message, images),
+          payload,
           SendOptions(on_delta=on_delta),
         )
 
@@ -576,6 +633,7 @@ class SessionManager:
           "agent_id": session.agent.agent_id,
           "model": session.model,
           "recent_images": list(session.recent_images),
+          "recent_files": list(session.recent_files),
         }
       except CursorAgentError as err:
         yield {
@@ -584,4 +642,5 @@ class SessionManager:
           "content": err.message,
           "model": session.model,
           "recent_images": list(session.recent_images),
+          "recent_files": list(session.recent_files),
         }

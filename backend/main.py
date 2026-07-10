@@ -55,9 +55,9 @@ app.add_middleware(
 )
 
 
-class ImagePayload(BaseModel):
-    data: str = Field(description="Base64-encoded image data (no data: prefix)")
-    mime_type: str = Field(description="MIME type, e.g. image/png")
+class AttachmentPayload(BaseModel):
+    data: str = Field(description="Base64-encoded file data (no data: prefix)")
+    mime_type: str = Field(description="MIME type, e.g. image/png or text/plain")
     name: str | None = None
 
 
@@ -66,10 +66,14 @@ class ChatRequest(BaseModel):
     text: str | None = None
     session_id: str | None = None
     model: str | None = None
-    images: list[ImagePayload] | None = None
+    images: list[AttachmentPayload] | None = None
+    files: list[AttachmentPayload] | None = None
 
     def prompt_text(self) -> str:
         return (self.message or self.text or "").strip()
+
+    def attachments(self) -> list[AttachmentPayload]:
+        return list(self.files or []) + list(self.images or [])
 
 
 @app.get("/")
@@ -94,23 +98,26 @@ async def health():
     }
 
 
-def _images_payload(images: list[ImagePayload] | None) -> list[dict] | None:
-    if not images:
+def _attachments_payload(items: list[AttachmentPayload] | None) -> list[dict] | None:
+    if not items:
         return None
     return [
-        {"data": img.data, "mime_type": img.mime_type, "name": img.name or "image"}
-        for img in images
+        {
+            "data": item.data,
+            "mime_type": item.mime_type or "application/octet-stream",
+            "name": item.name or "file",
+        }
+        for item in items
     ]
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     prompt = req.prompt_text()
-    if not prompt and not req.images:
-        raise HTTPException(status_code=422, detail="message/text or images is required")
-    result = await sessions.send(
-        req.session_id, prompt, req.model, _images_payload(req.images)
-    )
+    attachments = _attachments_payload(req.attachments())
+    if not prompt and not attachments:
+        raise HTTPException(status_code=422, detail="message/text or files/images is required")
+    result = await sessions.send(req.session_id, prompt, req.model, attachments)
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -119,12 +126,12 @@ async def chat(req: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     prompt = req.prompt_text()
-    if not prompt and not req.images:
-        raise HTTPException(status_code=422, detail="message/text or images is required")
-    images = _images_payload(req.images)
+    attachments = _attachments_payload(req.attachments())
+    if not prompt and not attachments:
+        raise HTTPException(status_code=422, detail="message/text or files/images is required")
 
     async def event_gen():
-        async for event in sessions.stream(req.session_id, prompt, req.model, images):
+        async for event in sessions.stream(req.session_id, prompt, req.model, attachments):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
