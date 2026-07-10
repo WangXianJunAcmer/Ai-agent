@@ -35,6 +35,7 @@ class Session:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
     recent_files: deque[dict] = field(default_factory=lambda: deque(maxlen=10))
+    identity_injected: bool = False
 
 
 class SessionManager:
@@ -74,6 +75,7 @@ class SessionManager:
       return {
         "model": model,
         "api_key": s["api_key"],
+        "name": f"Ai-agent ({model})",
         "cloud": CloudAgentOptions(
           repos=[CloudRepository(url=s["cloud_repo_url"], starting_ref=s["cloud_starting_ref"])],
           auto_create_pr=s["cloud_auto_create_pr"],
@@ -82,6 +84,7 @@ class SessionManager:
     return {
       "model": model,
       "api_key": s["api_key"],
+      "name": f"Ai-agent ({model})",
       "local": LocalAgentOptions(cwd=str(s["host_root"])),
     }
 
@@ -400,7 +403,18 @@ class SessionManager:
       saved.append({"name": filename, "mime_type": mime, "path": rel})
     return saved
 
-  def _build_message(self, text: str, attachments: list[dict] | None):
+  def _identity_prefix(self, session: Session) -> str:
+    if session.identity_injected:
+      return ""
+    session.identity_injected = True
+    model = session.model or "auto"
+    return (
+      f"[系统] 你是嵌入宿主项目的 Ai-agent 编程助手，当前选用模型为「{model}」。"
+      f"当用户问你是谁、什么模型时，请明确回答：你是基于「{model}」的 Ai-agent，"
+      f"不要自称 Cursor IDE 内置助手。\n\n"
+    )
+
+  def _build_message(self, text: str, attachments: list[dict] | None, session: Session | None = None):
     prompt = text.strip() if text else ""
     images = [
       item for item in (attachments or [])
@@ -416,6 +430,8 @@ class SessionManager:
       prompt = f"{prompt}\n\n{note}" if prompt else note
     if not prompt and images:
       prompt = "请分析我上传的图片。"
+    if session is not None:
+      prompt = self._identity_prefix(session) + (prompt or "")
     if not images:
       return prompt, files
     sdk_images = [
@@ -572,7 +588,7 @@ class SessionManager:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        payload, files = self._build_message(message, attachments)
+        payload, files = self._build_message(message, attachments, session)
         remembered = self._remember_attachments(session, attachments, files)
         run = await session.agent.send(payload, SendOptions())
         result = await run.wait()
@@ -601,7 +617,7 @@ class SessionManager:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        payload, files = self._build_message(message, attachments)
+        payload, files = self._build_message(message, attachments, session)
         remembered = self._remember_attachments(session, attachments, files)
         if remembered["images"] or remembered["files"]:
           yield {

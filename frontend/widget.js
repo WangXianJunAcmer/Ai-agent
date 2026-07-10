@@ -68,19 +68,8 @@
     }
     #ai-agent-new-chat:hover, #ai-agent-close:hover { background: var(--ai-surface); }
     #ai-agent-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 18px; }
-    #ai-agent-composer-meta {
-      display: flex; align-items: center; justify-content: flex-start; gap: 10px;
-      padding: 0 4px 2px;
-    }
-    #ai-agent-model {
-      appearance: none;
-      border: 1px solid var(--ai-border);
-      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 10px center no-repeat;
-      padding: 6px 26px 6px 10px; border-radius: 999px;
-      font: 12px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 180px;
-    }
     #ai-agent-stop {
-      width: 36px; height: 36px; border-radius: 999px; border: 0; cursor: pointer;
+      width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
       flex: 0 0 auto; display: none; place-items: center;
       background: #0d0d0d; color: #fff;
     }
@@ -252,20 +241,29 @@
     .ai-agent-queue-actions button:hover { background: #fff; color: #111; }
     .ai-agent-queue-actions button.send-now { font-size: 15px; font-weight: 700; }
     .ai-agent-queue-actions button.delete:hover { color: #b91c1c; }
-    #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 0 4px; }
+    #ai-agent-compose-shell {
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--ai-composer-shadow);
+      padding: 10px 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
     #ai-agent-attachments:empty { display: none; }
-    .ai-agent-thumb { position: relative; width: 64px; height: 64px; }
+    .ai-agent-thumb { position: relative; width: 56px; height: 56px; }
     .ai-agent-thumb img {
       width: 100%; height: 100%; object-fit: cover;
-      border-radius: 12px; border: 1px solid var(--ai-border); background: #fff;
+      border-radius: 10px; border: 1px solid var(--ai-border); background: #fff;
     }
     .ai-agent-thumb.file {
-      width: auto; min-width: 120px; height: auto;
-      padding: 10px 28px 10px 12px; border: 1px solid var(--ai-border);
-      border-radius: 12px; background: #fff; color: #333; font-size: 12px;
+      width: auto; min-width: 110px; height: auto;
+      padding: 8px 26px 8px 10px; border: 1px solid var(--ai-border);
+      border-radius: 10px; background: #fafafa; color: #333; font-size: 12px;
     }
     .ai-agent-thumb.file .name {
-      display: block; max-width: 160px; overflow: hidden;
+      display: block; max-width: 150px; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; font-weight: 650;
     }
     .ai-agent-thumb.file .kind { color: var(--ai-muted); margin-top: 2px; display: block; }
@@ -275,24 +273,38 @@
       background: #111; color: #fff; cursor: pointer;
       font: 700 12px/1 system-ui, sans-serif;
     }
-    #ai-agent-compose {
-      display: flex; align-items: flex-end; gap: 6px;
-      padding: 10px 10px 10px 12px; border-radius: 28px;
-      background: #fff; box-shadow: var(--ai-composer-shadow);
+    #ai-agent-input {
+      width: 100%; border: 0; outline: none; background: transparent; resize: none;
+      min-height: 24px; max-height: 140px;
+      padding: 2px 2px 0; font: inherit; line-height: 1.45; color: var(--ai-text);
+    }
+    #ai-agent-input::placeholder { color: #8e8e8e; }
+    #ai-agent-compose-toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    #ai-agent-compose-left, #ai-agent-compose-right {
+      display: flex; align-items: center; gap: 6px; min-width: 0;
+    }
+    #ai-agent-mode-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      border: 1px solid var(--ai-border); background: #f4f4f4; color: var(--ai-text);
+      border-radius: 999px; padding: 5px 10px; font: 12px/1.2 inherit; white-space: nowrap;
+    }
+    #ai-agent-model {
+      appearance: none;
+      border: 0;
+      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 2px center no-repeat;
+      padding: 5px 18px 5px 4px; border-radius: 999px;
+      font: 12px/1.2 inherit; color: var(--ai-text); cursor: pointer; max-width: 180px;
     }
     #ai-agent-file-input { display: none; }
     #ai-agent-pick-file, #ai-agent-send {
-      width: 36px; height: 36px; border-radius: 999px; border: 0; cursor: pointer;
+      width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
       flex: 0 0 auto; display: grid; place-items: center;
     }
-    #ai-agent-pick-file { background: transparent; color: #555; font-size: 18px; }
+    #ai-agent-pick-file { background: transparent; color: #555; font-size: 16px; }
     #ai-agent-pick-file:hover { background: #f3f3f3; }
-    #ai-agent-input {
-      flex: 1 1 auto; border: 0; outline: none; background: transparent;
-      padding: 8px 4px; font: inherit; line-height: 1.45; color: var(--ai-text);
-    }
-    #ai-agent-input::placeholder { color: #8e8e8e; }
-    #ai-agent-send { background: #0d0d0d; color: #fff; font-size: 16px; }
+    #ai-agent-send { background: #0d0d0d; color: #fff; font-size: 15px; }
     #ai-agent-send:hover { background: #2a2a2a; }
     #ai-agent-send.is-queue { font-size: 11px; font-weight: 700; }
     #ai-agent-send.hidden { display: none; }
@@ -327,19 +339,24 @@
       </div>
       <div id="ai-agent-footer">
         <div id="ai-agent-queue"></div>
-        <div id="ai-agent-attachments"></div>
-        <div id="ai-agent-compose">
-          <input id="ai-agent-file-input" type="file" multiple />
-          <button id="ai-agent-pick-file" type="button" title="上传图片或文件">＋</button>
-          <input id="ai-agent-input" type="text" placeholder="给 Ai-agent 发送消息" />
-          <button id="ai-agent-send" type="button" title="发送">↑</button>
-          <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
-        </div>
-        <div id="ai-agent-composer-meta">
-          <select id="ai-agent-model" title="模型">
-            <option value="composer-2.5">composer-2.5</option>
-            <option value="auto">auto</option>
-          </select>
+        <div id="ai-agent-compose-shell">
+          <div id="ai-agent-attachments"></div>
+          <textarea id="ai-agent-input" rows="1" placeholder="Plan, @ for context, / for commands"></textarea>
+          <div id="ai-agent-compose-toolbar">
+            <div id="ai-agent-compose-left">
+              <span id="ai-agent-mode-pill" title="Agent 模式">∞ Agent</span>
+              <select id="ai-agent-model" title="模型">
+                <option value="composer-2.5">composer-2.5</option>
+                <option value="auto">auto</option>
+              </select>
+            </div>
+            <div id="ai-agent-compose-right">
+              <input id="ai-agent-file-input" type="file" multiple />
+              <button id="ai-agent-pick-file" type="button" title="上传图片或文件">📎</button>
+              <button id="ai-agent-send" type="button" title="发送">↑</button>
+              <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
+            </div>
+          </div>
         </div>
         <div id="ai-agent-hint">Enter 发送/排队 · ■ 终止 · 队列可编辑/立即发送/删除</div>
       </div>
@@ -912,6 +929,7 @@
     };
     sendQueue.push(item);
     inputField.value = "";
+    autosizeInput();
     pendingFiles = [];
     renderAttachmentPreview();
     renderQueue();
@@ -1110,8 +1128,16 @@
   fileInput.addEventListener("change", function (e) {
     handleFileSelection(e.target.files);
   });
+  function autosizeInput() {
+    inputField.style.height = "auto";
+    inputField.style.height = Math.min(inputField.scrollHeight, 140) + "px";
+  }
+  inputField.addEventListener("input", autosizeInput);
   inputField.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") sendMessage();
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
   newChatBtn.onclick = function () {
     if (isRunning || sendQueue.length) {
