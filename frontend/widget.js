@@ -839,7 +839,12 @@
         }
       }
     } catch (err) {
-      setMessageBody(agentMsg, "无法连接 Agent 服务 (" + apiBase + ")。请先启动 Ai-agent/run.sh", false);
+      var detail = (err && err.message) ? err.message : String(err);
+      setMessageBody(
+        agentMsg,
+        "请求失败 (" + apiBase + "): " + detail + "。请确认已用 python start.py 或 ./run.sh 启动服务（默认 http://127.0.0.1:8765）。",
+        false
+      );
     } finally {
       setBusy(false);
     }

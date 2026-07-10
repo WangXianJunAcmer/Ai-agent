@@ -2,7 +2,7 @@
 host_project_root: "../ad-plex"
 
 server:
-  host: "0.0.0.0"
+  host: "127.0.0.1"
   port: 8765
   reload: true
 
