@@ -28,8 +28,9 @@ sessions = SessionManager(settings)
 BOOT_ID = uuid.uuid4().hex
 
 
-def _selected_model(model_id: str | None) -> str | dict:
-    get_model_options(settings["api_key"])  # refresh catalog for default params
+def _resolve_model(model_id: str | None) -> str | dict:
+    """Warm catalog once if empty, then expand id → SDK model selection."""
+    get_model_options(settings["api_key"])  # no-op when already cached
     return resolve_model_selection(model_id, settings.get("model", "composer-2.5"))
 
 
@@ -45,7 +46,7 @@ app = FastAPI(title="Ai-agent", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # * + credentials is invalid CORS
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -69,10 +70,10 @@ class ChatRequest(BaseModel):
     def prompt_text(self) -> str:
         return (self.message or self.text or "").strip()
 
-    def attachments(self) -> list[AttachmentPayload]:
+    def attachment_list(self) -> list[AttachmentPayload]:
         return list(self.files or []) + list(self.images or [])
 
-    def mode_name(self) -> str:
+    def resolved_mode(self) -> str:
         return self.mode if self.mode in {"agent", "plan"} else "agent"
 
 
@@ -94,11 +95,11 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
-        "model_options": get_model_options(settings["api_key"]),
+        "model_options": get_model_options(settings["api_key"], refresh=True),
     }
 
 
-def _attachments_payload(items: list[AttachmentPayload] | None) -> list[dict] | None:
+def _attachment_dicts(items: list[AttachmentPayload] | None) -> list[dict] | None:
     if not items:
         return None
     return [
@@ -111,15 +112,18 @@ def _attachments_payload(items: list[AttachmentPayload] | None) -> list[dict] | 
     ]
 
 
-@app.post("/api/chat")
-async def chat(req: ChatRequest):
+def _parse_chat(req: ChatRequest) -> tuple[str, list[dict] | None, str | dict, str]:
     prompt = req.prompt_text()
-    attachments = _attachments_payload(req.attachments())
+    attachments = _attachment_dicts(req.attachment_list())
     if not prompt and not attachments:
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
-    result = await sessions.send(
-        req.session_id, prompt, _selected_model(req.model), req.mode_name(), attachments
-    )
+    return prompt, attachments, _resolve_model(req.model), req.resolved_mode()
+
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    prompt, attachments, model, mode = _parse_chat(req)
+    result = await sessions.send(req.session_id, prompt, model, mode, attachments)
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -127,19 +131,13 @@ async def chat(req: ChatRequest):
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
-    prompt = req.prompt_text()
-    attachments = _attachments_payload(req.attachments())
-    if not prompt and not attachments:
-        raise HTTPException(status_code=422, detail="message/text or files/images is required")
+    prompt, attachments, model, mode = _parse_chat(req)
 
     async def event_gen():
-        async for event in sessions.stream(
-            req.session_id, prompt, _selected_model(req.model), req.mode_name(), attachments
-        ):
+        async for event in sessions.stream(req.session_id, prompt, model, mode, attachments):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
-
 
 frontend_dir = ROOT / "frontend"
 frontend_dir.mkdir(exist_ok=True)

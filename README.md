@@ -30,7 +30,7 @@ cp .env.example .env
 自检（不依赖 API Key）：
 
 ```bash
-./ai/bin/python backend/check_config.py
+./ai/bin/python backend/check.py
 ```
 
 确认服务正常：
@@ -114,7 +114,7 @@ curl -X POST http://<ai-agent-host>:8765/api/chat \
 
 ## 安全提示
 
-- 仅绑定 `127.0.0.1`，**不要**暴露到公网
+- 默认 `config.yaml` 绑定 `0.0.0.0` 便于局域网联调；公网环境请改回 `127.0.0.1`
 - Agent 拥有读写宿主项目、执行命令的权限，仅用于本地开发
 - `CURSOR_API_KEY` 不要提交到 git
 

@@ -23,12 +23,15 @@ from cursor_sdk import (
   UserMessage,
 )
 
+from backend.model_catalog import model_display_name, normalize_model_id
+
 
 @dataclass
 class Session:
     session_id: str
     agent: object
     model: str
+    model_key: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -69,44 +72,51 @@ class SessionManager:
     else:
       selected_model = model or self.settings["model"]
       model_selection = model or self.settings["model"]
+    model_key = self._model_key(model_selection)
     if session_id and session_id in self._sessions:
       session = self._sessions[session_id]
-      if session.model == selected_model:
+      if session.model_key == model_key:
         return session
       await self._close_agent(session.agent)
       del self._sessions[session_id]
 
     sid = session_id or uuid.uuid4().hex
     assert self._client is not None
-    agent = await self._stack.enter_async_context(
-      await self._client.agents.create(**self._agent_options(model_selection))
-    )
-    session = Session(session_id=sid, agent=agent, model=selected_model)
+    # Manage close() ourselves — stacking every agent on AsyncExitStack leaks on model switch.
+    agent = await self._client.agents.create(**self._agent_options(model_selection))
+    session = Session(session_id=sid, agent=agent, model=selected_model, model_key=model_key)
     self._sessions[sid] = session
     return session
+
+  @staticmethod
+  def _model_key(model: str | dict | None) -> str:
+    if isinstance(model, dict):
+      return json.dumps(
+        {"id": model.get("id"), "params": model.get("params") or []},
+        sort_keys=True,
+        ensure_ascii=False,
+      )
+    return str(model or "")
 
   def _agent_options(self, model: str | dict):
     s = self.settings
     model_id = model.get("id") if isinstance(model, dict) else model
     label = model_id or s["model"]
-    if s["runtime"] == "cloud":
-      if not s["cloud_repo_url"]:
-        raise RuntimeError("agent.runtime is cloud but agent.cloud.repo_url is empty")
-      return {
-        "model": model,
-        "api_key": s["api_key"],
-        "name": f"Ai-agent ({label})",
-        "cloud": CloudAgentOptions(
-          repos=[CloudRepository(url=s["cloud_repo_url"], starting_ref=s["cloud_starting_ref"])],
-          auto_create_pr=s["cloud_auto_create_pr"],
-        ),
-      }
-    return {
+    opts: dict = {
       "model": model,
       "api_key": s["api_key"],
       "name": f"Ai-agent ({label})",
-      "local": LocalAgentOptions(cwd=str(s["host_root"])),
     }
+    if s["runtime"] == "cloud":
+      if not s["cloud_repo_url"]:
+        raise RuntimeError("agent.runtime is cloud but agent.cloud.repo_url is empty")
+      opts["cloud"] = CloudAgentOptions(
+        repos=[CloudRepository(url=s["cloud_repo_url"], starting_ref=s["cloud_starting_ref"])],
+        auto_create_pr=s["cloud_auto_create_pr"],
+      )
+    else:
+      opts["local"] = LocalAgentOptions(cwd=str(s["host_root"]))
+    return opts
 
   async def _close_agent(self, agent) -> None:
     close = getattr(agent, "close", None)
@@ -286,6 +296,11 @@ class SessionManager:
     cmd = " ".join(str(cmd).split())
     return (cmd[:120] + "…") if len(cmd) > 120 else cmd
 
+  def _is_network_command(self, cmd: str) -> bool:
+    if not cmd:
+      return False
+    return bool(re.search(r"\b(curl|wget|http://|https://)\b", cmd, re.I))
+
   def _extract_patch_targets(self, text: str) -> list[str]:
     if not text:
       return []
@@ -358,11 +373,36 @@ class SessionManager:
         "detail": detail,
         "paths": paths,
       }
-    if lowered in {"rg", "grep", "search", "ripgrep", "websearch", "webfetch"}:
+    if lowered in {"rg", "grep", "search", "ripgrep"}:
       return {
         "kind": "explore",
         "title": f"Grepped {query or 'workspace'}",
         "detail": detail,
+        "paths": paths,
+      }
+    if lowered == "websearch":
+      term = query or (self._first_str(args, "search_term", "q") if isinstance(args, dict) else "")
+      label = (term or "web")[:80]
+      return {
+        "kind": "explore",
+        "title": ("Searching " if status == "running" else "Searched ") + label,
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered == "webfetch":
+      url = query or (self._first_str(args, "url") if isinstance(args, dict) else "")
+      host = url
+      if url:
+        try:
+          from urllib.parse import urlparse
+          host = urlparse(url).netloc or url
+        except Exception:
+          host = url
+      label = (host or "page")[:80]
+      return {
+        "kind": "explore",
+        "title": ("Fetching " if status == "running" else "Fetched ") + label,
+        "detail": detail or url,
         "paths": paths,
       }
     if lowered in {"semsearch", "semanticsearch"}:
@@ -399,7 +439,7 @@ class SessionManager:
     if lowered in {"createplan"}:
       return {"kind": "plan", "title": "Created plan", "detail": detail or "Plan draft", "paths": []}
     if lowered in {"task"}:
-      task_desc = query or self._first_str(args, "prompt", "description", "message") if isinstance(args, dict) else ""
+      task_desc = query or (self._first_str(args, "prompt", "description", "message") if isinstance(args, dict) else "")
       return {"kind": "plan", "title": "Task" + (f": {task_desc[:80]}" if task_desc else ""), "detail": detail or task_desc, "paths": []}
     if lowered in {"mcp"}:
       mcp_tool = ""
@@ -418,6 +458,13 @@ class SessionManager:
     if lowered in {"readlints", "lint", "diagnostics"}:
       return {"kind": "verify", "title": "Read lints", "detail": detail, "paths": paths}
     if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd", "runterminal"}:
+      if self._is_network_command(cmd):
+        return {
+          "kind": "explore",
+          "title": ("Fetching " if status == "running" else "Fetched ") + (cmd[:80] or "web"),
+          "detail": detail,
+          "paths": paths,
+        }
       return {
         "kind": "run",
         "title": ("Running: " if status == "running" else "Ran: ") + (cmd or raw_name),
@@ -446,6 +493,12 @@ class SessionManager:
 
   def _is_image(self, mime_type: str) -> bool:
     return (mime_type or "").startswith("image/")
+
+  def _image_attachments(self, attachments: list[dict] | None) -> list[dict]:
+    return [
+      item for item in (attachments or [])
+      if self._is_image(item.get("mime_type") or "") and item.get("data")
+    ]
 
   def _safe_filename(self, name: str) -> str:
     base = Path(name or "file").name
@@ -480,10 +533,7 @@ class SessionManager:
 
   def _build_message(self, text: str, attachments: list[dict] | None):
     prompt = text.strip() if text else ""
-    images = [
-      item for item in (attachments or [])
-      if self._is_image(item.get("mime_type") or "") and item.get("data")
-    ]
+    images = self._image_attachments(attachments)
     files = self._materialize_files(attachments)
     if files:
       listing = "\n".join(f"- {f['path']}" for f in files)
@@ -502,18 +552,68 @@ class SessionManager:
     ]
     return UserMessage(text=prompt, images=sdk_images), files
 
-  def _remember_attachments(
-    self, attachments: list[dict] | None, files: list[dict]
-  ) -> dict:
-    # ponytail: no session history of uploads; UI only needs this turn's list
+  def _upload_meta(self, attachments: list[dict] | None, files: list[dict]) -> dict:
+    """This-turn upload receipt for the UI (not persisted session history)."""
     images = [
       {"name": item.get("name") or "image", "mime_type": item.get("mime_type") or "application/octet-stream"}
-      for item in (attachments or [])
-      if self._is_image(item.get("mime_type") or "")
+      for item in self._image_attachments(attachments)
     ]
     return {"images": images, "files": files}
 
-  def _delta_event(self, update, session: Session) -> dict | None:
+  def _model_id_from_selection(self, value) -> str:
+    if value is None:
+      return ""
+    if isinstance(value, str):
+      mid = value.strip()
+    elif isinstance(value, dict):
+      mid = str(value.get("id") or "").strip()
+    else:
+      mid = str(getattr(value, "id", "") or "").strip()
+    return normalize_model_id(mid)
+
+  def _resolved_model_payload(self, resolved_id: str) -> dict:
+    rid = (resolved_id or "").strip()
+    if not rid or rid in {"auto", "default"}:
+      return {}
+    return {
+      "resolved_model": rid,
+      "resolved_model_label": model_display_name(rid) or rid,
+    }
+
+  def _tool_call_event(
+    self,
+    session: Session,
+    *,
+    call_id: str,
+    name: str,
+    status: str,
+    args,
+    result,
+    include_empty: bool = False,
+  ) -> dict:
+    """Build one SSE tool_call event (shared by delta + run.messages paths)."""
+    # UI only distinguishes live vs done; treat terminal failures as completed.
+    raw = (status or "running").strip().lower()
+    status = "completed" if raw in {"completed", "error", "failed", "cancelled", "canceled"} else "running"
+    summary = self._tool_summary(name, args, result, status)
+    event = {
+      "type": "tool_call",
+      "session_id": session.session_id,
+      "model": session.model,
+      "call_id": call_id or "",
+      "name": name,
+      "status": status,
+      "args": self._stringify(args) if (include_empty or status == "running") else "",
+      "result": self._stringify(result) if (include_empty or status == "completed") else "",
+      "summary": summary,
+      "args_json": self._jsonable(args),
+    }
+    if include_empty or status == "completed":
+      event["result_json"] = self._jsonable(result)
+    return event
+
+  def _sse_from_delta(self, update, session: Session) -> dict | None:
+    """Map an SDK on_delta update to one SSE event (or None to skip)."""
     update_type = getattr(update, "type", None)
     if update_type == "summary-started":
       return {"type": "planning", "content": "", "session_id": session.session_id, "model": session.model}
@@ -534,22 +634,14 @@ class SessionManager:
     if update_type in {"tool-call-started", "partial-tool-call", "tool-call-completed"}:
       name, args, result = self._extract_tool_fields(update)
       status = "completed" if update_type == "tool-call-completed" else "running"
-      summary = self._tool_summary(name, args, result, status)
-      event = {
-        "type": "tool_call",
-        "session_id": session.session_id,
-        "model": session.model,
-        "call_id": getattr(update, "call_id", "") or "",
-        "name": name,
-        "status": status,
-        "args": self._stringify(args) if status == "running" else "",
-        "result": self._stringify(result) if status == "completed" else "",
-        "summary": summary,
-        "args_json": self._jsonable(args),
-      }
-      if status == "completed":
-        event["result_json"] = self._jsonable(result)
-      return event
+      return self._tool_call_event(
+        session,
+        call_id=getattr(update, "call_id", "") or "",
+        name=name,
+        status=status,
+        args=args,
+        result=result,
+      )
     if update_type == "text-delta":
       return {
         "type": "text",
@@ -559,10 +651,21 @@ class SessionManager:
       }
     return None
 
-  async def _stream_run_messages(self, run, session: Session) -> AsyncIterator[dict]:
+  async def _sse_from_run_messages(self, run, session: Session) -> AsyncIterator[dict]:
+    """Map run.messages() items to SSE events."""
     async for message in run.messages():
       msg_type = getattr(message, "type", None)
-      if msg_type == "status":
+      if msg_type == "system":
+        resolved = self._model_id_from_selection(getattr(message, "model", None))
+        payload = self._resolved_model_payload(resolved)
+        if payload:
+          yield {
+            "type": "model_resolved",
+            "session_id": session.session_id,
+            "model": session.model,
+            **payload,
+          }
+      elif msg_type == "status":
         yield {
           "type": "status",
           "session_id": session.session_id,
@@ -578,25 +681,7 @@ class SessionManager:
           "status": getattr(message, "status", "unknown"),
           "content": getattr(message, "text", ""),
         }
-      elif msg_type == "tool_call":
-        name = getattr(message, "name", None) or getattr(message, "type", None) or "tool"
-        status = getattr(message, "status", "running") or "running"
-        args = getattr(message, "args", None)
-        result = getattr(message, "result", None)
-        summary = self._tool_summary(name, args, result, status)
-        yield {
-          "type": "tool_call",
-          "session_id": session.session_id,
-          "model": session.model,
-          "call_id": getattr(message, "call_id", "") or "",
-          "name": name,
-          "status": "completed" if status == "completed" else "running",
-          "args": self._stringify(args),
-          "result": self._stringify(result),
-          "summary": summary,
-          "args_json": self._jsonable(args),
-          "result_json": self._jsonable(result),
-        }
+      # tool_call comes from on_delta (_sse_from_delta); skip here to avoid duplicate SSE.
 
   async def send(
     self,
@@ -610,10 +695,11 @@ class SessionManager:
     async with session.lock:
       try:
         payload, files = self._build_message(message, attachments)
-        remembered = self._remember_attachments(attachments, files)
+        upload_meta = self._upload_meta(attachments, files)
         run = await session.agent.send(payload, SendOptions(mode=mode))
         result = await run.wait()
         reply = await run.text()
+        resolved = self._model_id_from_selection(getattr(result, "model", None))
         return {
           "session_id": session.session_id,
           "reply": reply,
@@ -621,7 +707,8 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
-          **remembered,
+          **self._resolved_model_payload(resolved),
+          **upload_meta,
         }
       except CursorAgentError as err:
         # ponytail: leave reply empty; HTTP layer maps status=error → 502 detail
@@ -645,19 +732,19 @@ class SessionManager:
     async with session.lock:
       try:
         payload, files = self._build_message(message, attachments)
-        remembered = self._remember_attachments(attachments, files)
-        if remembered["images"] or remembered["files"]:
+        upload_meta = self._upload_meta(attachments, files)
+        if upload_meta["images"] or upload_meta["files"]:
           yield {
             "type": "upload",
             "session_id": session.session_id,
             "model": session.model,
-            **remembered,
+            **upload_meta,
           }
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
         def on_delta(update) -> None:
-          event = self._delta_event(update, session)
+          event = self._sse_from_delta(update, session)
           if event:
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
@@ -668,7 +755,7 @@ class SessionManager:
 
         async def forward_messages() -> None:
           try:
-            async for event in self._stream_run_messages(run, session):
+            async for event in self._sse_from_run_messages(run, session):
               await queue.put(event)
           finally:
             await queue.put(None)
@@ -681,6 +768,7 @@ class SessionManager:
           yield event
         await task
         result = await run.wait()
+        resolved = self._model_id_from_selection(getattr(result, "model", None))
         yield {
           "type": "done",
           "session_id": session.session_id,
@@ -688,6 +776,7 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
+          **self._resolved_model_payload(resolved),
         }
       except CursorAgentError as err:
         yield {

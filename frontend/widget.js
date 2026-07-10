@@ -161,18 +161,19 @@
     .ai-agent-card.is-live .ai-agent-card-title {
       position: relative;
       color: transparent;
+      -webkit-text-fill-color: transparent;
       background: linear-gradient(
         90deg,
-        #8a8a8a 0%,
-        #8a8a8a 35%,
+        #9a9a9a 0%,
+        #9a9a9a 38%,
         #1a1a1a 50%,
-        #8a8a8a 65%,
-        #8a8a8a 100%
+        #9a9a9a 62%,
+        #9a9a9a 100%
       );
-      background-size: 220% 100%;
+      background-size: 200% 100%;
       -webkit-background-clip: text;
       background-clip: text;
-      animation: ai-agent-live-shimmer 1.4s linear infinite;
+      animation: ai-agent-live-shimmer 1.2s linear infinite;
     }
     @keyframes ai-agent-live-shimmer {
       0% { background-position: 100% 0; }
@@ -180,6 +181,10 @@
     }
     .ai-agent-card.is-live .ai-agent-card-header {
       color: var(--ai-text);
+    }
+    .ai-agent-card.kind-plan.is-live .ai-agent-card-header,
+    .ai-agent-card.kind-explore.is-live .ai-agent-card-header {
+      color: var(--ai-muted);
     }
     .ai-agent-card-meta {
       font-size: 12px; color: var(--ai-muted); white-space: nowrap; flex: 0 0 auto;
@@ -192,7 +197,8 @@
       max-height: 240px; overflow-y: auto;
     }
     .ai-agent-card.is-expanded .ai-agent-card-body,
-    .ai-agent-card.is-live .ai-agent-card-body { display: block; }
+    .ai-agent-card.is-live.has-body .ai-agent-card-body { display: block; }
+    .ai-agent-card.is-live:not(.has-body) .ai-agent-card-body { display: none; }
     .ai-agent-card.is-live .ai-agent-card-body {
       max-height: 320px;
       color: var(--ai-text);
@@ -240,6 +246,10 @@
       font: inherit; color: var(--ai-text);
       background: transparent; border: 0; border-radius: 0;
       padding: 2px 0; line-height: 1.7;
+      -webkit-user-select: text; user-select: text;
+    }
+    .ai-agent-msg.agent .body {
+      white-space: normal;
     }
     .ai-agent-msg.user .body {
       background: var(--ai-user-bg); border-radius: 22px; padding: 10px 16px;
@@ -254,12 +264,12 @@
     .ai-agent-msg .body p,
     .ai-agent-msg .body ul,
     .ai-agent-msg .body ol,
-    .ai-agent-msg .body pre,
+    .ai-agent-msg .body .ai-agent-codeblock,
     .ai-agent-msg .body blockquote,
     .ai-agent-msg .body h1,
     .ai-agent-msg .body h2,
     .ai-agent-msg .body h3,
-    .ai-agent-msg .body h4 { margin: 0 0 10px; }
+    .ai-agent-msg .body h4 { margin: 0 0 12px; }
     .ai-agent-msg .body ul,
     .ai-agent-msg .body ol { padding-left: 22px; }
     .ai-agent-msg .body li + li { margin-top: 4px; }
@@ -304,12 +314,76 @@
       padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.06);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;
     }
-    .ai-agent-msg .body pre {
-      padding: 14px 16px; border-radius: 12px; overflow: auto;
-      background: #0d0d0d; color: #f5f5f5;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+    .ai-agent-codeblock {
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0d0d0d;
+      -webkit-user-select: text;
+      user-select: text;
     }
-    .ai-agent-msg .body pre code { background: transparent; padding: 0; color: inherit; }
+    .ai-agent-codeblock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .ai-agent-codeblock-lang {
+      color: #b4b4b4;
+      font: 500 12px/1.2 ui-sans-serif, system-ui, sans-serif;
+      text-transform: lowercase;
+    }
+    .ai-agent-codeblock-copy {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: #d4d4d4;
+      font: 500 12px/1.2 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .ai-agent-codeblock-copy:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .ai-agent-codeblock-copy.is-copied { color: #86efac; }
+    .ai-agent-msg .body .ai-agent-codeblock pre {
+      margin: 0;
+      padding: 14px 16px;
+      border-radius: 0;
+      overflow: auto;
+      max-height: min(70vh, 560px);
+      background: #0d0d0d;
+      color: #e8eaed;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre;
+      -webkit-user-select: text;
+      user-select: text;
+      cursor: text;
+    }
+    .ai-agent-msg .body .ai-agent-codeblock pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+      display: block;
+      white-space: inherit;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .ai-agent-msg .body pre .tok-kw { color: #c792ea; }
+    .ai-agent-msg .body pre .tok-type { color: #ffcb6b; }
+    .ai-agent-msg .body pre .tok-fn { color: #82aaff; }
+    .ai-agent-msg .body pre .tok-str { color: #c3e88d; }
+    .ai-agent-msg .body pre .tok-cmt { color: #6a7386; font-style: italic; }
+    .ai-agent-msg .body pre .tok-num { color: #f78c6c; }
+    .ai-agent-msg .body pre .tok-pp { color: #89ddff; }
+    .ai-agent-msg .body pre .tok-op { color: #89ddff; }
+    .ai-agent-msg .body pre .tok-punct { color: #a6accd; }
     .ai-agent-msg .body blockquote {
       padding-left: 12px; border-left: 3px solid rgba(0,0,0,.15); color: var(--ai-muted);
     }
@@ -379,33 +453,12 @@
       gap: 8px;
     }
     #ai-agent-compose-shell.mode-plan {
-      box-shadow: 0 0 0 1px rgba(67,56,202,.22), 0 8px 24px rgba(67,56,202,.08);
-      background: linear-gradient(180deg, #fff, #fbfbff);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.04);
+      background: #fff;
     }
     #ai-agent-mode-wrap {
       position: relative;
       flex: 0 0 auto;
-    }
-    #ai-agent-mode-tip {
-      display: none;
-      position: absolute;
-      left: 0;
-      bottom: calc(100% + 8px);
-      z-index: 30;
-      width: max-content;
-      max-width: 280px;
-      border: 1px solid #c7d2fe;
-      border-radius: 10px;
-      background: #eef2ff;
-      color: #4338ca;
-      padding: 8px 10px;
-      font-size: 12px;
-      line-height: 1.45;
-      box-shadow: 0 8px 24px rgba(67,56,202,.12);
-      pointer-events: none;
-    }
-    #ai-agent-mode-wrap.show-plan-tip #ai-agent-mode-tip {
-      display: block;
     }
     #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
     #ai-agent-attachments:empty { display: none; }
@@ -530,6 +583,13 @@
       color: var(--ai-muted);
       line-height: 1.35;
     }
+    #ai-agent-model-auto-resolved {
+      font-size: 11px;
+      color: #10a37f;
+      line-height: 1.35;
+      margin-top: 2px;
+    }
+    #ai-agent-model-auto-resolved:empty { display: none; }
     #ai-agent-model-auto {
       appearance: none;
       flex: 0 0 auto;
@@ -654,10 +714,9 @@
             <div id="ai-agent-compose-left">
               <div id="ai-agent-mode-wrap">
                 <select id="ai-agent-mode" title="模式">
-                  <option value="agent">Agent</option>
-                  <option value="plan" title="Plan mode：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。">Plan</option>
+                  <option value="agent" title="Agent：直接执行任务，可修改代码并调用工具。">Agent</option>
+                  <option value="plan" title="Plan：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。">Plan</option>
                 </select>
-                <div id="ai-agent-mode-tip" role="tooltip">Plan mode：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。</div>
               </div>
               <div id="ai-agent-model-wrap">
                 <button id="ai-agent-model-btn" type="button" title="模型" aria-haspopup="listbox" aria-expanded="false">
@@ -669,6 +728,7 @@
                     <div id="ai-agent-model-auto-copy">
                       <strong>Auto</strong>
                       <span>自动选择适合当前任务的模型</span>
+                      <span id="ai-agent-model-auto-resolved"></span>
                     </div>
                     <button id="ai-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>
                   </div>
@@ -702,13 +762,13 @@
   var composeShell = document.getElementById("ai-agent-compose-shell");
   var inputField = document.getElementById("ai-agent-input");
   var modeField = document.getElementById("ai-agent-mode");
-  var modeWrap = document.getElementById("ai-agent-mode-wrap");
   var modelWrap = document.getElementById("ai-agent-model-wrap");
   var modelBtn = document.getElementById("ai-agent-model-btn");
   var modelLabel = document.getElementById("ai-agent-model-label");
   var modelMenu = document.getElementById("ai-agent-model-menu");
   var modelList = document.getElementById("ai-agent-model-list");
   var modelAutoBtn = document.getElementById("ai-agent-model-auto");
+  var modelAutoResolved = document.getElementById("ai-agent-model-auto-resolved");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
@@ -730,6 +790,8 @@
   var historySaveTimer = null;
   var modelOptions = [];
   var lastManualModel = defaultModel === "auto" ? "composer-2.5" : defaultModel;
+  var autoResolvedModel = "";
+  var autoResolvedLabel = "";
   modelField.value = defaultModel;
 
   function serializeWorklog(msg) {
@@ -882,6 +944,27 @@
     return id;
   }
 
+  function resolvedAutoLabelText() {
+    return autoResolvedLabel || (autoResolvedModel ? modelLabelFor(autoResolvedModel) : "");
+  }
+
+  function modelPickerLabel(id) {
+    if (id === "auto") {
+      var used = resolvedAutoLabelText();
+      return used ? ("Auto · " + used) : "Auto";
+    }
+    return modelLabelFor(id);
+  }
+
+  function applyResolvedModel(payload) {
+    if (!payload) return;
+    var id = payload.resolved_model || "";
+    if (!id || id === "auto" || id === "default") return;
+    autoResolvedModel = id;
+    autoResolvedLabel = payload.resolved_model_label || modelLabelFor(id);
+    if ((modelField.value || "") === "auto") syncModelPickerUI();
+  }
+
   function knownModelIds() {
     return modelOptions.map(function (m) { return m.id; });
   }
@@ -903,7 +986,15 @@
     var isAuto = id === "auto";
     modelWrap.classList.toggle("is-auto", isAuto);
     modelAutoBtn.setAttribute("aria-checked", isAuto ? "true" : "false");
-    modelLabel.textContent = modelLabelFor(id);
+    modelLabel.textContent = modelPickerLabel(id);
+    if (modelAutoResolved) {
+      modelAutoResolved.textContent = isAuto && autoResolvedModel
+        ? ("本次使用 " + resolvedAutoLabelText())
+        : "";
+    }
+    modelBtn.title = isAuto && autoResolvedModel
+      ? ("Auto，实际使用：" + resolvedAutoLabelText())
+      : modelPickerLabel(id);
     Array.prototype.forEach.call(modelList.querySelectorAll(".ai-agent-model-option"), function (btn) {
       btn.classList.toggle("is-selected", !isAuto && btn.getAttribute("data-model-id") === id);
     });
@@ -911,10 +1002,15 @@
 
   function setSelectedModel(id, closeMenu) {
     var next = (id || "").trim() || defaultModel;
-    if (next !== "auto" && modelOptions.length && knownModelIds().indexOf(next) < 0) {
-      next = knownModelIds().indexOf(lastManualModel) >= 0 ? lastManualModel : (knownModelIds()[0] || defaultModel);
+    var ids = knownModelIds();
+    if (next !== "auto" && modelOptions.length && ids.indexOf(next) < 0) {
+      next = ids.indexOf(lastManualModel) >= 0 ? lastManualModel : (ids[0] || defaultModel);
     }
-    if (next !== "auto") lastManualModel = next;
+    if (next !== "auto") {
+      lastManualModel = next;
+      autoResolvedModel = "";
+      autoResolvedLabel = "";
+    }
     modelField.value = next;
     syncModelPickerUI();
     if (closeMenu !== false) closeModelMenu();
@@ -1088,7 +1184,7 @@
   }
 
   function formatInlineMarkdown(text) {
-    var escaped = escapeHtml(text);
+    var escaped = escapeHtml(text).replace(/&lt;br\s*\/?&gt;/gi, "<br />");
     var inlineCodes = [];
     var out = escaped.replace(/`([^`\n]+)`/g, function (_, code) {
       inlineCodes.push("<code>" + code + "</code>");
@@ -1156,13 +1252,281 @@
     return { html: parts.join(""), next: i };
   }
 
+  function normalizeCodeLang(lang) {
+    var raw = String(lang || "").trim().toLowerCase();
+    if (!raw) return "generic";
+    if (/^(c\+\+|cpp|cc|cxx|hpp|h\+\+)$/.test(raw)) return "cpp";
+    if (/^(c|h)$/.test(raw)) return "c";
+    if (/^(js|javascript|jsx|mjs|cjs)$/.test(raw)) return "javascript";
+    if (/^(ts|typescript|tsx)$/.test(raw)) return "typescript";
+    if (/^(py|python|python3)$/.test(raw)) return "python";
+    if (/^(sh|bash|shell|zsh)$/.test(raw)) return "bash";
+    if (/^(yml|yaml)$/.test(raw)) return "yaml";
+    if (/^(md|markdown)$/.test(raw)) return "markdown";
+    return raw;
+  }
+
+  function highlightCode(code, lang) {
+    var source = String(code || "").replace(/\n$/, "");
+    var kind = normalizeCodeLang(lang);
+    var keywords = {
+      python: "False|True|None|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield",
+      cpp: "alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|goto|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq",
+      c: "auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|restrict|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|_Bool|_Complex|_Imaginary",
+      javascript: "async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|new|null|of|package|private|protected|public|return|set|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|with|yield",
+      typescript: "abstract|any|as|asserts|async|await|boolean|break|case|catch|class|const|constructor|continue|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|infer|instanceof|interface|is|keyof|let|module|namespace|never|new|null|number|object|of|package|private|protected|public|readonly|require|return|set|static|string|super|switch|symbol|this|throw|true|try|type|typeof|undefined|unique|unknown|var|void|while|with|yield",
+      bash: "if|then|else|elif|fi|for|while|do|done|case|esac|function|select|until|in|time|coproc",
+      go: "break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var",
+      rust: "as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|unsafe|use|where|while",
+      java: "abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while|true|false|null",
+      sql: "add|all|alter|and|as|asc|between|by|case|check|column|constraint|create|database|default|delete|desc|distinct|drop|else|end|exists|foreign|from|full|group|having|in|index|inner|insert|into|is|join|key|left|like|limit|not|null|on|or|order|outer|primary|references|right|select|set|table|then|union|unique|update|values|when|where",
+    };
+    var types = {
+      cpp: "string|wstring|u16string|u32string|vector|map|set|unordered_map|unordered_set|pair|tuple|optional|variant|array|deque|list|queue|stack|priority_queue|shared_ptr|unique_ptr|weak_ptr|size_t|ssize_t|ptrdiff_t|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|ifstream|ofstream|ostream|istream|stringstream",
+      c: "size_t|ssize_t|ptrdiff_t|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|FILE",
+      typescript: "string|number|boolean|object|symbol|bigint|any|unknown|never|void|Record|Partial|Required|Readonly|Array|Promise|Map|Set",
+      java: "String|Integer|Boolean|Double|Float|Long|Short|Byte|Character|Object|List|Map|Set|Optional",
+      go: "string|bool|byte|rune|error|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|complex64|complex128",
+      rust: "String|str|bool|char|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|Vec|Option|Result|Box|Rc|Arc|HashMap|HashSet",
+      python: "int|float|str|bool|list|dict|set|tuple|bytes|object|NoneType",
+    };
+    var kw = keywords[kind] || keywords.javascript;
+    var ty = types[kind] || "";
+    var tokens = [];
+    var i = 0;
+    var n = source.length;
+
+    function pushTok(type, value) {
+      if (!value) return;
+      tokens.push({ type: type, value: value });
+    }
+
+    function startsWith(str) {
+      return source.slice(i, i + str.length) === str;
+    }
+
+    while (i < n) {
+      var ch = source[i];
+      var next = source[i + 1] || "";
+
+      // comments
+      if (kind === "python" && ch === "#") {
+        var cEnd = source.indexOf("\n", i);
+        if (cEnd < 0) cEnd = n;
+        pushTok("cmt", source.slice(i, cEnd));
+        i = cEnd;
+        continue;
+      }
+      if ((kind === "bash") && ch === "#") {
+        var bEnd = source.indexOf("\n", i);
+        if (bEnd < 0) bEnd = n;
+        pushTok("cmt", source.slice(i, bEnd));
+        i = bEnd;
+        continue;
+      }
+      if (ch === "/" && next === "/" && kind !== "python") {
+        var lineEnd = source.indexOf("\n", i);
+        if (lineEnd < 0) lineEnd = n;
+        pushTok("cmt", source.slice(i, lineEnd));
+        i = lineEnd;
+        continue;
+      }
+      if (ch === "/" && next === "*" && kind !== "python" && kind !== "bash") {
+        var blockEnd = source.indexOf("*/", i + 2);
+        if (blockEnd < 0) blockEnd = n - 2;
+        pushTok("cmt", source.slice(i, blockEnd + 2));
+        i = blockEnd + 2;
+        continue;
+      }
+
+      // preprocessor
+      if ((kind === "cpp" || kind === "c") && ch === "#") {
+        var pEnd = i + 1;
+        while (pEnd < n && source[pEnd] !== "\n") {
+          if (source[pEnd] === "\\" && source[pEnd + 1] === "\n") pEnd += 2;
+          else pEnd += 1;
+        }
+        pushTok("pp", source.slice(i, pEnd));
+        i = pEnd;
+        continue;
+      }
+
+      // strings
+      if (ch === "'" || ch === '"' || (ch === "`" && (kind === "javascript" || kind === "typescript" || kind === "bash"))) {
+        var quote = ch;
+        var j = i + 1;
+        var triple = (kind === "python" && startsWith(quote + quote + quote));
+        if (triple) {
+          j = i + 3;
+          var close = source.indexOf(quote + quote + quote, j);
+          if (close < 0) close = n - 3;
+          pushTok("str", source.slice(i, close + 3));
+          i = close + 3;
+          continue;
+        }
+        while (j < n) {
+          if (source[j] === "\\" && j + 1 < n) { j += 2; continue; }
+          if (source[j] === quote) { j += 1; break; }
+          if (quote !== "`" && source[j] === "\n") break;
+          j += 1;
+        }
+        pushTok("str", source.slice(i, j));
+        i = j;
+        continue;
+      }
+      if (kind === "python" && (startsWith('r"') || startsWith("r'") || startsWith('f"') || startsWith("f'") || startsWith('b"') || startsWith("b'"))) {
+        var q = source[i + 1];
+        var k = i + 2;
+        while (k < n) {
+          if (source[k] === "\\" && k + 1 < n) { k += 2; continue; }
+          if (source[k] === q) { k += 1; break; }
+          if (source[k] === "\n") break;
+          k += 1;
+        }
+        pushTok("str", source.slice(i, k));
+        i = k;
+        continue;
+      }
+
+      // numbers
+      if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(next))) {
+        var m = source.slice(i).match(/^(0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(\.\d[\d_]*)?([eE][+-]?\d+)?[fFlLuU]*)/);
+        if (m) {
+          pushTok("num", m[0]);
+          i += m[0].length;
+          continue;
+        }
+      }
+
+      // identifiers / keywords / types / functions
+      if (/[A-Za-z_$@]/.test(ch)) {
+        var idMatch = source.slice(i).match(/^[A-Za-z_$@][A-Za-z0-9_$@]*/);
+        var id = idMatch ? idMatch[0] : ch;
+        var after = source.slice(i + id.length).match(/^\s*\(/);
+        if (new RegExp("^(?:" + kw + ")$").test(id)) pushTok("kw", id);
+        else if (ty && new RegExp("^(?:" + ty + ")$").test(id)) pushTok("type", id);
+        else if (after) pushTok("fn", id);
+        else if (/^[A-Z][A-Za-z0-9_]*$/.test(id) && kind !== "bash") pushTok("type", id);
+        else pushTok("", id);
+        i += id.length;
+        continue;
+      }
+
+      // operators / punctuation
+      if (/[+\-*/%=<>!&|^~?:]/.test(ch)) {
+        var opMatch = source.slice(i).match(/^(<<=|>>=|<=>|::|->|\+\+|--|&&|\|\||<<|>>|<=|>=|==|!=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|={1,3}|[+\-*/%=<>!&|^~?:])/);
+        if (opMatch) {
+          pushTok("op", opMatch[0]);
+          i += opMatch[0].length;
+          continue;
+        }
+      }
+      if (/[()[\]{},.;]/.test(ch)) {
+        pushTok("punct", ch);
+        i += 1;
+        continue;
+      }
+
+      pushTok("", ch);
+      i += 1;
+    }
+
+    return tokens.map(function (tok) {
+      var safe = escapeHtml(tok.value);
+      if (!tok.type) return safe;
+      return '<span class="tok-' + tok.type + '">' + safe + "</span>";
+    }).join("");
+  }
+
+  function codeLangLabel(lang) {
+    var kind = normalizeCodeLang(lang);
+    var labels = {
+      python: "python",
+      cpp: "cpp",
+      c: "c",
+      javascript: "javascript",
+      typescript: "typescript",
+      bash: "bash",
+      go: "go",
+      rust: "rust",
+      java: "java",
+      sql: "sql",
+      yaml: "yaml",
+      json: "json",
+      html: "html",
+      css: "css",
+      markdown: "markdown",
+      generic: "code",
+    };
+    if (labels[kind]) return labels[kind];
+    return String(lang || "code").trim().toLowerCase() || "code";
+  }
+
+  function renderCodeBlock(lang, code) {
+    var raw = String(code || "").replace(/\n$/, "");
+    var language = (lang || "").trim();
+    var label = codeLangLabel(language);
+    var cls = language ? ' class="language-' + escapeHtml(language) + '"' : "";
+    var highlighted = highlightCode(raw, language);
+    return (
+      '<div class="ai-agent-codeblock">' +
+        '<div class="ai-agent-codeblock-header">' +
+          '<span class="ai-agent-codeblock-lang">' + escapeHtml(label) + "</span>" +
+          '<button type="button" class="ai-agent-codeblock-copy" data-copy-label="复制">复制</button>' +
+        "</div>" +
+        "<pre><code" + cls + ">" + highlighted + "</code></pre>" +
+      "</div>"
+    );
+  }
+
+  function bindCodeBlockCopy(root) {
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll(".ai-agent-codeblock"), function (block) {
+      if (block.__copyBound) return;
+      block.__copyBound = true;
+      var btn = block.querySelector(".ai-agent-codeblock-copy");
+      var codeEl = block.querySelector("pre code");
+      if (!btn || !codeEl) return;
+      btn.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var text = codeEl.textContent || "";
+        function markCopied() {
+          btn.textContent = "已复制";
+          btn.classList.add("is-copied");
+          setTimeout(function () {
+            btn.textContent = btn.getAttribute("data-copy-label") || "复制";
+            btn.classList.remove("is-copied");
+          }, 1400);
+        }
+        function fallbackCopy() {
+          var range = document.createRange();
+          range.selectNodeContents(codeEl);
+          var sel = window.getSelection();
+          if (!sel) return false;
+          sel.removeAllRanges();
+          sel.addRange(range);
+          var ok = false;
+          try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+          sel.removeAllRanges();
+          return ok;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(markCopied).catch(function () {
+            if (fallbackCopy()) markCopied();
+          });
+        } else if (fallbackCopy()) {
+          markCopied();
+        }
+      });
+    });
+  }
+
   function renderMarkdown(text) {
     var normalized = text.replace(/\r\n/g, "\n");
     var codeBlocks = [];
     normalized = normalized.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, function (_, lang, code) {
-      var language = (lang || "").trim();
-      var cls = language ? ' class="language-' + escapeHtml(language) + '"' : "";
-      codeBlocks.push("<pre><code" + cls + ">" + escapeHtml(code.replace(/\n$/, "")) + "</code></pre>");
+      codeBlocks.push(renderCodeBlock(lang, code));
       return "%%CODEBLOCK_" + (codeBlocks.length - 1) + "%%";
     });
 
@@ -1292,6 +1656,7 @@
     body.setAttribute("data-raw-text", text);
     if (renderAsMarkdown) {
       body.innerHTML = renderMarkdown(text);
+      bindCodeBlockCopy(body);
     } else {
       body.textContent = text;
     }
@@ -1349,9 +1714,10 @@
   function getRunMeta(msg) {
     if (!msg.__runMeta) {
       msg.__runMeta = {
-        startedAt: Date.now(),
         nextIndex: 1,
         thinkSeq: 0,
+        exploreSeq: 0,
+        exploreSteps: [],
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
@@ -1363,6 +1729,12 @@
 
   function ensureWorklog(msg) {
     return msg.querySelector(".ai-agent-worklog");
+  }
+
+  function revokeFilePreviews(files) {
+    (files || []).forEach(function (file) {
+      if (file && file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+    });
   }
 
   function makePathsHtml(paths) {
@@ -1423,19 +1795,17 @@
     if (card.__toggleBound) return;
     card.__toggleBound = true;
     var header = card.querySelector(".ai-agent-card-header");
-    header.addEventListener("click", function () {
+    function toggle() {
       if (!card.classList.contains("has-body") || card.classList.contains("is-live")) return;
       var next = !card.classList.contains("is-expanded");
       card.__userExpanded = next;
       setCardExpanded(card, next);
-    });
+    }
+    header.addEventListener("click", toggle);
     header.addEventListener("keydown", function (event) {
-      if (!card.classList.contains("has-body") || card.classList.contains("is-live")) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        var next = !card.classList.contains("is-expanded");
-        card.__userExpanded = next;
-        setCardExpanded(card, next);
+        toggle();
       }
     });
   }
@@ -1451,20 +1821,13 @@
     return "Thought for " + seconds + "s";
   }
 
-  function appendThinkingChunk(meta, chunk) {
-    if (!chunk) return;
-    var prev = meta.thinkingDetail || "";
-    if (!prev) {
-      meta.thinkingDetail = chunk;
-      return;
-    }
-    // Some SDK streams send cumulative snapshots; others send pure deltas.
-    if (chunk.indexOf(prev) === 0) {
-      meta.thinkingDetail = chunk;
-      return;
-    }
-    if (prev.indexOf(chunk) === 0) return;
-    meta.thinkingDetail = prev + chunk;
+  // SDK may send cumulative snapshots or pure deltas; merge either shape.
+  function mergeStreamText(prev, chunk) {
+    if (!chunk) return prev || "";
+    if (!prev) return chunk;
+    if (chunk.indexOf(prev) === 0) return chunk;
+    if (prev.indexOf(chunk) === 0) return prev;
+    return prev + chunk;
   }
 
   function refreshThinkingCard(msg) {
@@ -1578,8 +1941,106 @@
     }
   }
 
+  function finalizeStatusCard(msg) {
+    removeCard(msg, "status-live");
+  }
+
+  function finalizeExploreCard(msg) {
+    var worklog = ensureWorklog(msg);
+    var existing = worklog.querySelector('.ai-agent-card[data-card-key="explore-live"]');
+    var meta = getRunMeta(msg);
+    var steps = meta.exploreSteps || [];
+    var detail = steps.length
+      ? steps.join("\n")
+      : ((existing && existing.__cardData && existing.__cardData.detail) || "");
+    meta.exploreSteps = [];
+    if (!existing && !detail) return;
+    if (!detail) {
+      // Empty Explored row is useless — Cursor only keeps it when there's content,
+      // otherwise the individual Read/Grepped cards already tell the story.
+      if (existing) existing.remove();
+      return;
+    }
+    var card = upsertCard(msg, "explore-live", {
+      kind: "explore",
+      title: "Explored",
+      meta: "",
+      detail: detail,
+      paths: [],
+      live: false,
+      forceCollapsed: true,
+    });
+    if (card) {
+      meta.exploreSeq = (meta.exploreSeq || 0) + 1;
+      card.setAttribute("data-card-key", "explore-done-" + meta.exploreSeq);
+    }
+  }
+
+  function noteExploring(msg, stepTitle) {
+    var meta = getRunMeta(msg);
+    if (!meta.exploreSteps) meta.exploreSteps = [];
+    var step = String(stepTitle || "").trim();
+    if (step && meta.exploreSteps[meta.exploreSteps.length - 1] !== step) {
+      meta.exploreSteps.push(step);
+    }
+    upsertCard(msg, "explore-live", {
+      kind: "explore",
+      title: "Exploring",
+      meta: "",
+      detail: meta.exploreSteps.join("\n"),
+      paths: [],
+      live: true,
+    });
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function isNoisyStatus(text) {
+    var upper = String(text || "").trim().toUpperCase();
+    return (
+      !upper ||
+      upper === "RUNNING" ||
+      upper === "FINISHED" ||
+      upper === "COMPLETED" ||
+      upper === "DONE" ||
+      upper === "CANCELLED" ||
+      upper === "CANCELED"
+    );
+  }
+
+  function isSearchLikeActivity(text) {
+    var t = String(text || "").trim();
+    if (!t) return false;
+    return /正在|查询|搜索|获取|联网|天气|台风|新闻|资料|fetch|search|curl|http/i.test(t);
+  }
+
+  function noteLiveStatus(msg, text, kind) {
+    var title = String(text || "").trim();
+    if (!title || isNoisyStatus(title)) return;
+    upsertCard(msg, "status-live", {
+      kind: kind || (isSearchLikeActivity(title) ? "explore" : "run"),
+      title: title,
+      meta: "",
+      detail: "",
+      paths: [],
+      live: true,
+    });
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function isInterimReplyText(text) {
+    var t = String(text || "").trim();
+    if (!t) return true;
+    if (t.length > 160) return false;
+    // Only treat short status-like lines as interim — never hide a real reply
+    // just because it mentions "http" / "search" mid-sentence.
+    if (/^(正在|开始|随后|接下来|我先|正在为您)/.test(t)) return true;
+    if (/^(Searching|Fetching|Looking|Checking|Querying|Reading)\b/i.test(t)) return true;
+    if (t.length <= 40 && /^(正在)?(查询|搜索|获取|联网)/.test(t)) return true;
+    return t.length <= 80 && /^[^#*_`\n]+$/.test(t) && (t.endsWith("。") || t.endsWith("...") || t.endsWith("…"));
+  }
+
   function finalizePlanCard(msg) {
-    // Cursor: "Planning next move" is ephemeral — gone when the next step starts.
+    // Ephemeral: gone once planning finishes and execution starts.
     var meta = getRunMeta(msg);
     removeCard(msg, "plan-live");
     meta.planningDetail = "";
@@ -1612,8 +2073,17 @@
     meta.thinkingDetail = "";
   }
 
+  function finalizeLiveCards(msg) {
+    finalizePlanCard(msg);
+    finalizeThoughtCard(msg);
+    finalizeExploreCard(msg);
+    finalizeStatusCard(msg);
+  }
+
   function noteThinking(msg, detail) {
     finalizePlanCard(msg);
+    finalizeStatusCard(msg);
+    finalizeExploreCard(msg);
     var meta = getRunMeta(msg);
     var chunk = detail || "";
     if (!meta.thinkingStartedAt) {
@@ -1625,35 +2095,31 @@
         }, 1000);
       }
     }
-    appendThinkingChunk(meta, chunk);
+    meta.thinkingDetail = mergeStreamText(meta.thinkingDetail, chunk);
     refreshThinkingCard(msg);
   }
 
   function notePlanning(msg, detail) {
     var meta = getRunMeta(msg);
-    var chunk = detail || "";
-    if (chunk) meta.planningDetail = (meta.planningDetail || "") + chunk;
-    upsertCard(msg, "plan-live", {
+    // A new planning pass means the previous thinking round is done.
+    if (meta.thinkingStartedAt) finalizeThoughtCard(msg);
+    finalizeStatusCard(msg);
+    meta.planningDetail = mergeStreamText(meta.planningDetail, detail || "");
+    var card = upsertCard(msg, "plan-live", {
       kind: "plan",
-      title: "Planning next move",
+      title: "Planning next moves",
       meta: "",
       detail: meta.planningDetail || "",
       paths: [],
       live: true,
+      forceCollapsed: false,
     });
-  }
-
-  function isNoisyStatus(text) {
-    var upper = String(text || "").trim().toUpperCase();
-    return (
-      !upper ||
-      upper === "RUNNING" ||
-      upper === "FINISHED" ||
-      upper === "COMPLETED" ||
-      upper === "DONE" ||
-      upper === "CANCELLED" ||
-      upper === "CANCELED"
-    );
+    var body = card && card.querySelector(".ai-agent-card-body");
+    if (body && meta.planningDetail) {
+      body.style.display = "block";
+      body.scrollTop = body.scrollHeight;
+    }
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
   function renderAttachmentPreview() {
@@ -1671,7 +2137,7 @@
         wrap.querySelector(".kind").textContent = item.mime_type || "file";
       }
       wrap.querySelector("button").onclick = function () {
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        revokeFilePreviews([item]);
         pendingFiles = pendingFiles.filter(function (x) { return x !== item; });
         renderAttachmentPreview();
       };
@@ -1687,9 +2153,7 @@
         return;
       }
       if (revokeFiles) {
-        item.files.forEach(function (file) {
-          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-        });
+        revokeFilePreviews(item.files);
       }
     });
     sendQueue = kept;
@@ -1806,9 +2270,7 @@
 
   function clearPendingFiles(revokeUrls) {
     if (revokeUrls !== false) {
-      pendingFiles.forEach(function (item) {
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-      });
+      revokeFilePreviews(pendingFiles);
     }
     pendingFiles = [];
     renderAttachmentPreview();
@@ -1826,6 +2288,8 @@
 
   function formatAgentError(raw) {
     var msg = String(raw || "unknown");
+    // Backend already rewrites context-overflow; only decorate raw transport errors.
+    if (msg.indexOf("上下文已超限") >= 0) return msg;
     var lower = msg.toLowerCase();
     if (
       lower.indexOf("context") >= 0 && (lower.indexOf("limit") >= 0 || lower.indexOf("length") >= 0 || lower.indexOf("window") >= 0 || lower.indexOf("overflow") >= 0 || lower.indexOf("too long") >= 0 || lower.indexOf("exceed") >= 0)
@@ -1855,13 +2319,13 @@
     stopBtn.classList.toggle("visible", !!isRunning);
   }
 
-  function hidePlanModeTip() {
-    modeWrap.classList.remove("show-plan-tip");
-  }
+  var MODE_HINTS = {
+    agent: "Agent：直接执行任务，可修改代码并调用工具。",
+    plan: "Plan：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。",
+  };
 
-  function showPlanModeTip() {
-    if (modeField.value !== "plan") return;
-    modeWrap.classList.add("show-plan-tip");
+  function syncModeHint() {
+    modeField.title = MODE_HINTS[modeField.value] || "模式";
   }
 
   function updateModeUI() {
@@ -1870,7 +2334,6 @@
     inputField.placeholder = isPlan
       ? "描述你想先规划的问题"
       : "给 Ai-agent 发送消息";
-    if (!isPlan) hidePlanModeTip();
   }
 
   function enqueueCurrentCompose() {
@@ -1898,8 +2361,14 @@
     appendMessage("You", label, "user", false, item.files);
     var filesPayload = buildFilesPayload(item.files);
     var agentMsg = appendMessage("Agent", "", "agent", true);
+    if ((item.model || "") === "auto") {
+      autoResolvedModel = "";
+      autoResolvedLabel = "";
+      syncModelPickerUI();
+    }
+    notePlanning(agentMsg, "");
     var reply = "";
-    var aborted = false;
+    var finished = false;
 
     var controller = new AbortController();
     activeAbort = controller;
@@ -1935,20 +2404,35 @@
         for (var i = 0; i < parts.length; i++) {
           var line = parts[i].trim();
           if (!line.startsWith("data:")) continue;
-          var payload = JSON.parse(line.slice(5).trim());
+          var payload;
+          try {
+            payload = JSON.parse(line.slice(5).trim());
+          } catch (parseErr) {
+            continue;
+          }
 
           if (payload.session_id) {
             sessionId = payload.session_id;
             localStorage.setItem("ai-agent-session-id", sessionId);
           }
 
+          if (payload.resolved_model || payload.type === "model_resolved") {
+            applyResolvedModel(payload);
+          }
+
           if (payload.type === "text") {
-            updateRunState("回复中");
-            finalizePlanCard(agentMsg);
-            finalizeThoughtCard(agentMsg);
             reply += payload.content || "";
-            setMessageBody(agentMsg, reply || "…", true);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            if (isInterimReplyText(reply)) {
+              updateRunState(reply.trim() || "搜索中");
+              finalizeLiveCards(agentMsg);
+              noteLiveStatus(agentMsg, reply.trim());
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            } else {
+              updateRunState("回复中");
+              finalizeLiveCards(agentMsg);
+              setMessageBody(agentMsg, reply, true);
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
           } else if (payload.type === "planning") {
             updateRunState("规划中");
             notePlanning(agentMsg, payload.content || "");
@@ -1971,15 +2455,23 @@
             updateRunState("正在思考");
             noteThinking(agentMsg, payload.content || "");
           } else if (payload.type === "tool_call") {
-            updateRunState("正在调用工具");
+            var summary = payload.summary || {};
+            var toolView = buildToolPresentation(payload, summary);
+            var toolRunning = payload.status === "running";
+            updateRunState(toolRunning ? (toolView.title || "执行中") : "执行中");
             finalizePlanCard(agentMsg);
             finalizeThoughtCard(agentMsg);
-            var summary = payload.summary || {};
+            finalizeStatusCard(agentMsg);
             var toolKey = payload.call_id
               ? ("tool-" + payload.call_id)
               : ("tool-" + (payload.name || "tool") + "-" + Date.now());
-            var toolView = buildToolPresentation(payload, summary);
-            var toolRunning = payload.status === "running";
+            if (summary.kind === "explore") {
+              // Keep one live Exploring card for the whole explore burst;
+              // finish it only when thinking / reply / non-explore tool starts.
+              noteExploring(agentMsg, toolView.title);
+            } else {
+              finalizeExploreCard(agentMsg);
+            }
             upsertCard(agentMsg, toolKey, {
               kind: summary.kind || "tool",
               title: toolView.title,
@@ -1990,23 +2482,17 @@
               live: toolRunning,
               forceCollapsed: !toolRunning,
             });
+            // After non-explore tools, show Planning until the next step.
+            // Explore bursts keep Exploring live until thinking/reply starts.
+            if (!toolRunning && summary.kind !== "explore") notePlanning(agentMsg, "");
           } else if (payload.type === "status") {
             var statusText = payload.content || payload.status || "正在处理";
             updateRunState(statusText);
-            // Cursor hides noisy lifecycle statuses; keep them out of the worklog.
-            if (!isNoisyStatus(statusText)) {
-              finalizePlanCard(agentMsg);
-              appendCard(agentMsg, {
-                kind: "run",
-                title: statusText,
-                meta: "",
-                detail: "",
-                paths: [],
-              });
-            }
+            noteLiveStatus(agentMsg, statusText);
           } else if (payload.type === "task") {
             updateRunState(payload.content || "正在执行任务");
             finalizePlanCard(agentMsg);
+            finalizeStatusCard(agentMsg);
             appendCard(agentMsg, {
               kind: "plan",
               title: payload.content || "Task update",
@@ -2015,26 +2501,30 @@
               paths: [],
             });
           } else if (payload.type === "error") {
-            finalizePlanCard(agentMsg);
-            finalizeThoughtCard(agentMsg);
+            finished = true;
+            finalizeLiveCards(agentMsg);
             setMessageBody(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
-          } else if (payload.type === "done" && !reply) {
-            finalizePlanCard(agentMsg);
-            finalizeThoughtCard(agentMsg);
-            setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
           } else if (payload.type === "done") {
-            finalizePlanCard(agentMsg);
-            finalizeThoughtCard(agentMsg);
+            finished = true;
+            finalizeLiveCards(agentMsg);
+            if (reply) {
+              setMessageBody(agentMsg, reply, true);
+            } else {
+              setMessageBody(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
+            }
           }
         }
       }
+      if (!finished) {
+        finalizeLiveCards(agentMsg);
+        if (reply) setMessageBody(agentMsg, reply, true);
+      }
     } catch (err) {
       if (err && err.name === "AbortError") {
-        aborted = true;
-        finalizePlanCard(agentMsg);
-        finalizeThoughtCard(agentMsg);
+        finalizeLiveCards(agentMsg);
         setMessageBody(agentMsg, stopRequested ? "(已终止)" : "(已中断，准备发送下一条)", false);
       } else {
+        finalizeLiveCards(agentMsg);
         var detail = formatAgentError((err && err.message) ? err.message : String(err));
         setMessageBody(
           agentMsg,
@@ -2044,11 +2534,8 @@
       }
     } finally {
       if (activeAbort === controller) activeAbort = null;
-      item.files.forEach(function (file) {
-        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-      });
+      revokeFilePreviews(item.files);
     }
-    return aborted;
   }
 
   async function drainQueue() {
@@ -2109,12 +2596,9 @@
   syncModelPickerUI();
   modeField.onchange = function () {
     updateModeUI();
-    if (modeField.value === "plan") showPlanModeTip();
+    syncModeHint();
   };
-  modeField.onfocus = showPlanModeTip;
-  modeField.onblur = hidePlanModeTip;
-  modeWrap.onmouseenter = showPlanModeTip;
-  modeWrap.onmouseleave = hidePlanModeTip;
+  modeField.onmouseenter = syncModeHint;
   pickFileBtn.onclick = function () { fileInput.click(); };
   fileInput.addEventListener("change", function (e) {
     handleFileSelection(e.target.files);
@@ -2137,9 +2621,7 @@
     stopRequested = true;
     if (activeAbort) activeAbort.abort();
     sendQueue.forEach(function (item) {
-      item.files.forEach(function (file) {
-        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-      });
+      revokeFilePreviews(item.files);
     });
     sendQueue = [];
     clearPendingFiles(true);
@@ -2154,6 +2636,7 @@
   };
   updateRunState("就绪");
   updateModeUI();
+  syncModeHint();
   loadModelOptions();
   window.addEventListener("beforeunload", function () {
     if (historySaveTimer) {
@@ -2175,9 +2658,22 @@
       "| 消费 | 4,843.95 |",
       "",
       "**结论**：ROAS 0.76",
+      "",
+      "```python",
+      "def hello():",
+      "    return 1",
+      "```",
+      "",
+      "```cpp",
+      "#include <vector>",
+      "void dfs(int u) { vis[u] = true; }",
+      "```",
     ].join("\n");
     var mdOut = renderMarkdown(mdSample);
-    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0) {
+    var pyOk = mdOut.indexOf("tok-kw") >= 0 && mdOut.indexOf("def") >= 0;
+    var cppOk = mdOut.indexOf("tok-pp") >= 0 || mdOut.indexOf("tok-type") >= 0;
+    var copyOk = mdOut.indexOf("ai-agent-codeblock-copy") >= 0 && mdOut.indexOf("ai-agent-codeblock-lang") >= 0;
+    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !copyOk) {
       console.error("Ai-agent markdown self-check failed", mdOut);
     } else {
       console.log("Ai-agent markdown self-check ok");

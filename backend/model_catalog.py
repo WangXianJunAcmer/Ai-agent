@@ -10,6 +10,12 @@ DEFAULT_MODEL_OPTIONS = [
 ]
 
 _MODEL_CATALOG: dict[str, dict] = {}
+_MODEL_OPTIONS: list[dict] = []
+
+
+def normalize_model_id(model_id: str | None) -> str:
+    mid = (model_id or "").strip()
+    return "auto" if mid == "default" else mid
 
 
 def _variant_hint(model) -> tuple[str, list[dict]]:
@@ -46,23 +52,25 @@ def _variant_hint(model) -> tuple[str, list[dict]]:
     return " ".join(hints), params
 
 
-def get_model_options(api_key: str) -> list[dict]:
-    global _MODEL_CATALOG
+def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
+    """Fetch model list once; reuse until refresh=True (health) or process restart."""
+    global _MODEL_CATALOG, _MODEL_OPTIONS
+    if _MODEL_OPTIONS and not refresh:
+        return list(_MODEL_OPTIONS)
     try:
         models = Cursor.models.list(api_key=api_key)
         options: list[dict] = []
         catalog: dict[str, dict] = {}
         seen: set[str] = set()
         for model in models:
-            mid = getattr(model, "id", "") or ""
+            mid = normalize_model_id(getattr(model, "id", "") or "")
             if not mid or mid in seen:
                 continue
             seen.add(mid)
             hint, params = _variant_hint(model)
             display = (getattr(model, "display_name", "") or mid).strip() or mid
             # SDK uses id=default for Auto.
-            if mid == "default":
-                mid = "auto"
+            if mid == "auto":
                 display = "Auto"
             item = {"id": mid, "display_name": display, "hint": hint, "params": params}
             options.append(item)
@@ -74,16 +82,25 @@ def get_model_options(api_key: str) -> list[dict]:
         else:
             options = [catalog["auto"]] + [o for o in options if o["id"] != "auto"]
         _MODEL_CATALOG = catalog
-        return options or list(DEFAULT_MODEL_OPTIONS)
+        _MODEL_OPTIONS = options or list(DEFAULT_MODEL_OPTIONS)
+        return list(_MODEL_OPTIONS)
     except Exception:
-        return list(DEFAULT_MODEL_OPTIONS)
+        return list(_MODEL_OPTIONS or DEFAULT_MODEL_OPTIONS)
+
+
+def model_display_name(model_id: str) -> str:
+    mid = normalize_model_id(model_id)
+    if not mid or mid == "auto":
+        return mid
+    item = _MODEL_CATALOG.get(mid)
+    if item:
+        return str(item.get("display_name") or mid)
+    return mid
 
 
 def resolve_model_selection(model_id: str | None, fallback: str = "composer-2.5") -> str | dict:
     """Expand a model id into SDK ModelSelection JSON (id + default variant params)."""
-    mid = (model_id or fallback or "composer-2.5").strip() or "composer-2.5"
-    if mid == "default":
-        mid = "auto"
+    mid = normalize_model_id(model_id or fallback or "composer-2.5") or "composer-2.5"
     item = _MODEL_CATALOG.get(mid)
     if not item:
         return mid
