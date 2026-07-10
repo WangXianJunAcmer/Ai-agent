@@ -348,7 +348,7 @@
             </div>
             <div id="ai-agent-compose-right">
               <input id="ai-agent-file-input" type="file" multiple />
-              <button id="ai-agent-pick-file" type="button" title="上传图片或文件">📎</button>
+              <button id="ai-agent-pick-file" type="button" title="添加文件">📎</button>
               <button id="ai-agent-send" type="button" title="发送">↑</button>
               <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
             </div>

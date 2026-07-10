@@ -251,7 +251,7 @@
 
     <section class="card" style="margin-bottom: 20px;">
       <h2>附件与排队</h2>
-      <p class="muted">悬浮聊天框左下角 📎 可上传图片或任意文件。Agent 回复时输入框仍可编辑；再点「排队」会进入待发送列表，可点「撤销」取消。非图片文件会落到宿主项目 <code>.ai-agent-uploads/</code>，由 Agent 按路径读取。</p>
+      <p class="muted">悬浮聊天框 📎「添加文件」可附带图片或任意文件。Agent 回复时输入框仍可编辑；再点发送会进入待发送列表，可编辑/立即发送/删除。非图片文件会落到宿主项目 <code>.ai-agent-uploads/</code>，由 Agent 按路径读取。</p>
       <p class="muted">API 优先使用 <code>files</code> 数组（兼容旧字段 <code>images</code>），每项含 <code>data</code>（base64）、<code>mime_type</code> 和可选 <code>name</code>。</p>
       <pre>curl -X POST http://&lt;ai-agent-host&gt;:8765/api/chat \
   -H 'Content-Type: application/json' \
