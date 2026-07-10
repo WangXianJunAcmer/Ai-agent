@@ -509,11 +509,17 @@
     }
     .ai-agent-msg.agent .ai-agent-msg-files { justify-content: flex-start; }
     .ai-agent-file-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ai-border);
-      background: #fff; color: #333; font-size: 12px; max-width: 220px;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 10px 5px 6px; border-radius: 10px; border: 1px solid var(--ai-border);
+      background: #fff; color: #333; font-size: 12px; max-width: 240px;
     }
-    .ai-agent-file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ai-agent-file-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .ai-agent-file-icon {
+      min-width: 22px; height: 22px; padding: 0 6px; border-radius: 5px; flex: 0 0 auto;
+      display: grid; place-items: center;
+      font: 700 9px/1 system-ui, -apple-system, sans-serif; color: #fff;
+      letter-spacing: -0.01em; white-space: nowrap;
+    }
     #ai-agent-footer {
       flex: 0 0 auto; padding: 8px 14px 16px;
       background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28%);
@@ -618,15 +624,17 @@
       border-radius: 10px; border: 1px solid var(--ai-border); background: #fff;
     }
     .ai-agent-thumb.file {
+      display: inline-flex; align-items: center; gap: 8px;
       width: auto; min-width: 110px; height: auto;
-      padding: 8px 26px 8px 10px; border: 1px solid var(--ai-border);
+      padding: 8px 26px 8px 8px; border: 1px solid var(--ai-border);
       border-radius: 10px; background: #fafafa; color: #333; font-size: 12px;
     }
+    .ai-agent-thumb.file .meta { min-width: 0; }
     .ai-agent-thumb.file .name {
       display: block; max-width: 150px; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; font-weight: 650;
     }
-    .ai-agent-thumb.file .kind { color: var(--ai-muted); margin-top: 2px; display: block; }
+    .ai-agent-thumb.file .kind { display: none; }
     .ai-agent-thumb button {
       position: absolute; top: -6px; right: -6px;
       width: 20px; height: 20px; border: 0; border-radius: 50%;
@@ -1036,8 +1044,13 @@
       Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
         attachments.push({ kind: "image", name: img.alt || "image", mime_type: "image/*" });
       });
-      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip span")).forEach(function (span) {
-        attachments.push({ kind: "file", name: span.textContent || "file", mime_type: "" });
+      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip")).forEach(function (chip) {
+        var nameEl = chip.querySelector(".name");
+        attachments.push({
+          kind: "file",
+          name: (nameEl && nameEl.textContent) || "file",
+          mime_type: chip.getAttribute("data-mime") || "",
+        });
       });
       return {
         role: role,
@@ -1980,11 +1993,7 @@
       var fileRow = document.createElement("div");
       fileRow.className = "ai-agent-msg-files";
       files.forEach(function (item) {
-        var chip = document.createElement("div");
-        chip.className = "ai-agent-file-chip";
-        chip.innerHTML = "<span></span>";
-        chip.querySelector("span").textContent = item.name || "file";
-        fileRow.appendChild(chip);
+        appendFileChip(fileRow, item.name || "file", item.mime_type || "");
       });
       main.appendChild(fileRow);
     }
@@ -2626,9 +2635,8 @@
         wrap.querySelector("img").src = item.previewUrl;
       } else {
         wrap.className = "ai-agent-thumb file";
-        wrap.innerHTML = '<span class="name"></span><span class="kind"></span><button type="button" title="移除">×</button>';
-        wrap.querySelector(".name").textContent = item.name || "file";
-        wrap.querySelector(".kind").textContent = item.mime_type || "file";
+        wrap.innerHTML = '<span class="ai-agent-file-icon" aria-hidden="true"></span><div class="meta"><span class="name"></span><span class="kind"></span></div><button type="button" title="移除">×</button>';
+        fillFileVisual(wrap.querySelector(".ai-agent-file-icon"), wrap.querySelector(".name"), wrap.querySelector(".kind"), item.name, item.mime_type);
       }
       wrap.querySelector("button").onclick = function () {
         revokeFilePreviews([item]);
@@ -2785,6 +2793,56 @@
     if (lower.endsWith(".bmp")) return "image/bmp";
     if (lower.endsWith(".svg")) return "image/svg+xml";
     return mime || "application/octet-stream";
+  }
+
+  function fileTypeInfo(name, mime) {
+    var m = guessImageMime(name, mime || "");
+    var lower = String(name || "").toLowerCase();
+    var dot = lower.lastIndexOf(".");
+    var ext = dot >= 0 ? lower.slice(dot) : "";
+    if (m.indexOf("image/") === 0) return { key: "image", label: "图片", color: "#10a37f" };
+    if (ext === ".pdf" || m === "application/pdf") return { key: "pdf", label: "PDF", color: "#e74c3c" };
+    if (ext === ".doc" || ext === ".docx" || m.indexOf("word") >= 0) return { key: "word", label: "Word", color: "#2b579a" };
+    if (ext === ".xls" || ext === ".xlsx" || m.indexOf("spreadsheet") >= 0 || m.indexOf("excel") >= 0) return { key: "excel", label: "Excel", color: "#217346" };
+    if (ext === ".ppt" || ext === ".pptx" || m.indexOf("presentation") >= 0) return { key: "ppt", label: "PPT", color: "#d24726" };
+    if (ext === ".csv" || m === "text/csv") return { key: "csv", label: "CSV", color: "#217346" };
+    if (ext === ".py" || m.indexOf("python") >= 0) return { key: "python", label: "Python", color: "#3572a5" };
+    if (ext === ".md" || ext === ".markdown") return { key: "md", label: "Markdown", color: "#6b6b6b" };
+    if (ext === ".json" || m === "application/json") return { key: "json", label: "JSON", color: "#6b6b6b" };
+    if (ext === ".zip" || ext === ".rar" || ext === ".7z") return { key: "archive", label: "ZIP", color: "#6b6b6b" };
+    if (ext === ".txt" || m === "text/plain") return { key: "text", label: "TXT", color: "#6b6b6b" };
+    if (ext) return { key: "file", label: ext.slice(1).toUpperCase(), color: "#6b6b6b" };
+    return { key: "file", label: "文件", color: "#6b6b6b" };
+  }
+
+  function paintFileIcon(el, info) {
+    if (!el) return;
+    el.className = "ai-agent-file-icon is-" + info.key;
+    el.style.background = info.color;
+    el.textContent = info.label;
+  }
+
+  function fillFileVisual(iconEl, nameEl, _kindEl, name, mime) {
+    var info = fileTypeInfo(name, mime);
+    paintFileIcon(iconEl, info);
+    if (nameEl) nameEl.textContent = name || "file";
+  }
+
+  function appendFileChip(container, name, mime) {
+    var info = fileTypeInfo(name, mime);
+    var chip = document.createElement("div");
+    chip.className = "ai-agent-file-chip";
+    chip.setAttribute("data-file-key", info.key);
+    chip.setAttribute("data-mime", mime || "");
+    var icon = document.createElement("span");
+    paintFileIcon(icon, info);
+    var label = document.createElement("span");
+    label.className = "name";
+    label.textContent = name || "file";
+    chip.appendChild(icon);
+    chip.appendChild(label);
+    container.appendChild(chip);
+    return chip;
   }
 
   async function handleFileSelection(files) {
