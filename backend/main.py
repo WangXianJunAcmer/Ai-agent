@@ -130,13 +130,36 @@ frontend_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 
 
+def _lan_ip() -> str | None:
+    """Best-effort primary LAN IPv4 (same idea as Flask's startup banner)."""
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def _print_urls(host: str, port: int) -> None:
+    print(f" * Running on http://127.0.0.1:{port}")
+    if host in ("0.0.0.0", "::"):
+        lan = _lan_ip()
+        if lan and lan not in ("127.0.0.1", "::1"):
+            print(f" * Running on http://{lan}:{port}")
+
+
 def main():
     import uvicorn
 
+    host = settings["host"]
+    port = settings["port"]
+    _print_urls(host, port)
     uvicorn.run(
         "backend.main:app",
-        host=settings["host"],
-        port=settings["port"],
+        host=host,
+        port=port,
         reload=settings["reload"],
         reload_dirs=[str(ROOT)],
     )
