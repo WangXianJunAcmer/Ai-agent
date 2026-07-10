@@ -55,7 +55,11 @@ class SessionManager:
     for session in list(self._sessions.values()):
       await self._close_agent(session.agent)
     self._sessions.clear()
-    await self._stack.aclose()
+    # Bridge may already be gone on Ctrl+C / reload; don't fail app shutdown.
+    try:
+      await self._stack.aclose()
+    except Exception:
+      pass
     self._client = None
     self._started = False
 
@@ -80,8 +84,13 @@ class SessionManager:
 
   async def _close_agent(self, agent) -> None:
     close = getattr(agent, "close", None)
-    if close:
+    if not close:
+      return
+    try:
       await close()
+    except Exception:
+      # Bridge already down during process exit / hot reload.
+      pass
 
   def _stringify(self, value) -> str:
     if value is None:

@@ -10,7 +10,7 @@ from pathlib import Path
 from cursor_sdk import Cursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -75,6 +75,11 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def index():
     return FileResponse(frontend_dir / "index.html")
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/api/health")
@@ -148,6 +153,20 @@ def _print_urls(host: str, port: int) -> None:
         lan = _lan_ip()
         if lan and lan not in ("127.0.0.1", "::1"):
             print(f" * Running on http://{lan}:{port}")
+    elif host not in ("127.0.0.1", "localhost"):
+        print(f" * Running on http://{host}:{port}")
+
+
+def _quiet_uvicorn_bind_log() -> None:
+    """Drop uvicorn's 'Uvicorn running on http://0.0.0.0:...' line (misleading)."""
+    import logging
+
+    class _DropBindUrl(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return "Uvicorn running on http://" not in msg and "Uvicorn running on https://" not in msg
+
+    logging.getLogger("uvicorn.error").addFilter(_DropBindUrl())
 
 
 def main():
@@ -155,6 +174,7 @@ def main():
 
     host = settings["host"]
     port = settings["port"]
+    _quiet_uvicorn_bind_log()
     _print_urls(host, port)
     uvicorn.run(
         "backend.main:app",
