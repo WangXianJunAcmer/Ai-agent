@@ -8,7 +8,6 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from cursor_sdk import Cursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -20,24 +19,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.config import load_settings
+from backend.model_catalog import get_model_options, resolve_model_selection
 from backend.sessions import SessionManager
 
 settings = load_settings()
 sessions = SessionManager(settings)
-DEFAULT_MODEL_OPTIONS = ["composer-2.5", "auto"]
 # Changes on every process start so clients can drop stale chat UI after restart.
 BOOT_ID = uuid.uuid4().hex
 
 
-def get_model_options() -> list[str]:
-    try:
-        models = Cursor.models.list(api_key=settings["api_key"])
-        options = ["auto"]
-        ids = sorted({getattr(model, "id", "") for model in models if getattr(model, "id", "")})
-        options.extend(model_id for model_id in ids if model_id != "auto")
-        return options or DEFAULT_MODEL_OPTIONS
-    except Exception:
-        return DEFAULT_MODEL_OPTIONS
+def _selected_model(model_id: str | None) -> str | dict:
+    get_model_options(settings["api_key"])  # refresh catalog for default params
+    return resolve_model_selection(model_id, settings.get("model", "composer-2.5"))
 
 
 @asynccontextmanager
@@ -101,7 +94,7 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
-        "model_options": get_model_options(),
+        "model_options": get_model_options(settings["api_key"]),
     }
 
 
@@ -124,7 +117,9 @@ async def chat(req: ChatRequest):
     attachments = _attachments_payload(req.attachments())
     if not prompt and not attachments:
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
-    result = await sessions.send(req.session_id, prompt, req.model, req.mode_name(), attachments)
+    result = await sessions.send(
+        req.session_id, prompt, _selected_model(req.model), req.mode_name(), attachments
+    )
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -138,7 +133,9 @@ async def chat_stream(req: ChatRequest):
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
 
     async def event_gen():
-        async for event in sessions.stream(req.session_id, prompt, req.model, req.mode_name(), attachments):
+        async for event in sessions.stream(
+            req.session_id, prompt, _selected_model(req.model), req.mode_name(), attachments
+        ):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

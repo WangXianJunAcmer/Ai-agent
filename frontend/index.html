@@ -117,8 +117,9 @@
       font-weight: 600;
       outline: none;
       cursor: pointer;
-      width: 180px;
-      max-width: 42vw;
+      width: auto;
+      min-width: 7ch;
+      max-width: 350px;
     }
     .pill {
       display: inline-flex;
@@ -313,9 +314,19 @@
         if (Array.isArray(data.model_options) && data.model_options.length) {
           modelSelect.innerHTML = "";
           data.model_options.forEach(function (model) {
+            var id = "";
+            var label = "";
+            if (typeof model === "string") {
+              id = model;
+              label = model;
+            } else if (model && typeof model === "object") {
+              id = typeof model.id === "string" ? model.id : "";
+              label = typeof model.display_name === "string" ? model.display_name : id;
+            }
+            if (!id) return;
             var option = document.createElement("option");
-            option.value = model;
-            option.textContent = model;
+            option.value = id;
+            option.textContent = label || id;
             modelSelect.appendChild(option);
           });
         }
@@ -351,8 +362,12 @@
     document.getElementById("model-select").addEventListener("change", function (e) {
       selectedModel = e.target.value;
       syncStatusPill(currentRuntime);
-      var widgetModelSelect = document.getElementById("ai-agent-model");
-      if (widgetModelSelect) widgetModelSelect.value = selectedModel;
+      if (typeof window.__aiAgentSetModel === "function") {
+        window.__aiAgentSetModel(selectedModel);
+      } else {
+        var widgetModelSelect = document.getElementById("ai-agent-model");
+        if (widgetModelSelect) widgetModelSelect.value = selectedModel;
+      }
     });
 
     checkHealth();

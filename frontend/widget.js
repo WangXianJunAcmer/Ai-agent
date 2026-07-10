@@ -158,6 +158,29 @@
       font-weight: 500; flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .ai-agent-card.is-live .ai-agent-card-title {
+      position: relative;
+      color: transparent;
+      background: linear-gradient(
+        90deg,
+        #8a8a8a 0%,
+        #8a8a8a 35%,
+        #1a1a1a 50%,
+        #8a8a8a 65%,
+        #8a8a8a 100%
+      );
+      background-size: 220% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: ai-agent-live-shimmer 1.4s linear infinite;
+    }
+    @keyframes ai-agent-live-shimmer {
+      0% { background-position: 100% 0; }
+      100% { background-position: -100% 0; }
+    }
+    .ai-agent-card.is-live .ai-agent-card-header {
+      color: var(--ai-text);
+    }
     .ai-agent-card-meta {
       font-size: 12px; color: var(--ai-muted); white-space: nowrap; flex: 0 0 auto;
     }
@@ -166,9 +189,14 @@
       border-left: 2px solid var(--ai-border);
       color: var(--ai-muted); font-size: 12.5px; white-space: pre-wrap;
       word-break: break-word; background: transparent;
+      max-height: 240px; overflow-y: auto;
     }
     .ai-agent-card.is-expanded .ai-agent-card-body,
     .ai-agent-card.is-live .ai-agent-card-body { display: block; }
+    .ai-agent-card.is-live .ai-agent-card-body {
+      max-height: 320px;
+      color: var(--ai-text);
+    }
     .ai-agent-card.kind-run .ai-agent-card-body {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
@@ -414,20 +442,148 @@
     #ai-agent-compose-left, #ai-agent-compose-right {
       display: flex; align-items: center; gap: 6px; min-width: 0;
     }
-    #ai-agent-mode, #ai-agent-model {
+    #ai-agent-mode {
       appearance: none;
       border: 0;
-      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 0 center no-repeat;
-      padding: 2px 16px 2px 8px;
-      font: 12px/1.2 inherit; color: var(--ai-muted); cursor: pointer; max-width: 220px;
-    }
-    #ai-agent-mode {
-      background-color: #f4f4f4;
+      background: #f4f4f4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 8px center no-repeat;
       border-radius: 999px;
       padding: 5px 20px 5px 10px;
       max-width: 82px;
+      font: 12px/1.2 inherit;
+      color: var(--ai-muted);
+      cursor: pointer;
     }
-    #ai-agent-model:hover { color: var(--ai-text); }
+    #ai-agent-model-wrap {
+      position: relative;
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+    #ai-agent-model-btn {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      padding: 2px 4px 2px 8px;
+      font: 12px/1.2 inherit;
+      color: var(--ai-text);
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      max-width: min(280px, 48vw);
+      border-radius: 6px;
+    }
+    #ai-agent-model-btn:hover { background: rgba(0,0,0,.04); }
+    #ai-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
+    #ai-agent-model-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    #ai-agent-model-chevron {
+      flex: 0 0 auto;
+      width: 12px;
+      height: 12px;
+      opacity: .55;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") center / 12px no-repeat;
+    }
+    #ai-agent-model-menu {
+      display: none;
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 8px);
+      z-index: 40;
+      width: max-content;
+      min-width: 168px;
+      max-width: min(200px, calc(100vw - 24px));
+      border: 1px solid var(--ai-border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,.12);
+      padding: 8px;
+      overflow: hidden;
+    }
+    #ai-agent-model-wrap.is-open #ai-agent-model-menu { display: block; }
+    #ai-agent-model-auto-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+    #ai-agent-model-auto-row:hover { background: #f7f7f7; }
+    #ai-agent-model-auto-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    #ai-agent-model-auto-copy strong {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ai-text);
+    }
+    #ai-agent-model-auto-copy span {
+      font-size: 11px;
+      color: var(--ai-muted);
+      line-height: 1.35;
+    }
+    #ai-agent-model-auto {
+      appearance: none;
+      flex: 0 0 auto;
+      width: 36px;
+      height: 20px;
+      border: 0;
+      border-radius: 999px;
+      background: #d4d4d4;
+      position: relative;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+    #ai-agent-model-auto::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.18);
+      transition: transform .15s ease;
+    }
+    #ai-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
+    #ai-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
+    #ai-agent-model-list {
+      display: none;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid var(--ai-border);
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    #ai-agent-model-wrap:not(.is-auto) #ai-agent-model-list { display: block; }
+    .ai-agent-model-option {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font: 13px/1.3 inherit;
+      color: var(--ai-text);
+      cursor: pointer;
+    }
+    .ai-agent-model-option:hover { background: #f4f4f4; }
+    .ai-agent-model-option.is-selected {
+      background: #f0f0f0;
+      font-weight: 600;
+    }
+    #ai-agent-model { display: none; }
     #ai-agent-mode:hover { color: var(--ai-text); }
     #ai-agent-file-input { display: none; }
     #ai-agent-pick-file, #ai-agent-send {
@@ -503,10 +659,23 @@
                 </select>
                 <div id="ai-agent-mode-tip" role="tooltip">Plan mode：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。</div>
               </div>
-              <select id="ai-agent-model" title="模型">
-                <option value="composer-2.5">composer-2.5</option>
-                <option value="auto">auto</option>
-              </select>
+              <div id="ai-agent-model-wrap">
+                <button id="ai-agent-model-btn" type="button" title="模型" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="ai-agent-model-label">Composer 2.5</span>
+                  <span id="ai-agent-model-chevron" aria-hidden="true"></span>
+                </button>
+                <div id="ai-agent-model-menu" role="listbox" aria-label="选择模型">
+                  <div id="ai-agent-model-auto-row">
+                    <div id="ai-agent-model-auto-copy">
+                      <strong>Auto</strong>
+                      <span>自动选择适合当前任务的模型</span>
+                    </div>
+                    <button id="ai-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>
+                  </div>
+                  <div id="ai-agent-model-list"></div>
+                </div>
+                <input id="ai-agent-model" type="hidden" value="composer-2.5" />
+              </div>
             </div>
             <div id="ai-agent-compose-right">
               <input id="ai-agent-file-input" type="file" multiple />
@@ -534,6 +703,12 @@
   var inputField = document.getElementById("ai-agent-input");
   var modeField = document.getElementById("ai-agent-mode");
   var modeWrap = document.getElementById("ai-agent-mode-wrap");
+  var modelWrap = document.getElementById("ai-agent-model-wrap");
+  var modelBtn = document.getElementById("ai-agent-model-btn");
+  var modelLabel = document.getElementById("ai-agent-model-label");
+  var modelMenu = document.getElementById("ai-agent-model-menu");
+  var modelList = document.getElementById("ai-agent-model-list");
+  var modelAutoBtn = document.getElementById("ai-agent-model-auto");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
@@ -553,6 +728,8 @@
   var serverBootId = "";
   var HISTORY_KEY = "ai-agent-chat-history";
   var historySaveTimer = null;
+  var modelOptions = [];
+  var lastManualModel = defaultModel === "auto" ? "composer-2.5" : defaultModel;
   modelField.value = defaultModel;
 
   function serializeWorklog(msg) {
@@ -656,9 +833,7 @@
       sessionId = data.sessionId;
       try { localStorage.setItem("ai-agent-session-id", sessionId); } catch (err) {}
     }
-    if (data.model && Array.from(modelField.options).some(function (option) { return option.value === data.model; })) {
-      modelField.value = data.model;
-    }
+    if (data.model) setSelectedModel(data.model, false);
     threadDiv.innerHTML = "";
     (data.messages || []).forEach(function (item) {
       var msg = appendMessage(
@@ -679,28 +854,130 @@
     return false;
   }
 
+  function asModelLabel(value) {
+    if (value == null) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    if (typeof value === "object") {
+      if (typeof value.id === "string") return value.id;
+      if (typeof value.display_name === "string") return value.display_name;
+    }
+    return "";
+  }
+
+  function normalizeModelOption(model) {
+    if (typeof model === "string") {
+      return { id: model, label: model };
+    }
+    var id = asModelLabel(model && (model.id != null ? model.id : model.value));
+    var label = asModelLabel(model && model.display_name) || id;
+    return { id: id, label: label };
+  }
+
+  function modelLabelFor(id) {
+    if (!id || id === "auto") return "Auto";
+    for (var i = 0; i < modelOptions.length; i++) {
+      if (modelOptions[i].id === id) return modelOptions[i].label || id;
+    }
+    return id;
+  }
+
+  function knownModelIds() {
+    return modelOptions.map(function (m) { return m.id; });
+  }
+
+  function closeModelMenu() {
+    modelWrap.classList.remove("is-open");
+    modelBtn.classList.remove("is-open");
+    modelBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function openModelMenu() {
+    modelWrap.classList.add("is-open");
+    modelBtn.classList.add("is-open");
+    modelBtn.setAttribute("aria-expanded", "true");
+  }
+
+  function syncModelPickerUI() {
+    var id = modelField.value || defaultModel;
+    var isAuto = id === "auto";
+    modelWrap.classList.toggle("is-auto", isAuto);
+    modelAutoBtn.setAttribute("aria-checked", isAuto ? "true" : "false");
+    modelLabel.textContent = modelLabelFor(id);
+    Array.prototype.forEach.call(modelList.querySelectorAll(".ai-agent-model-option"), function (btn) {
+      btn.classList.toggle("is-selected", !isAuto && btn.getAttribute("data-model-id") === id);
+    });
+  }
+
+  function setSelectedModel(id, closeMenu) {
+    var next = (id || "").trim() || defaultModel;
+    if (next !== "auto" && modelOptions.length && knownModelIds().indexOf(next) < 0) {
+      next = knownModelIds().indexOf(lastManualModel) >= 0 ? lastManualModel : (knownModelIds()[0] || defaultModel);
+    }
+    if (next !== "auto") lastManualModel = next;
+    modelField.value = next;
+    syncModelPickerUI();
+    if (closeMenu !== false) closeModelMenu();
+  }
+
+  function renderModelList() {
+    modelList.innerHTML = "";
+    modelOptions.forEach(function (model) {
+      if (!model.id || model.id === "auto") return;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-agent-model-option";
+      btn.setAttribute("data-model-id", model.id);
+      btn.setAttribute("role", "option");
+      btn.textContent = model.label || model.id;
+      btn.addEventListener("click", function () {
+        setSelectedModel(model.id, true);
+      });
+      modelList.appendChild(btn);
+    });
+    syncModelPickerUI();
+  }
+
+  function fillModelOptions(options, preferred) {
+    if (!Array.isArray(options) || !options.length) return;
+    var seen = {};
+    modelOptions = [];
+    options.forEach(function (raw) {
+      var model = normalizeModelOption(raw);
+      if (!model.id || seen[model.id]) return;
+      seen[model.id] = true;
+      modelOptions.push(model);
+    });
+    if (!seen.auto) modelOptions.unshift({ id: "auto", label: "Auto" });
+    var current = preferred || modelField.value || defaultModel;
+    if (current !== "auto" && !seen[current]) {
+      current = seen[lastManualModel] ? lastManualModel : ((function () {
+        for (var i = 0; i < modelOptions.length; i++) {
+          if (modelOptions[i].id !== "auto") return modelOptions[i].id;
+        }
+        return modelOptions[0] && modelOptions[0].id;
+      })());
+    }
+    renderModelList();
+    setSelectedModel(current, false);
+  }
+
   async function loadModelOptions() {
     try {
       var res = await fetch(apiBase + "/api/health");
       if (!res.ok) throw new Error("HTTP " + res.status);
       var data = await res.json();
       serverBootId = data.boot_id || "";
-      if (Array.isArray(data.model_options) && data.model_options.length) {
-        modelField.innerHTML = "";
-        data.model_options.forEach(function (model) {
-          var option = document.createElement("option");
-          option.value = model;
-          option.textContent = model;
-          modelField.appendChild(option);
-        });
-      }
-      var preferredModel = defaultModel || data.model;
-      if (preferredModel && Array.from(modelField.options).some(function (option) { return option.value === preferredModel; })) {
-        modelField.value = preferredModel;
-      }
+      fillModelOptions(data.model_options, defaultModel || data.model);
       if (serverBootId) restoreChatHistory(serverBootId);
     } catch (err) {
-      modelField.value = defaultModel;
+      fillModelOptions(
+        [
+          { id: "composer-2.5", label: "Composer 2.5" },
+          { id: "auto", label: "Auto" },
+        ],
+        defaultModel
+      );
     }
   }
 
@@ -1074,6 +1351,7 @@
       msg.__runMeta = {
         startedAt: Date.now(),
         nextIndex: 1,
+        thinkSeq: 0,
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
@@ -1173,10 +1451,26 @@
     return "Thought for " + seconds + "s";
   }
 
+  function appendThinkingChunk(meta, chunk) {
+    if (!chunk) return;
+    var prev = meta.thinkingDetail || "";
+    if (!prev) {
+      meta.thinkingDetail = chunk;
+      return;
+    }
+    // Some SDK streams send cumulative snapshots; others send pure deltas.
+    if (chunk.indexOf(prev) === 0) {
+      meta.thinkingDetail = chunk;
+      return;
+    }
+    if (prev.indexOf(chunk) === 0) return;
+    meta.thinkingDetail = prev + chunk;
+  }
+
   function refreshThinkingCard(msg) {
     var meta = getRunMeta(msg);
     if (!meta.thinkingStartedAt) return;
-    upsertCard(msg, "think-live", {
+    var card = upsertCard(msg, "think-live", {
       kind: "think",
       title: thinkingTitle(meta, false),
       meta: "",
@@ -1184,6 +1478,8 @@
       paths: [],
       live: true,
     });
+    var body = card && card.querySelector(".ai-agent-card-body");
+    if (body) body.scrollTop = body.scrollHeight;
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
@@ -1296,15 +1592,22 @@
       clearInterval(meta.thinkingTimer);
       meta.thinkingTimer = null;
     }
-    upsertCard(msg, "think-live", {
+    var detail = meta.thinkingDetail || "";
+    var card = upsertCard(msg, "think-live", {
       kind: "think",
       title: thinkingTitle(meta, true),
       meta: "",
-      detail: meta.thinkingDetail || "",
+      detail: detail,
       paths: [],
       live: false,
       forceCollapsed: true,
     });
+    // Archive this thought under a unique key so the next Thinking pass
+    // cannot overwrite earlier thought content.
+    if (card) {
+      meta.thinkSeq = (meta.thinkSeq || 0) + 1;
+      card.setAttribute("data-card-key", "think-done-" + meta.thinkSeq);
+    }
     meta.thinkingStartedAt = 0;
     meta.thinkingDetail = "";
   }
@@ -1315,15 +1618,14 @@
     var chunk = detail || "";
     if (!meta.thinkingStartedAt) {
       meta.thinkingStartedAt = Date.now();
-      meta.thinkingDetail = chunk;
+      meta.thinkingDetail = "";
       if (!meta.thinkingTimer) {
         meta.thinkingTimer = setInterval(function () {
           refreshThinkingCard(msg);
         }, 1000);
       }
-    } else if (chunk) {
-      meta.thinkingDetail += chunk;
     }
+    appendThinkingChunk(meta, chunk);
     refreshThinkingCard(msg);
   }
 
@@ -1403,6 +1705,9 @@
     }
     inputField.value = item.text || "";
     modeField.value = item.mode || "agent";
+    if (item.model) {
+      setSelectedModel(item.model, false);
+    }
     pendingFiles = item.files.slice();
     removeQueueItem(item.id, false);
     updateModeUI();
@@ -1778,6 +2083,30 @@
 
   sendBtn.onclick = sendMessage;
   stopBtn.onclick = stopConversation;
+  modelBtn.onclick = function (e) {
+    e.stopPropagation();
+    if (modelWrap.classList.contains("is-open")) closeModelMenu();
+    else openModelMenu();
+  };
+  modelAutoBtn.onclick = function (e) {
+    e.stopPropagation();
+    var on = modelAutoBtn.getAttribute("aria-checked") !== "true";
+    if (on) setSelectedModel("auto", false);
+    else setSelectedModel(lastManualModel || "composer-2.5", false);
+  };
+  modelMenu.addEventListener("click", function (e) { e.stopPropagation(); });
+  document.addEventListener("click", function (e) {
+    if (!modelWrap.classList.contains("is-open")) return;
+    if (modelWrap.contains(e.target)) return;
+    closeModelMenu();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeModelMenu();
+  });
+  window.__aiAgentSetModel = function (id) {
+    setSelectedModel(id, false);
+  };
+  syncModelPickerUI();
   modeField.onchange = function () {
     updateModeUI();
     if (modeField.value === "plan") showPlanModeTip();
