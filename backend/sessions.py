@@ -591,7 +591,7 @@ class SessionManager:
     result,
     include_empty: bool = False,
   ) -> dict:
-    """Build one SSE tool_call event (shared by delta + run.messages paths)."""
+    """Build one SSE tool_call event from an on_delta tool update."""
     # UI only distinguishes live vs done; treat terminal failures as completed.
     raw = (status or "running").strip().lower()
     status = "completed" if raw in {"completed", "error", "failed", "cancelled", "canceled"} else "running"

@@ -1716,8 +1716,7 @@
       msg.__runMeta = {
         nextIndex: 1,
         thinkSeq: 0,
-        exploreSeq: 0,
-        exploreSteps: [],
+        exploreActive: false,
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
@@ -1945,49 +1944,33 @@
     removeCard(msg, "status-live");
   }
 
-  function finalizeExploreCard(msg) {
-    var worklog = ensureWorklog(msg);
-    var existing = worklog.querySelector('.ai-agent-card[data-card-key="explore-live"]');
-    var meta = getRunMeta(msg);
-    var steps = meta.exploreSteps || [];
-    var detail = steps.length
-      ? steps.join("\n")
-      : ((existing && existing.__cardData && existing.__cardData.detail) || "");
-    meta.exploreSteps = [];
-    if (!existing && !detail) return;
-    if (!detail) {
-      // Empty Explored row is useless — Cursor only keeps it when there's content,
-      // otherwise the individual Read/Grepped cards already tell the story.
-      if (existing) existing.remove();
-      return;
-    }
-    var card = upsertCard(msg, "explore-live", {
+  function appendExploredMarker(msg) {
+    appendCard(msg, {
       kind: "explore",
       title: "Explored",
       meta: "",
-      detail: detail,
+      detail: "",
       paths: [],
       live: false,
       forceCollapsed: true,
     });
-    if (card) {
-      meta.exploreSeq = (meta.exploreSeq || 0) + 1;
-      card.setAttribute("data-card-key", "explore-done-" + meta.exploreSeq);
-    }
   }
 
-  function noteExploring(msg, stepTitle) {
+  // ponytail: empty phase marker only — Read/Grepped/Ran cards carry the detail.
+  function finalizeExplorePhase(msg) {
     var meta = getRunMeta(msg);
-    if (!meta.exploreSteps) meta.exploreSteps = [];
-    var step = String(stepTitle || "").trim();
-    if (step && meta.exploreSteps[meta.exploreSteps.length - 1] !== step) {
-      meta.exploreSteps.push(step);
-    }
+    removeCard(msg, "explore-live");
+    if (!meta.exploreActive) return;
+    appendExploredMarker(msg);
+    meta.exploreActive = false;
+  }
+
+  function noteExploring(msg) {
     upsertCard(msg, "explore-live", {
       kind: "explore",
       title: "Exploring",
       meta: "",
-      detail: meta.exploreSteps.join("\n"),
+      detail: "",
       paths: [],
       live: true,
     });
@@ -2005,26 +1988,6 @@
       upper === "CANCELLED" ||
       upper === "CANCELED"
     );
-  }
-
-  function isSearchLikeActivity(text) {
-    var t = String(text || "").trim();
-    if (!t) return false;
-    return /正在|查询|搜索|获取|联网|天气|台风|新闻|资料|fetch|search|curl|http/i.test(t);
-  }
-
-  function noteLiveStatus(msg, text, kind) {
-    var title = String(text || "").trim();
-    if (!title || isNoisyStatus(title)) return;
-    upsertCard(msg, "status-live", {
-      kind: kind || (isSearchLikeActivity(title) ? "explore" : "run"),
-      title: title,
-      meta: "",
-      detail: "",
-      paths: [],
-      live: true,
-    });
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
   function isInterimReplyText(text) {
@@ -2076,14 +2039,14 @@
   function finalizeLiveCards(msg) {
     finalizePlanCard(msg);
     finalizeThoughtCard(msg);
-    finalizeExploreCard(msg);
+    finalizeExplorePhase(msg);
     finalizeStatusCard(msg);
   }
 
   function noteThinking(msg, detail) {
     finalizePlanCard(msg);
     finalizeStatusCard(msg);
-    finalizeExploreCard(msg);
+    finalizeExplorePhase(msg);
     var meta = getRunMeta(msg);
     var chunk = detail || "";
     if (!meta.thinkingStartedAt) {
@@ -2423,9 +2386,11 @@
           if (payload.type === "text") {
             reply += payload.content || "";
             if (isInterimReplyText(reply)) {
+              // Cursor: interim status only in the header, not archived in worklog.
               updateRunState(reply.trim() || "搜索中");
-              finalizeLiveCards(agentMsg);
-              noteLiveStatus(agentMsg, reply.trim());
+              finalizePlanCard(agentMsg);
+              finalizeThoughtCard(agentMsg);
+              finalizeStatusCard(agentMsg);
               messagesDiv.scrollTop = messagesDiv.scrollHeight;
             } else {
               updateRunState("回复中");
@@ -2466,11 +2431,11 @@
               ? ("tool-" + payload.call_id)
               : ("tool-" + (payload.name || "tool") + "-" + Date.now());
             if (summary.kind === "explore") {
-              // Keep one live Exploring card for the whole explore burst;
-              // finish it only when thinking / reply / non-explore tool starts.
-              noteExploring(agentMsg, toolView.title);
+              // Keep Exploring live for the whole explore burst; archive on leave.
+              getRunMeta(agentMsg).exploreActive = true;
+              noteExploring(agentMsg);
             } else {
-              finalizeExploreCard(agentMsg);
+              finalizeExplorePhase(agentMsg);
             }
             upsertCard(agentMsg, toolKey, {
               kind: summary.kind || "tool",
@@ -2487,8 +2452,7 @@
             if (!toolRunning && summary.kind !== "explore") notePlanning(agentMsg, "");
           } else if (payload.type === "status") {
             var statusText = payload.content || payload.status || "正在处理";
-            updateRunState(statusText);
-            noteLiveStatus(agentMsg, statusText);
+            if (!isNoisyStatus(statusText)) updateRunState(statusText);
           } else if (payload.type === "task") {
             updateRunState(payload.content || "正在执行任务");
             finalizePlanCard(agentMsg);
