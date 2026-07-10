@@ -169,29 +169,10 @@
     }
     .ai-agent-card.is-expanded .ai-agent-card-body,
     .ai-agent-card.is-live .ai-agent-card-body { display: block; }
-    .ai-agent-card.kind-run .ai-agent-card-body,
-    .ai-agent-card.kind-run .ai-agent-card-preview {
+    .ai-agent-card.kind-run .ai-agent-card-body {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
     }
-    .ai-agent-card-preview {
-      display: none;
-      margin: 2px 0 6px 20px;
-      padding: 0 10px;
-      border-left: 2px solid var(--ai-border);
-      color: var(--ai-muted);
-      font-size: 12.5px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow: hidden;
-      max-height: 4.35em;
-    }
-    .ai-agent-card.has-preview:not(.is-expanded):not(.is-live) .ai-agent-card-preview {
-      display: block;
-    }
-    .ai-agent-card.is-live .ai-agent-card-preview { display: none; }
-    .ai-agent-card.is-expanded .ai-agent-card-preview { display: none; }
     .ai-agent-paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .ai-agent-path {
       display: inline-flex; align-items: center; max-width: 100%;
@@ -1005,13 +986,8 @@
     if (header) header.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 
-  function cardPreviewText(merged) {
-    if (merged.detail && String(merged.detail).trim()) return String(merged.detail).trim();
-    if (merged.paths && merged.paths.length) return merged.paths.join("\n");
-    return "";
-  }
-
   function applyCardExpansion(card, merged, options) {
+    // live: fully open; finished: collapse unless user reopened it
     if (merged.live) {
       setCardExpanded(card, true);
       return;
@@ -1024,11 +1000,7 @@
       setCardExpanded(card, true);
       return;
     }
-    if (options.expand) {
-      setCardExpanded(card, true);
-      return;
-    }
-    setCardExpanded(card, card.classList.contains("is-expanded"));
+    setCardExpanded(card, false);
   }
 
   function bindCardToggle(card) {
@@ -1114,15 +1086,9 @@
           '<span class="ai-agent-card-title"></span>' +
           '<span class="ai-agent-card-meta"></span>' +
         "</div>" +
-        '<div class="ai-agent-card-preview"></div>' +
         '<div class="ai-agent-card-body"></div>';
       bindCardToggle(card);
       worklog.appendChild(card);
-    } else if (!card.querySelector(".ai-agent-card-preview")) {
-      var existingBody = card.querySelector(".ai-agent-card-body");
-      var previewNode = document.createElement("div");
-      previewNode.className = "ai-agent-card-preview";
-      card.insertBefore(previewNode, existingBody);
     }
     var previous = card.__cardData || {};
     var merged = {
@@ -1139,15 +1105,12 @@
     card.className = "ai-agent-card kind-" + merged.kind;
     card.classList.toggle("is-live", merged.live);
     card.classList.toggle("has-body", cardHasBody(merged));
-    card.classList.toggle("has-preview", cardHasBody(merged) && !merged.live);
     var header = card.querySelector(".ai-agent-card-header");
     var expandable = cardHasBody(merged);
     header.setAttribute("tabindex", expandable ? "0" : "-1");
     header.setAttribute("role", expandable ? "button" : "presentation");
     card.querySelector(".ai-agent-card-title").textContent = merged.title;
     card.querySelector(".ai-agent-card-meta").textContent = merged.meta;
-    var preview = card.querySelector(".ai-agent-card-preview");
-    preview.textContent = cardPreviewText(merged);
     var body = card.querySelector(".ai-agent-card-body");
     body.innerHTML = "";
     if (merged.detail) {
