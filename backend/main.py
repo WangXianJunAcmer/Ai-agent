@@ -66,6 +66,7 @@ class ChatRequest(BaseModel):
     text: str | None = None
     session_id: str | None = None
     model: str | None = None
+    mode: str | None = None
     images: list[AttachmentPayload] | None = None
     files: list[AttachmentPayload] | None = None
 
@@ -74,6 +75,9 @@ class ChatRequest(BaseModel):
 
     def attachments(self) -> list[AttachmentPayload]:
         return list(self.files or []) + list(self.images or [])
+
+    def mode_name(self) -> str:
+        return self.mode if self.mode in {"agent", "plan"} else "agent"
 
 
 @app.get("/")
@@ -117,7 +121,7 @@ async def chat(req: ChatRequest):
     attachments = _attachments_payload(req.attachments())
     if not prompt and not attachments:
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
-    result = await sessions.send(req.session_id, prompt, req.model, attachments)
+    result = await sessions.send(req.session_id, prompt, req.model, req.mode_name(), attachments)
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -131,7 +135,7 @@ async def chat_stream(req: ChatRequest):
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
 
     async def event_gen():
-        async for event in sessions.stream(req.session_id, prompt, req.model, attachments):
+        async for event in sessions.stream(req.session_id, prompt, req.model, req.mode_name(), attachments):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

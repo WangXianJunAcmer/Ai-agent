@@ -1,0 +1,43 @@
+---
+description: Safe editing constraints — keep Ai-agent runnable and intact
+alwaysApply: true
+---
+
+# Safe edits for Ai-agent
+
+This repo is a **sidecar service**. Every change must leave `./run.sh` and `python start.py` able to start the server and serve the widget.
+
+## Never without explicit user request
+
+- Delete or rename core entrypoints: `start.py`, `run.sh`, `config.yaml`, `requirements.txt`
+- Delete or gut: `backend/main.py`, `backend/sessions.py`, `frontend/widget.js`, `frontend/index.html`
+- Run destructive git commands (`reset --hard`, `clean -fd`, force-push)
+- Edit or commit `.env`, API keys, or credentials
+- Modify vendored env `ai/` (site-packages, bridge binaries) — use `pip install -r requirements.txt` instead
+- Mass-delete files, folders, or large unrelated blocks “while refactoring”
+
+## Before editing
+
+1. Read the file and trace the real flow (startup → API → widget).
+2. Prefer the **smallest diff** that fixes the task; don’t rewrite whole files for a局部 UI tweak.
+3. Reuse existing helpers/patterns in this repo before adding new abstractions.
+
+## While editing
+
+- **One concern per change** — don’t mix unrelated refactors with the user’s ask.
+- Replacing a function: keep callers working; grep callers before changing signatures.
+- CSS/HTML in `widget.js`: change only the section you need; don’t restyle unrelated composer/thread UI.
+- Backend API shape (`/api/chat`, SSE events): backward-compatible unless the user asked for a breaking change.
+
+## After non-trivial changes
+
+- Run the smallest check that would fail if you broke startup or the touched path, e.g.:
+  - `python -m py_compile backend/main.py` (backend)
+  - `node` smoke extract for `renderMarkdown` (frontend markdown)
+  - `curl http://127.0.0.1:8765/api/health` if server is running
+- If a change might break embed hosts (ad-plex), note what to verify there.
+
+## When unsure
+
+- Ask before large restructures, dependency adds, or deleting “unused” code you didn’t grep.
+- If two approaches exist, pick the one with **fewer files touched** and **no new moving parts**.

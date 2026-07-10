@@ -170,17 +170,43 @@
     .ai-agent-msg .body blockquote,
     .ai-agent-msg .body h1,
     .ai-agent-msg .body h2,
-    .ai-agent-msg .body h3 { margin: 0 0 10px; }
+    .ai-agent-msg .body h3,
+    .ai-agent-msg .body h4 { margin: 0 0 10px; }
     .ai-agent-msg .body ul,
     .ai-agent-msg .body ol { padding-left: 22px; }
     .ai-agent-msg .body li + li { margin-top: 4px; }
+    .ai-agent-msg .body li input[type="checkbox"] {
+      margin-right: 6px; vertical-align: middle; pointer-events: none;
+    }
     .ai-agent-msg .body h1,
     .ai-agent-msg .body h2,
-    .ai-agent-msg .body h3 { line-height: 1.35; font-weight: 650; }
+    .ai-agent-msg .body h3,
+    .ai-agent-msg .body h4 { line-height: 1.35; font-weight: 650; }
     .ai-agent-msg .body h1 { font-size: 22px; }
     .ai-agent-msg .body h2 { font-size: 19px; }
     .ai-agent-msg .body h3 { font-size: 17px; }
+    .ai-agent-msg .body h4 { font-size: 15px; }
     .ai-agent-msg .body strong { font-weight: 650; }
+    .ai-agent-msg .body em { font-style: italic; }
+    .ai-agent-msg .body del { text-decoration: line-through; color: var(--ai-muted); }
+    .ai-agent-msg .body a {
+      color: #2563eb; text-decoration: underline; text-underline-offset: 2px;
+      word-break: break-word;
+    }
+    .ai-agent-msg .body a:hover { color: #1d4ed8; }
+    .ai-agent-msg .body hr {
+      border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
+    }
+    .ai-agent-msg .body table {
+      width: 100%; border-collapse: collapse; margin: 0 0 12px;
+      font-size: 13px; display: block; overflow-x: auto;
+    }
+    .ai-agent-msg .body th,
+    .ai-agent-msg .body td {
+      border: 1px solid var(--ai-border); padding: 8px 10px; text-align: left;
+      vertical-align: top;
+    }
+    .ai-agent-msg .body th { background: #f4f4f4; font-weight: 650; }
     .ai-agent-msg .body code {
       padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.06);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;
@@ -250,6 +276,35 @@
       flex-direction: column;
       gap: 8px;
     }
+    #ai-agent-compose-shell.mode-plan {
+      box-shadow: 0 0 0 1px rgba(67,56,202,.22), 0 8px 24px rgba(67,56,202,.08);
+      background: linear-gradient(180deg, #fff, #fbfbff);
+    }
+    #ai-agent-mode-wrap {
+      position: relative;
+      flex: 0 0 auto;
+    }
+    #ai-agent-mode-tip {
+      display: none;
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 8px);
+      z-index: 30;
+      width: max-content;
+      max-width: 280px;
+      border: 1px solid #c7d2fe;
+      border-radius: 10px;
+      background: #eef2ff;
+      color: #4338ca;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      box-shadow: 0 8px 24px rgba(67,56,202,.12);
+      pointer-events: none;
+    }
+    #ai-agent-mode-wrap.show-plan-tip #ai-agent-mode-tip {
+      display: block;
+    }
     #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
     #ai-agent-attachments:empty { display: none; }
     .ai-agent-thumb { position: relative; width: 56px; height: 56px; }
@@ -285,15 +340,21 @@
     #ai-agent-compose-left, #ai-agent-compose-right {
       display: flex; align-items: center; gap: 6px; min-width: 0;
     }
-    /* SDK only exposes agent/plan; no Cursor-style mode menu here. */
-    #ai-agent-model {
+    #ai-agent-mode, #ai-agent-model {
       appearance: none;
       border: 0;
       background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 0 center no-repeat;
-      padding: 2px 16px 2px 0;
+      padding: 2px 16px 2px 8px;
       font: 12px/1.2 inherit; color: var(--ai-muted); cursor: pointer; max-width: 220px;
     }
+    #ai-agent-mode {
+      background-color: #f4f4f4;
+      border-radius: 999px;
+      padding: 5px 20px 5px 10px;
+      max-width: 82px;
+    }
     #ai-agent-model:hover { color: var(--ai-text); }
+    #ai-agent-mode:hover { color: var(--ai-text); }
     #ai-agent-file-input { display: none; }
     #ai-agent-pick-file, #ai-agent-send {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
@@ -341,6 +402,13 @@
           <textarea id="ai-agent-input" rows="1" placeholder="Plan, @ for context, / for commands"></textarea>
           <div id="ai-agent-compose-toolbar">
             <div id="ai-agent-compose-left">
+              <div id="ai-agent-mode-wrap">
+                <select id="ai-agent-mode" title="模式">
+                  <option value="agent">Agent</option>
+                  <option value="plan" title="Plan mode：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。">Plan</option>
+                </select>
+                <div id="ai-agent-mode-tip" role="tooltip">Plan mode：只制定/讨论方案，不直接修改代码；确认后可切回 Agent 执行。</div>
+              </div>
               <select id="ai-agent-model" title="模型">
                 <option value="composer-2.5">composer-2.5</option>
                 <option value="auto">auto</option>
@@ -366,7 +434,10 @@
   var sidebar = document.getElementById("ai-agent-sidebar");
   var closeBtn = document.getElementById("ai-agent-close");
   var sendBtn = document.getElementById("ai-agent-send");
+  var composeShell = document.getElementById("ai-agent-compose-shell");
   var inputField = document.getElementById("ai-agent-input");
+  var modeField = document.getElementById("ai-agent-mode");
+  var modeWrap = document.getElementById("ai-agent-mode-wrap");
   var modelField = document.getElementById("ai-agent-model");
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
@@ -435,15 +506,58 @@
       .replace(/'/g, "&#39;");
   }
 
+  function formatInlineMarkdown(text) {
+    var escaped = escapeHtml(text);
+    var inlineCodes = [];
+    var out = escaped.replace(/`([^`\n]+)`/g, function (_, code) {
+      inlineCodes.push("<code>" + code + "</code>");
+      return "%%INLINECODE_" + (inlineCodes.length - 1) + "%%";
+    });
+    out = out
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>')
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/__(.+?)__/g, "<strong>$1</strong>")
+      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>")
+      .replace(/~~(.+?)~~/g, "<del>$1</del>");
+    return out.replace(/%%INLINECODE_(\d+)%%/g, function (_, index) {
+      return inlineCodes[Number(index)] || "";
+    });
+  }
+
+  function isTableRow(line) {
+    return /^\|.+\|$/.test(line.trim());
+  }
+
+  function isTableSeparator(line) {
+    return /^\|[\s:|-]+\|$/.test(line.trim());
+  }
+
+  function renderTableRows(rows) {
+    if (!rows.length) return "";
+    var html = ["<table>"];
+    rows.forEach(function (row, index) {
+      var cells = row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
+      var tag = index === 0 ? "th" : "td";
+      html.push("<tr>" + cells.map(function (cell) {
+        return "<" + tag + ">" + formatInlineMarkdown(cell.trim()) + "</" + tag + ">";
+      }).join("") + "</tr>");
+    });
+    html.push("</table>");
+    return html.join("");
+  }
+
   function renderMarkdown(text) {
-    var escaped = escapeHtml(text).replace(/\r\n/g, "\n");
+    var normalized = text.replace(/\r\n/g, "\n");
     var codeBlocks = [];
-    escaped = escaped.replace(/```([\s\S]*?)```/g, function (_, code) {
-      codeBlocks.push('<pre><code>' + code.trim() + '</code></pre>');
+    normalized = normalized.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, function (_, lang, code) {
+      var language = (lang || "").trim();
+      var cls = language ? ' class="language-' + escapeHtml(language) + '"' : "";
+      codeBlocks.push("<pre><code" + cls + ">" + escapeHtml(code.replace(/\n$/, "")) + "</code></pre>");
       return "%%CODEBLOCK_" + (codeBlocks.length - 1) + "%%";
     });
 
-    var lines = escaped.split("\n");
+    var lines = normalized.split("\n");
     var html = [];
     var inList = false;
     var listType = "";
@@ -469,24 +583,66 @@
         html.push(trimmed);
         continue;
       }
+      if (/^(---|\*\*\*|___)\s*$/.test(trimmed)) {
+        closeList();
+        html.push("<hr />");
+        continue;
+      }
+      if (isTableRow(trimmed)) {
+        closeList();
+        var tableRows = [trimmed];
+        while (i + 1 < lines.length && isTableRow(lines[i + 1].trim())) {
+          i += 1;
+          tableRows.push(lines[i].trim());
+        }
+        if (tableRows.length >= 2 && isTableSeparator(tableRows[1])) {
+          html.push(renderTableRows([tableRows[0]].concat(tableRows.slice(2))));
+        } else {
+          tableRows.forEach(function (row) {
+            html.push("<p>" + formatInlineMarkdown(row) + "</p>");
+          });
+        }
+        continue;
+      }
+      if (/^####\s+/.test(trimmed)) {
+        closeList();
+        html.push("<h4>" + formatInlineMarkdown(trimmed.replace(/^####\s+/, "")) + "</h4>");
+        continue;
+      }
       if (/^###\s+/.test(trimmed)) {
         closeList();
-        html.push("<h3>" + trimmed.replace(/^###\s+/, "") + "</h3>");
+        html.push("<h3>" + formatInlineMarkdown(trimmed.replace(/^###\s+/, "")) + "</h3>");
         continue;
       }
       if (/^##\s+/.test(trimmed)) {
         closeList();
-        html.push("<h2>" + trimmed.replace(/^##\s+/, "") + "</h2>");
+        html.push("<h2>" + formatInlineMarkdown(trimmed.replace(/^##\s+/, "")) + "</h2>");
         continue;
       }
       if (/^#\s+/.test(trimmed)) {
         closeList();
-        html.push("<h1>" + trimmed.replace(/^#\s+/, "") + "</h1>");
+        html.push("<h1>" + formatInlineMarkdown(trimmed.replace(/^#\s+/, "")) + "</h1>");
         continue;
       }
       if (/^>\s+/.test(trimmed)) {
         closeList();
-        html.push("<blockquote>" + trimmed.replace(/^>\s+/, "") + "</blockquote>");
+        html.push("<blockquote>" + formatInlineMarkdown(trimmed.replace(/^>\s+/, "")) + "</blockquote>");
+        continue;
+      }
+      if (/^[-*]\s+\[[ xX]\]\s+/.test(trimmed)) {
+        if (!inList || listType !== "ul") {
+          closeList();
+          html.push("<ul>");
+          inList = true;
+          listType = "ul";
+        }
+        var taskBody = trimmed.replace(/^[-*]\s+/, "");
+        var checked = /^\[[xX]\]/.test(taskBody);
+        var taskText = taskBody.replace(/^\[[ xX]\]\s+/, "");
+        html.push(
+          '<li><input type="checkbox" disabled' + (checked ? " checked" : "") + ' />' +
+          formatInlineMarkdown(taskText) + "</li>"
+        );
         continue;
       }
       if (/^[-*]\s+/.test(trimmed)) {
@@ -496,7 +652,7 @@
           inList = true;
           listType = "ul";
         }
-        html.push("<li>" + trimmed.replace(/^[-*]\s+/, "") + "</li>");
+        html.push("<li>" + formatInlineMarkdown(trimmed.replace(/^[-*]\s+/, "")) + "</li>");
         continue;
       }
       if (/^\d+\.\s+/.test(trimmed)) {
@@ -506,21 +662,16 @@
           inList = true;
           listType = "ol";
         }
-        html.push("<li>" + trimmed.replace(/^\d+\.\s+/, "") + "</li>");
+        html.push("<li>" + formatInlineMarkdown(trimmed.replace(/^\d+\.\s+/, "")) + "</li>");
         continue;
       }
 
       closeList();
-      html.push("<p>" + trimmed + "</p>");
+      html.push("<p>" + formatInlineMarkdown(trimmed) + "</p>");
     }
     closeList();
 
-    var joined = html.join("\n");
-    joined = joined
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    return joined.replace(/%%CODEBLOCK_(\d+)%%/g, function (_, index) {
+    return html.join("\n").replace(/%%CODEBLOCK_(\d+)%%/g, function (_, index) {
       return codeBlocks[Number(index)] || "";
     });
   }
@@ -767,8 +918,10 @@
       clearPendingFiles(true);
     }
     inputField.value = item.text || "";
+    modeField.value = item.mode || "agent";
     pendingFiles = item.files.slice();
     removeQueueItem(item.id, false);
+    updateModeUI();
     renderAttachmentPreview();
     inputField.focus();
   }
@@ -793,7 +946,7 @@
       var left = document.createElement("div");
       left.innerHTML = '<div class="meta"></div><div class="text" title="点击编辑"></div>';
       left.querySelector(".meta").textContent =
-        "排队 #" + (index + 1) +
+        "排队 #" + (index + 1) + " · " + ((item.mode || "agent") === "plan" ? "Plan" : "Agent") +
         (item.files.length ? " · " + item.files.length + " 个附件" : "");
       left.querySelector(".text").textContent = item.text || "(仅附件)";
       left.querySelector(".text").onclick = function () { editQueueItem(item); };
@@ -914,6 +1067,24 @@
     stopBtn.classList.toggle("visible", !!isRunning);
   }
 
+  function hidePlanModeTip() {
+    modeWrap.classList.remove("show-plan-tip");
+  }
+
+  function showPlanModeTip() {
+    if (modeField.value !== "plan") return;
+    modeWrap.classList.add("show-plan-tip");
+  }
+
+  function updateModeUI() {
+    var isPlan = modeField.value === "plan";
+    composeShell.classList.toggle("mode-plan", isPlan);
+    inputField.placeholder = isPlan
+      ? "描述你想先规划的问题"
+      : "给 Ai-agent 发送消息";
+    if (!isPlan) hidePlanModeTip();
+  }
+
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
@@ -921,6 +1092,7 @@
       id: "q-" + (++queueSeq),
       text: text,
       model: modelField.value,
+      mode: modeField.value,
       files: pendingFiles.slice(),
     };
     sendQueue.push(item);
@@ -959,6 +1131,7 @@
           message: item.text || (item.files.length ? "请查看我上传的附件。" : ""),
           session_id: sessionId || null,
           model: item.model,
+          mode: item.mode || "agent",
           files: filesPayload.length ? filesPayload : null,
         }),
       });
@@ -1120,6 +1293,14 @@
 
   sendBtn.onclick = sendMessage;
   stopBtn.onclick = stopConversation;
+  modeField.onchange = function () {
+    updateModeUI();
+    if (modeField.value === "plan") showPlanModeTip();
+  };
+  modeField.onfocus = showPlanModeTip;
+  modeField.onblur = hidePlanModeTip;
+  modeWrap.onmouseenter = showPlanModeTip;
+  modeWrap.onmouseleave = hidePlanModeTip;
   pickFileBtn.onclick = function () { fileInput.click(); };
   fileInput.addEventListener("change", function (e) {
     handleFileSelection(e.target.files);
@@ -1157,5 +1338,6 @@
     updateRunState("就绪");
   };
   updateRunState("就绪");
+  updateModeUI();
   loadModelOptions();
 })();

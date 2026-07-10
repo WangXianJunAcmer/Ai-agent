@@ -584,13 +584,20 @@ class SessionManager:
     self._sessions[sid] = session
     return session
 
-  async def send(self, session_id: str | None, message: str, model: str | None = None, attachments: list[dict] | None = None) -> dict:
+  async def send(
+    self,
+    session_id: str | None,
+    message: str,
+    model: str | None = None,
+    mode: str = "agent",
+    attachments: list[dict] | None = None,
+  ) -> dict:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
         payload, files = self._build_message(message, attachments, session)
         remembered = self._remember_attachments(session, attachments, files)
-        run = await session.agent.send(payload, SendOptions())
+        run = await session.agent.send(payload, SendOptions(mode=mode))
         result = await run.wait()
         reply = await run.text()
         return {
@@ -613,7 +620,14 @@ class SessionManager:
           "recent_files": list(session.recent_files),
         }
 
-  async def stream(self, session_id: str | None, message: str, model: str | None = None, attachments: list[dict] | None = None) -> AsyncIterator[dict]:
+  async def stream(
+    self,
+    session_id: str | None,
+    message: str,
+    model: str | None = None,
+    mode: str = "agent",
+    attachments: list[dict] | None = None,
+  ) -> AsyncIterator[dict]:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
@@ -636,7 +650,7 @@ class SessionManager:
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
         run = await session.agent.send(
           payload,
-          SendOptions(on_delta=on_delta),
+          SendOptions(on_delta=on_delta, mode=mode),
         )
 
         async def forward_messages() -> None:
