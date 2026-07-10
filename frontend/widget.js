@@ -2742,12 +2742,24 @@
     });
   }
 
+  function guessImageMime(name, mime) {
+    if (mime && mime.indexOf("image/") === 0) return mime;
+    var lower = String(name || "").toLowerCase();
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".bmp")) return "image/bmp";
+    if (lower.endsWith(".svg")) return "image/svg+xml";
+    return mime || "application/octet-stream";
+  }
+
   async function handleFileSelection(files) {
     var list = Array.from(files || []);
     for (var i = 0; i < list.length; i++) {
       var file = list[i];
       var data = await readFileAsBase64(file);
-      var mime = file.type || "application/octet-stream";
+      var mime = guessImageMime(file.name, file.type || "");
       var isImage = mime.indexOf("image/") === 0;
       pendingFiles.push({
         kind: isImage ? "image" : "file",
@@ -2767,6 +2779,18 @@
     }
     pendingFiles = [];
     renderAttachmentPreview();
+  }
+
+  function splitUploadPayload(files) {
+    var images = [];
+    var filesOnly = [];
+    (files || []).forEach(function (item) {
+      var mime = guessImageMime(item.name, item.mime_type || "");
+      var payload = { name: item.name, mime_type: mime, data: item.data };
+      if (mime.indexOf("image/") === 0) images.push(payload);
+      else filesOnly.push(payload);
+    });
+    return { images: images, files: filesOnly };
   }
 
   function buildFilesPayload(files) {
@@ -2862,7 +2886,7 @@
     clearStoppedAgentOutput();
     var label = item.text || (item.files.length ? "(附件)" : "");
     appendMessage("You", label, "user", false, item.files);
-    var filesPayload = buildFilesPayload(item.files);
+    var uploadPayload = splitUploadPayload(item.files);
     var agentMsg = appendMessage("Agent", "", "agent", true);
     if ((item.model || "") === "auto") {
       autoResolvedModel = "";
@@ -2885,7 +2909,8 @@
           session_id: sessionId || null,
           model: item.model,
           mode: item.mode || "agent",
-          files: filesPayload.length ? filesPayload : null,
+          images: uploadPayload.images.length ? uploadPayload.images : null,
+          files: uploadPayload.files.length ? uploadPayload.files : null,
         }),
       });
 
@@ -3018,8 +3043,18 @@
           } else if (payload.type === "done") {
             finished = true;
             finalizeLiveCards(agentMsg);
+            var doneStatus = String(payload.status || "").toLowerCase();
+            var doneErr = payload.error || payload.result || "";
             if (reply) {
               streamTimelineText(agentMsg, reply, true);
+            } else if (doneStatus === "error" || doneStatus === "failed") {
+              streamStandaloneText(
+                agentMsg,
+                "错误: " + formatAgentError(doneErr || "图片或请求处理失败，请重试或开新对话"),
+                false
+              );
+            } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
+              streamStandaloneText(agentMsg, doneErr, false);
             } else if (!agentMsg.querySelector(".ai-agent-segment-text")) {
               streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
             }

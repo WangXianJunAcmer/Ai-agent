@@ -157,6 +157,13 @@ def check_attachments() -> None:
             [{"name": "a.png", "mime_type": "image/png", "data": "aaa"}],
         )
         assert getattr(built, "images", None) is not None
+        # Browser may omit file.type; extension should still route to vision.
+        built2, files2 = mgr._build_message(
+            "看图",
+            [{"name": "屏幕截图.png", "mime_type": "application/octet-stream", "data": "bbb"}],
+        )
+        assert getattr(built2, "images", None) is not None, built2
+        assert files2 == [], files2
         print("ok attachments")
     finally:
         shutil.rmtree(root, ignore_errors=True)

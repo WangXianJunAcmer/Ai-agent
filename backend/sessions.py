@@ -646,14 +646,36 @@ class SessionManager:
       return "服务内部错误，常见于上一条被中断后 Agent 尚未释放。请再发一次或开新对话。原始错误: " + msg
     return msg
 
+  _IMAGE_EXT_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+  }
+
   def _is_image(self, mime_type: str) -> bool:
     return (mime_type or "").startswith("image/")
 
+  def _resolve_attachment_mime(self, item: dict) -> str:
+    """Browsers often leave file.type empty; fall back to extension."""
+    mime = (item.get("mime_type") or "").strip()
+    if self._is_image(mime):
+      return mime
+    ext = Path(item.get("name") or "").suffix.lower()
+    return self._IMAGE_EXT_MIME.get(ext, mime or "application/octet-stream")
+
   def _image_attachments(self, attachments: list[dict] | None) -> list[dict]:
-    return [
-      item for item in (attachments or [])
-      if self._is_image(item.get("mime_type") or "") and item.get("data")
-    ]
+    out: list[dict] = []
+    for item in attachments or []:
+      if not item.get("data"):
+        continue
+      mime = self._resolve_attachment_mime(item)
+      if self._is_image(mime):
+        out.append({**item, "mime_type": mime})
+    return out
 
   def _safe_filename(self, name: str) -> str:
     base = Path(name or "file").name
@@ -669,7 +691,7 @@ class SessionManager:
     upload_dir.mkdir(parents=True, exist_ok=True)
     saved: list[dict] = []
     for item in attachments:
-      mime = item.get("mime_type") or "application/octet-stream"
+      mime = self._resolve_attachment_mime(item)
       if self._is_image(mime):
         continue
       raw = item.get("data") or ""
@@ -867,7 +889,7 @@ class SessionManager:
         result = await run.wait()
         reply = await run.text()
         resolved = self._model_id_from_selection(getattr(result, "model", None))
-        return {
+        out = {
           "session_id": session.session_id,
           "reply": reply,
           "status": result.status,
@@ -877,6 +899,12 @@ class SessionManager:
           **self._resolved_model_payload(resolved),
           **upload_meta,
         }
+        terminal = (result.result or "").strip()
+        if terminal and not reply:
+          out["reply"] = terminal
+        if str(result.status).lower() in {"error", "failed"} and terminal:
+          out["error"] = self._friendly_error(terminal)
+        return out
       except CursorAgentError as err:
         # ponytail: leave reply empty; HTTP layer maps status=error → 502 detail
         return {
@@ -962,7 +990,8 @@ class SessionManager:
 
         result = await run.wait()
         resolved = self._model_id_from_selection(getattr(result, "model", None))
-        yield {
+        terminal = (result.result or "").strip()
+        done_evt: dict = {
           "type": "done",
           "session_id": session.session_id,
           "status": result.status,
@@ -971,6 +1000,11 @@ class SessionManager:
           "model": session.model,
           **self._resolved_model_payload(resolved),
         }
+        if terminal:
+          done_evt["result"] = terminal
+          if str(result.status).lower() in {"error", "failed"}:
+            done_evt["error"] = self._friendly_error(terminal)
+        yield done_evt
       except asyncio.CancelledError:
         await self._cancel_run(run)
         raise
