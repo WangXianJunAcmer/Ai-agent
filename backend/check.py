@@ -99,8 +99,9 @@ def check_tool_display() -> None:
     )
     assert failed["status"] == "completed", failed
 
-    assert model_display_name("default") == "auto"
-    assert model_display_name("auto") == "auto"
+    assert model_display_name("default") == "Auto"
+    assert model_display_name("auto") == "Auto"
+    assert model_display_name("composer-2.5") == "Composer 2.5"
     print("ok tool display")
 
 

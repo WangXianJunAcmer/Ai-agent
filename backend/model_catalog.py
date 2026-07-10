@@ -18,6 +18,19 @@ def normalize_model_id(model_id: str | None) -> str:
     return "auto" if mid == "default" else mid
 
 
+def _pretty_model_id(mid: str) -> str:
+    """composer-2.5 → Composer 2.5 when catalog has no display_name yet."""
+    parts: list[str] = []
+    for part in mid.replace("_", "-").split("-"):
+        if not part:
+            continue
+        if part.replace(".", "", 1).isdigit():
+            parts.append(part)
+        else:
+            parts.append(part[:1].upper() + part[1:])
+    return " ".join(parts) or mid
+
+
 def _variant_hint(model) -> tuple[str, list[dict]]:
     """Build Cursor-style gray hint (Fast / Extra High) from the default variant."""
     variants = list(getattr(model, "variants", ()) or ())
@@ -91,11 +104,11 @@ def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
 def model_display_name(model_id: str) -> str:
     mid = normalize_model_id(model_id)
     if not mid or mid == "auto":
-        return mid
+        return "Auto" if mid == "auto" else mid
     item = _MODEL_CATALOG.get(mid)
     if item:
         return str(item.get("display_name") or mid)
-    return mid
+    return _pretty_model_id(mid)
 
 
 def resolve_model_selection(model_id: str | None, fallback: str = "composer-2.5") -> str | dict:

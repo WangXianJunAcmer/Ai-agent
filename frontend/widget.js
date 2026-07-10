@@ -788,7 +788,10 @@
   var serverBootId = "";
   var HISTORY_KEY = "ai-agent-chat-history";
   var historySaveTimer = null;
-  var modelOptions = [];
+  var modelOptions = [
+    { id: "composer-2.5", label: "Composer 2.5" },
+    { id: "auto", label: "Auto" },
+  ];
   var lastManualModel = defaultModel === "auto" ? "composer-2.5" : defaultModel;
   var autoResolvedModel = "";
   var autoResolvedLabel = "";
@@ -921,27 +924,40 @@
     if (typeof value === "string") return value;
     if (typeof value === "number" || typeof value === "boolean") return String(value);
     if (typeof value === "object") {
+      // Prefer human label; id is only a fallback.
+      if (typeof value.display_name === "string" && value.display_name) return value.display_name;
+      if (typeof value.label === "string" && value.label) return value.label;
       if (typeof value.id === "string") return value.id;
-      if (typeof value.display_name === "string") return value.display_name;
     }
     return "";
   }
 
+  function prettyModelId(id) {
+    // composer-2.5 → Composer 2.5 (fallback before catalog loads)
+    return String(id || "").split(/[-_]/).filter(Boolean).map(function (part) {
+      if (/^\d+(\.\d+)*$/.test(part)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    }).join(" ");
+  }
+
   function normalizeModelOption(model) {
     if (typeof model === "string") {
-      return { id: model, label: model };
+      return { id: model, label: prettyModelId(model) };
     }
-    var id = asModelLabel(model && (model.id != null ? model.id : model.value));
-    var label = asModelLabel(model && model.display_name) || id;
+    var id = String((model && (model.id != null ? model.id : model.value)) || "").trim();
+    if (id === "default") id = "auto";
+    var label = asModelLabel(model && model.display_name)
+      || asModelLabel(model && model.label)
+      || (id === "auto" ? "Auto" : prettyModelId(id));
     return { id: id, label: label };
   }
 
   function modelLabelFor(id) {
-    if (!id || id === "auto") return "Auto";
+    if (!id || id === "auto" || id === "default") return "Auto";
     for (var i = 0; i < modelOptions.length; i++) {
-      if (modelOptions[i].id === id) return modelOptions[i].label || id;
+      if (modelOptions[i].id === id) return modelOptions[i].label || prettyModelId(id);
     }
-    return id;
+    return prettyModelId(id);
   }
 
   function resolvedAutoLabelText() {
@@ -961,7 +977,9 @@
     var id = payload.resolved_model || "";
     if (!id || id === "auto" || id === "default") return;
     autoResolvedModel = id;
-    autoResolvedLabel = payload.resolved_model_label || modelLabelFor(id);
+    var labeled = payload.resolved_model_label || "";
+    // Avoid flashing raw ids like "composer-2.5" when catalog label is available.
+    autoResolvedLabel = (labeled && labeled !== id) ? labeled : modelLabelFor(id);
     if ((modelField.value || "") === "auto") syncModelPickerUI();
   }
 
