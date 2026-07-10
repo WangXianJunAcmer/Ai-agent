@@ -1,5 +1,5 @@
-# 宿主项目根目录。当前 Ai-agent 作为 ad-plex 同级目录独立运行。
-host_project_root: "../ad-plex"
+# 宿主项目根目录。默认指向 Ai-agent 自身；嵌入其他项目时改成相对路径，如 "../ad-plex"。
+host_project_root: "."
 
 server:
   host: "0.0.0.0"

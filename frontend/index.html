@@ -288,10 +288,16 @@
     var selectedModel = "composer-2.5";
     var currentRuntime = "local";
 
+    function formatRuntimeLabel(runtime) {
+      if (runtime === "cloud") return "云端 Agent";
+      if (runtime === "local") return "本机 Agent";
+      return runtime || "未知模式";
+    }
+
     function syncStatusPill(runtime) {
       var el = document.getElementById("health-status");
       currentRuntime = runtime || currentRuntime;
-      el.textContent = "在线 · " + currentRuntime;
+      el.textContent = "服务在线 · " + formatRuntimeLabel(currentRuntime);
       el.classList.add("ok");
       el.style.background = "";
       el.style.color = "";
@@ -314,7 +320,7 @@
           });
         }
         if (!Array.from(modelSelect.options).some(function (option) { return option.value === selectedModel; })) {
-          selectedModel = data.default_model || data.model || selectedModel;
+          selectedModel = data.model || selectedModel;
         }
         modelSelect.value = selectedModel;
         syncStatusPill(data.runtime);

@@ -6,9 +6,7 @@ import asyncio
 import base64
 import json
 import re
-import time
 import uuid
-from collections import deque
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,11 +29,7 @@ class Session:
     session_id: str
     agent: object
     model: str
-    created_at: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    recent_images: deque[dict] = field(default_factory=lambda: deque(maxlen=5))
-    recent_files: deque[dict] = field(default_factory=lambda: deque(maxlen=10))
-    identity_injected: bool = False
 
 
 class SessionManager:
@@ -162,14 +156,18 @@ class SessionManager:
     return ""
 
   def _unwrap_tool_payload(self, value):
-    """SDK puts tool info under update.tool_call, often as {readToolCall: {...}}."""
+    """SDK puts tool info under update.tool_call, often as {readToolCall: {...}} or {type, args}."""
     if not isinstance(value, dict) or not value:
       return value
-    if any(k in value for k in ("name", "toolName", "tool_name", "args", "arguments", "input", "result", "output")):
+    if any(k in value for k in ("name", "toolName", "tool_name", "type", "args", "arguments", "input", "result", "output")):
       return value
     if len(value) == 1:
-      only = next(iter(value.values()))
+      key, only = next(iter(value.items()))
       if isinstance(only, dict):
+        if "type" not in only and str(key).endswith("ToolCall"):
+          tool_type = str(key)[: -len("ToolCall")]
+          if tool_type:
+            only = {**only, "type": tool_type[0].lower() + tool_type[1:]}
         return only
     for key, nested in value.items():
       if isinstance(nested, dict) and key.lower().endswith(("toolcall", "tool_call", "call")):
@@ -180,7 +178,7 @@ class SessionManager:
     for source in (tool_call, payload):
       if not isinstance(source, dict):
         continue
-      for key in ("name", "toolName", "tool_name", "tool", "functionName", "function_name"):
+      for key in ("type", "name", "toolName", "tool_name", "tool", "functionName", "function_name"):
         val = source.get(key)
         if isinstance(val, str) and val.strip():
           return val.strip()
@@ -188,11 +186,13 @@ class SessionManager:
       for key in tool_call:
         lowered = str(key)
         if lowered.endswith("ToolCall"):
-          return lowered[: -len("ToolCall")]
+          stem = lowered[: -len("ToolCall")]
+          return stem[0].lower() + stem[1:] if stem else "tool"
         if lowered.endswith("_tool_call"):
           return lowered[: -len("_tool_call")]
         if lowered.endswith("Tool"):
-          return lowered[: -len("Tool")]
+          stem = lowered[: -len("Tool")]
+          return stem[0].lower() + stem[1:] if stem else "tool"
     return "tool"
 
   def _tool_args_from_payload(self, payload):
@@ -242,9 +242,21 @@ class SessionManager:
     return name, args, result
 
   def _command_preview(self, args) -> str:
+    if isinstance(args, str):
+      text = args.strip()
+      if text.startswith("{") and text.endswith("}"):
+        try:
+          parsed = json.loads(text)
+          if isinstance(parsed, dict):
+            args = parsed
+          else:
+            return (text[:120] + "…") if len(text) > 120 else text
+        except json.JSONDecodeError:
+          return (text[:120] + "…") if len(text) > 120 else text
+      else:
+        cmd = " ".join(text.split())
+        return (cmd[:120] + "…") if len(cmd) > 120 else cmd
     cmd = self._first_str(args, "command", "cmd") if isinstance(args, dict) else ""
-    if not cmd and isinstance(args, str):
-      cmd = args
     cmd = " ".join(str(cmd).split())
     return (cmd[:120] + "…") if len(cmd) > 120 else cmd
 
@@ -299,6 +311,13 @@ class SessionManager:
     path_detail = ", ".join(paths) if paths else ""
     detail = path_detail or query or cmd or raw_name
 
+    if lowered == "tool" and cmd:
+      return {
+        "kind": "run",
+        "title": ("Running: " if status == "running" else "Ran: ") + cmd,
+        "detail": cmd,
+        "paths": paths,
+      }
     if lowered in {"read", "readfile", "readfiles", "cat"}:
       return {
         "kind": "explore",
@@ -306,21 +325,28 @@ class SessionManager:
         "detail": detail,
         "paths": paths,
       }
-    if lowered in {"glob", "find", "ls", "listdir", "list_dir"}:
+    if lowered in {"glob", "find", "ls", "listdir", "list_dir", "list"}:
       return {
         "kind": "explore",
-        "title": f"List {query or (paths[0] if paths else 'files')}",
+        "title": f"Listed {query or (paths[0] if paths else 'files')}",
         "detail": detail,
         "paths": paths,
       }
     if lowered in {"rg", "grep", "search", "ripgrep", "websearch", "webfetch"}:
       return {
         "kind": "explore",
-        "title": f"Search {query or raw_name}",
+        "title": f"Grepped {query or 'workspace'}",
         "detail": detail,
         "paths": paths,
       }
-    if lowered in {"applypatch", "editnotebook", "delete", "write", "strreplace", "edit", "searchreplace"}:
+    if lowered in {"semsearch", "semanticsearch"}:
+      return {
+        "kind": "explore",
+        "title": f"Searched {query or 'workspace'}",
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"applypatch", "editnotebook", "strreplace", "edit", "searchreplace"}:
       return {
         "kind": "edit",
         "title": ("Editing " if status == "running" else "Edited ") + (paths[0] if paths else "code"),
@@ -328,11 +354,44 @@ class SessionManager:
         "paths": paths,
         "diff": patch_preview,
       }
-    if lowered in {"todowrite", "todo", "task"}:
-      return {"kind": "plan", "title": "Updated plan", "detail": detail or "Refreshed task list", "paths": []}
+    if lowered in {"write"}:
+      return {
+        "kind": "edit",
+        "title": ("Writing " if status == "running" else "Wrote ") + (paths[0] if paths else "file"),
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"delete"}:
+      return {
+        "kind": "edit",
+        "title": ("Deleting " if status == "running" else "Deleted ") + (paths[0] if paths else "file"),
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"todowrite", "todo", "updatetodos"}:
+      return {"kind": "plan", "title": "Updated todos", "detail": detail or "Refreshed task list", "paths": []}
+    if lowered in {"createplan"}:
+      return {"kind": "plan", "title": "Created plan", "detail": detail or "Plan draft", "paths": []}
+    if lowered in {"task"}:
+      task_desc = query or self._first_str(args, "prompt", "description", "message") if isinstance(args, dict) else ""
+      return {"kind": "plan", "title": "Task" + (f": {task_desc[:80]}" if task_desc else ""), "detail": detail or task_desc, "paths": []}
+    if lowered in {"mcp"}:
+      mcp_tool = ""
+      if isinstance(args, dict):
+        mcp_tool = self._first_str(args, "toolName", "tool_name", "name", "tool")
+      return {
+        "kind": "tool",
+        "title": f"Called {mcp_tool or 'MCP tool'}",
+        "detail": detail,
+        "paths": paths,
+      }
+    if lowered in {"generateimage"}:
+      return {"kind": "tool", "title": "Generated image", "detail": detail, "paths": paths}
+    if lowered in {"recordscreen"}:
+      return {"kind": "run", "title": "Recorded screen", "detail": detail, "paths": paths}
     if lowered in {"readlints", "lint", "diagnostics"}:
-      return {"kind": "verify", "title": "Checked diagnostics", "detail": detail, "paths": paths}
-    if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd"}:
+      return {"kind": "verify", "title": "Read lints", "detail": detail, "paths": paths}
+    if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd", "runterminal"}:
       return {
         "kind": "run",
         "title": ("Running: " if status == "running" else "Ran: ") + (cmd or raw_name),
@@ -341,20 +400,10 @@ class SessionManager:
       }
     return {
       "kind": "tool",
-      "title": raw_name,
+      "title": (("Running " if status == "running" else "Ran ") + raw_name) if raw_name != "tool" else (("Running: " if status == "running" else "Ran: ") + (cmd or detail or "command")),
       "detail": detail if detail != raw_name else self._stringify(args)[:200],
       "paths": paths,
     }
-
-  def _assistant_text(self, message) -> str:
-    content = getattr(getattr(message, "message", None), "content", None) or []
-    parts: list[str] = []
-    for block in content:
-      if getattr(block, "type", None) == "text":
-        text = getattr(block, "text", "")
-        if text:
-          parts.append(text)
-    return "".join(parts)
 
   def _friendly_error(self, message: str) -> str:
     msg = (message or "").strip() or "unknown"
@@ -403,18 +452,7 @@ class SessionManager:
       saved.append({"name": filename, "mime_type": mime, "path": rel})
     return saved
 
-  def _identity_prefix(self, session: Session) -> str:
-    if session.identity_injected:
-      return ""
-    session.identity_injected = True
-    model = session.model or "auto"
-    return (
-      f"[系统] 你是嵌入宿主项目的 Ai-agent 编程助手，当前选用模型为「{model}」。"
-      f"当用户问你是谁、什么模型时，请明确回答：你是基于「{model}」的 Ai-agent，"
-      f"不要自称 Cursor IDE 内置助手。\n\n"
-    )
-
-  def _build_message(self, text: str, attachments: list[dict] | None, session: Session | None = None):
+  def _build_message(self, text: str, attachments: list[dict] | None):
     prompt = text.strip() if text else ""
     images = [
       item for item in (attachments or [])
@@ -430,8 +468,6 @@ class SessionManager:
       prompt = f"{prompt}\n\n{note}" if prompt else note
     if not prompt and images:
       prompt = "请分析我上传的图片。"
-    if session is not None:
-      prompt = self._identity_prefix(session) + (prompt or "")
     if not images:
       return prompt, files
     sdk_images = [
@@ -441,24 +477,15 @@ class SessionManager:
     return UserMessage(text=prompt, images=sdk_images), files
 
   def _remember_attachments(
-    self, session: Session, attachments: list[dict] | None, files: list[dict]
+    self, attachments: list[dict] | None, files: list[dict]
   ) -> dict:
-    remembered_images = []
-    for item in attachments or []:
-      mime = item.get("mime_type") or "application/octet-stream"
-      if not self._is_image(mime):
-        continue
-      meta = {"name": item.get("name") or "image", "mime_type": mime}
-      session.recent_images.append(meta)
-      remembered_images.append(meta)
-    for item in files:
-      session.recent_files.append(item)
-    return {
-      "images": remembered_images,
-      "files": files,
-      "recent_images": list(session.recent_images),
-      "recent_files": list(session.recent_files),
-    }
+    # ponytail: no session history of uploads; UI only needs this turn's list
+    images = [
+      {"name": item.get("name") or "image", "mime_type": item.get("mime_type") or "application/octet-stream"}
+      for item in (attachments or [])
+      if self._is_image(item.get("mime_type") or "")
+    ]
+    return {"images": images, "files": files}
 
   def _delta_event(self, update, session: Session) -> dict | None:
     update_type = getattr(update, "type", None)
@@ -526,7 +553,7 @@ class SessionManager:
           "content": getattr(message, "text", ""),
         }
       elif msg_type == "tool_call":
-        name = getattr(message, "name", None) or "tool"
+        name = getattr(message, "name", None) or getattr(message, "type", None) or "tool"
         status = getattr(message, "status", "running") or "running"
         args = getattr(message, "args", None)
         result = getattr(message, "result", None)
@@ -544,26 +571,6 @@ class SessionManager:
           "args_json": self._jsonable(args),
           "result_json": self._jsonable(result),
         }
-
-  async def _stream_run(self, run, session: Session) -> AsyncIterator[dict]:
-    queue: asyncio.Queue[dict | None] = asyncio.Queue()
-
-    async def forward_messages() -> None:
-      try:
-        async for event in self._stream_run_messages(run, session):
-          await queue.put(event)
-      finally:
-        await queue.put(None)
-
-    task = asyncio.create_task(forward_messages())
-    try:
-      while True:
-        event = await queue.get()
-        if event is None:
-          break
-        yield event
-    finally:
-      await task
 
   async def get_or_create(self, session_id: str | None, model: str | None = None) -> Session:
     await self.start()
@@ -595,8 +602,8 @@ class SessionManager:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        payload, files = self._build_message(message, attachments, session)
-        remembered = self._remember_attachments(session, attachments, files)
+        payload, files = self._build_message(message, attachments)
+        remembered = self._remember_attachments(attachments, files)
         run = await session.agent.send(payload, SendOptions(mode=mode))
         result = await run.wait()
         reply = await run.text()
@@ -610,14 +617,13 @@ class SessionManager:
           **remembered,
         }
       except CursorAgentError as err:
+        # ponytail: leave reply empty; HTTP layer maps status=error → 502 detail
         return {
           "session_id": session.session_id,
-          "reply": f"Agent startup failed: {self._friendly_error(err.message)}",
+          "reply": "",
           "status": "error",
           "error": self._friendly_error(err.message),
           "model": session.model,
-          "recent_images": list(session.recent_images),
-          "recent_files": list(session.recent_files),
         }
 
   async def stream(
@@ -631,8 +637,8 @@ class SessionManager:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
       try:
-        payload, files = self._build_message(message, attachments, session)
-        remembered = self._remember_attachments(session, attachments, files)
+        payload, files = self._build_message(message, attachments)
+        remembered = self._remember_attachments(attachments, files)
         if remembered["images"] or remembered["files"]:
           yield {
             "type": "upload",
@@ -641,13 +647,13 @@ class SessionManager:
             **remembered,
           }
         loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
         def on_delta(update) -> None:
           event = self._delta_event(update, session)
           if event:
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
-        queue: asyncio.Queue[dict | None] = asyncio.Queue()
         run = await session.agent.send(
           payload,
           SendOptions(on_delta=on_delta, mode=mode),
@@ -675,8 +681,6 @@ class SessionManager:
           "run_id": run.id,
           "agent_id": session.agent.agent_id,
           "model": session.model,
-          "recent_images": list(session.recent_images),
-          "recent_files": list(session.recent_files),
         }
       except CursorAgentError as err:
         yield {
@@ -684,6 +688,4 @@ class SessionManager:
           "session_id": session.session_id,
           "content": self._friendly_error(err.message),
           "model": session.model,
-          "recent_images": list(session.recent_images),
-          "recent_files": list(session.recent_files),
         }

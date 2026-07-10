@@ -130,7 +130,3 @@ Ai-agent/
 ├── start.py
 └── run.sh
 ```
-
-## 后续：LangChain 版
-
-当前为 **Cursor SDK 简单版**（Phase 1）。后续可在 `backend/` 增加 LangChain 实现，通过 `config.yaml` 切换 `backend: cursor | langchain`。

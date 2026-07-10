@@ -97,7 +97,6 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
-        "default_model": settings["model"],
         "model_options": get_model_options(),
     }
 

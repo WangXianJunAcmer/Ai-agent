@@ -41,6 +41,14 @@ def main() -> None:
     )
     assert named and named["name"] == "Grep", named
     assert named["status"] == "completed", named
+
+    typed_shell = mgr._delta_event(
+        _FakeUpdate("tool-call-started", "c4", {"type": "shell", "args": {"command": "python3 -c 'print(1)'"}}),
+        session,
+    )
+    assert typed_shell and typed_shell["name"] == "shell", typed_shell
+    assert "python3" in typed_shell["summary"]["title"], typed_shell["summary"]
+
     print("ok")
 
 

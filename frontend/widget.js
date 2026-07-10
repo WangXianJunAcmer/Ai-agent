@@ -33,20 +33,51 @@
       --ai-accent: #0d0d0d;
       --ai-user-bg: #f4f4f4;
       --ai-composer-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
-      position: fixed; top: 0; right: -520px; width: min(520px, 96vw); height: 100%;
+      --ai-sidebar-width: 520px;
+      --ai-content-width: 768px;
+      position: fixed; top: 0;
+      right: calc(-1 * var(--ai-sidebar-width));
+      width: var(--ai-sidebar-width);
+      max-width: 96vw;
+      height: 100%;
       background: var(--ai-bg); box-shadow: -8px 0 32px rgba(0,0,0,.12);
-      z-index: 2147483001; transition: right .25s ease; display: flex;
-      flex-direction: column;
+      z-index: 2147483001; transition: right .25s ease, width .15s ease, box-shadow .2s ease;
+      display: flex; flex-direction: column; overflow: hidden;
       font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: var(--ai-text);
     }
+    #ai-agent-sidebar.is-resizing { transition: none; user-select: none; }
     #ai-agent-sidebar *, #ai-agent-sidebar *::before, #ai-agent-sidebar *::after { box-sizing: border-box; }
     #ai-agent-sidebar.open { right: 0; }
+    #ai-agent-sidebar.is-fullscreen {
+      --ai-sidebar-width: 100vw;
+      right: -100vw;
+      width: 100vw;
+      max-width: 100vw;
+      box-shadow: none;
+    }
+    #ai-agent-sidebar.is-fullscreen.open { right: 0; left: 0; }
+    #ai-agent-resize-handle {
+      position: absolute; left: 0; top: 0; width: 6px; height: 100%;
+      cursor: ew-resize; z-index: 12; touch-action: none;
+    }
+    #ai-agent-resize-handle::after {
+      content: ""; position: absolute; left: 2px; top: 0; bottom: 0; width: 2px;
+      border-radius: 2px; background: transparent; transition: background .15s ease;
+    }
+    #ai-agent-resize-handle:hover::after,
+    #ai-agent-sidebar.is-resizing #ai-agent-resize-handle::after {
+      background: rgba(16,163,127,.45);
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-resize-handle { display: none; }
     #ai-agent-topbar {
       flex: 0 0 auto; height: 52px; padding: 0 14px;
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       border-bottom: 1px solid var(--ai-border);
       background: rgba(255,255,255,.85); backdrop-filter: blur(10px); z-index: 2;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-topbar {
+      padding: 0 16px; background: #fff; backdrop-filter: none;
     }
     #ai-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     #ai-agent-brand-mark {
@@ -62,12 +93,25 @@
     }
     #ai-agent-run-state.is-busy { color: #10a37f; }
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    #ai-agent-new-chat, #ai-agent-close {
+    #ai-agent-new-chat, #ai-agent-fullscreen, #ai-agent-close {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 7px 12px; font: 13px/1.2 inherit; cursor: pointer;
     }
-    #ai-agent-new-chat:hover, #ai-agent-close:hover { background: var(--ai-surface); }
-    #ai-agent-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 18px; }
+    #ai-agent-new-chat:hover, #ai-agent-fullscreen:hover, #ai-agent-close:hover { background: var(--ai-surface); }
+    #ai-agent-fullscreen, #ai-agent-close {
+      width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 16px;
+    }
+    #ai-agent-fullscreen .ai-agent-icon-expand,
+    #ai-agent-fullscreen .ai-agent-icon-shrink {
+      display: grid; place-items: center; width: 16px; height: 16px; color: #444;
+    }
+    #ai-agent-fullscreen svg {
+      width: 16px; height: 16px; display: block;
+    }
+    #ai-agent-fullscreen .ai-agent-icon-shrink { display: none; }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen .ai-agent-icon-expand { display: none; }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen .ai-agent-icon-shrink { display: grid; }
+    #ai-agent-trigger.is-hidden { display: none !important; }
     #ai-agent-stop {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
       flex: 0 0 auto; display: none; place-items: center;
@@ -79,39 +123,75 @@
       width: 10px; height: 10px; border-radius: 2px; background: #fff;
     }
     #ai-agent-messages {
-      flex: 1 1 auto; overflow-y: auto; padding: 18px 16px 12px;
+      flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 16px 12px;
       background: var(--ai-bg); scroll-behavior: smooth;
     }
-    #ai-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 100%; }
-    .ai-agent-worklog { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-messages { padding: 24px 16px 12px; }
+    #ai-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-thread {
+      width: min(var(--ai-content-width), 100%);
+      margin: 0 auto;
+      gap: 22px;
+    }
+    .ai-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
     .ai-agent-worklog:empty { display: none; }
     .ai-agent-card {
-      border: 1px solid var(--ai-border); border-radius: 12px; background: #fafafa; overflow: hidden;
+      border: 0; border-radius: 8px; background: transparent; overflow: hidden;
     }
     .ai-agent-card-header {
-      display: flex; align-items: center; gap: 8px; padding: 9px 12px;
-      font-size: 13px; color: var(--ai-text); background: transparent;
+      display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+      font-size: 13px; color: var(--ai-muted); background: transparent;
+      border-radius: 8px; cursor: default; user-select: none;
     }
+    .ai-agent-card.has-body .ai-agent-card-header { cursor: pointer; }
+    .ai-agent-card.has-body .ai-agent-card-header:hover {
+      background: rgba(0,0,0,.04); color: var(--ai-text);
+    }
+    .ai-agent-card-chevron {
+      flex: 0 0 14px; width: 14px; text-align: center;
+      font-size: 13px; line-height: 1; color: var(--ai-muted);
+      transition: transform .15s ease; transform: rotate(0deg);
+    }
+    .ai-agent-card:not(.has-body) .ai-agent-card-chevron { visibility: hidden; }
+    .ai-agent-card.is-expanded .ai-agent-card-chevron { transform: rotate(90deg); }
     .ai-agent-card-title {
-      font-weight: 550; flex: 1 1 auto; min-width: 0;
+      font-weight: 500; flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-card-meta { font-size: 12px; color: var(--ai-muted); white-space: nowrap; }
+    .ai-agent-card-meta {
+      font-size: 12px; color: var(--ai-muted); white-space: nowrap; flex: 0 0 auto;
+    }
     .ai-agent-card-body {
-      border-top: 1px solid var(--ai-border); padding: 10px 12px;
-      color: var(--ai-muted); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; background: #fff;
+      display: none; margin: 0 0 6px 20px; padding: 8px 10px;
+      border-left: 2px solid var(--ai-border);
+      color: var(--ai-muted); font-size: 12.5px; white-space: pre-wrap;
+      word-break: break-word; background: transparent;
     }
-    .ai-agent-card-kind {
-      flex: 0 0 auto; border-radius: 999px; padding: 2px 8px;
-      font-size: 10px; font-weight: 650; background: rgba(0,0,0,.05); color: #444;
-      text-transform: uppercase; letter-spacing: .04em;
+    .ai-agent-card.is-expanded .ai-agent-card-body,
+    .ai-agent-card.is-live .ai-agent-card-body { display: block; }
+    .ai-agent-card.kind-run .ai-agent-card-body,
+    .ai-agent-card.kind-run .ai-agent-card-preview {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
     }
-    .ai-agent-card.kind-plan .ai-agent-card-kind { background: #eef2ff; color: #4338ca; }
-    .ai-agent-card.kind-think .ai-agent-card-kind { background: #f5f3ff; color: #6d28d9; }
-    .ai-agent-card.kind-explore .ai-agent-card-kind { background: #eff6ff; color: #1d4ed8; }
-    .ai-agent-card.kind-edit .ai-agent-card-kind { background: #ecfdf5; color: #047857; }
-    .ai-agent-card.kind-run .ai-agent-card-kind { background: #fff7ed; color: #c2410c; }
-    .ai-agent-card.kind-verify .ai-agent-card-kind { background: #f1f5f9; color: #475569; }
+    .ai-agent-card-preview {
+      display: none;
+      margin: 2px 0 6px 20px;
+      padding: 0 10px;
+      border-left: 2px solid var(--ai-border);
+      color: var(--ai-muted);
+      font-size: 12.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: hidden;
+      max-height: 4.35em;
+    }
+    .ai-agent-card.has-preview:not(.is-expanded):not(.is-live) .ai-agent-card-preview {
+      display: block;
+    }
+    .ai-agent-card.is-live .ai-agent-card-preview { display: none; }
+    .ai-agent-card.is-expanded .ai-agent-card-preview { display: none; }
     .ai-agent-paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .ai-agent-path {
       display: inline-flex; align-items: center; max-width: 100%;
@@ -146,7 +226,6 @@
     .ai-agent-msg.user .ai-agent-avatar { display: none; }
     .ai-agent-msg-main { min-width: 0; max-width: 100%; }
     .ai-agent-msg.user .ai-agent-msg-main { max-width: 88%; }
-    .ai-agent-msg .role { display: none; }
     .ai-agent-msg .body {
       white-space: pre-wrap; word-break: break-word;
       font: inherit; color: var(--ai-text);
@@ -197,16 +276,21 @@
     .ai-agent-msg .body hr {
       border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
     }
+    .ai-agent-msg .body .md-table-wrap {
+      overflow-x: auto; margin: 0 0 12px; -webkit-overflow-scrolling: touch;
+    }
     .ai-agent-msg .body table {
       width: 100%; border-collapse: collapse; margin: 0 0 12px;
-      font-size: 13px; display: block; overflow-x: auto;
+      font-size: 14px; line-height: 1.45;
     }
+    .ai-agent-msg .body .md-table-wrap table { margin: 0; }
     .ai-agent-msg .body th,
     .ai-agent-msg .body td {
       border: 1px solid var(--ai-border); padding: 8px 10px; text-align: left;
       vertical-align: top;
     }
-    .ai-agent-msg .body th { background: #f4f4f4; font-weight: 650; }
+    .ai-agent-msg .body th { background: var(--ai-surface); font-weight: 600; }
+    .ai-agent-msg .body tr:nth-child(even) td { background: #fafafa; }
     .ai-agent-msg .body code {
       padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.06);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;
@@ -242,6 +326,15 @@
       flex: 0 0 auto; padding: 8px 14px 16px;
       background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28%);
       display: flex; flex-direction: column; gap: 8px;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-footer { padding: 8px 16px 18px; }
+    #ai-agent-composer-wrap {
+      width: 100%;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-composer-wrap {
+      width: min(var(--ai-content-width), 100%);
+      margin: 0 auto;
     }
     #ai-agent-queue { display: flex; flex-direction: column; gap: 8px; }
     #ai-agent-queue:empty { display: none; }
@@ -369,7 +462,7 @@
     #ai-agent-hint {
       margin: 2px 4px 0; text-align: center; font-size: 12px; color: #9a9a9a;
     }
-    #ai-agent-current-model { display: none; }
+    body.ai-agent-page-locked { overflow: hidden !important; }
   `;
 
   var styleEl = document.createElement("style");
@@ -381,6 +474,7 @@
     <div id="ai-agent-backdrop"></div>
     <div id="ai-agent-trigger" title="AI Agent">AI</div>
     <div id="ai-agent-sidebar">
+      <div id="ai-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
       <div id="ai-agent-topbar">
         <div id="ai-agent-brand">
           <div id="ai-agent-brand-mark">AI</div>
@@ -389,15 +483,34 @@
         </div>
         <div id="ai-agent-top-actions">
           <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
-          <button id="ai-agent-close" type="button" title="Close">×</button>
+          <button id="ai-agent-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false">
+            <span class="ai-agent-icon-expand" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h6v6"></path>
+                <path d="M9 21H3v-6"></path>
+                <path d="M21 3l-7 7"></path>
+                <path d="M3 21l7-7"></path>
+              </svg>
+            </span>
+            <span class="ai-agent-icon-shrink" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 14h6v6"></path>
+                <path d="M20 10h-6V4"></path>
+                <path d="M14 10l7-7"></path>
+                <path d="M3 21l7-7"></path>
+              </svg>
+            </span>
+          </button>
+          <button id="ai-agent-close" type="button" title="关闭">×</button>
         </div>
       </div>
       <div id="ai-agent-messages">
         <div id="ai-agent-thread"></div>
       </div>
       <div id="ai-agent-footer">
-        <div id="ai-agent-queue"></div>
-        <div id="ai-agent-compose-shell">
+        <div id="ai-agent-composer-wrap">
+          <div id="ai-agent-queue"></div>
+          <div id="ai-agent-compose-shell">
           <div id="ai-agent-attachments"></div>
           <textarea id="ai-agent-input" rows="1" placeholder="Plan, @ for context, / for commands"></textarea>
           <div id="ai-agent-compose-toolbar">
@@ -423,8 +536,8 @@
           </div>
         </div>
         <div id="ai-agent-hint">Enter 发送/排队 · ■ 终止 · 队列可编辑/立即发送/删除</div>
+        </div>
       </div>
-      <span id="ai-agent-current-model"></span>
     </div>
   `;
   document.body.appendChild(container);
@@ -432,7 +545,9 @@
   var backdrop = document.getElementById("ai-agent-backdrop");
   var trigger = document.getElementById("ai-agent-trigger");
   var sidebar = document.getElementById("ai-agent-sidebar");
+  var resizeHandle = document.getElementById("ai-agent-resize-handle");
   var closeBtn = document.getElementById("ai-agent-close");
+  var fullscreenBtn = document.getElementById("ai-agent-fullscreen");
   var sendBtn = document.getElementById("ai-agent-send");
   var composeShell = document.getElementById("ai-agent-compose-shell");
   var inputField = document.getElementById("ai-agent-input");
@@ -442,7 +557,6 @@
   var messagesDiv = document.getElementById("ai-agent-messages");
   var threadDiv = document.getElementById("ai-agent-thread");
   var runState = document.getElementById("ai-agent-run-state");
-  var currentModel = document.getElementById("ai-agent-current-model");
   var attachmentsDiv = document.getElementById("ai-agent-attachments");
   var queueDiv = document.getElementById("ai-agent-queue");
   var pickFileBtn = document.getElementById("ai-agent-pick-file");
@@ -456,7 +570,6 @@
   var activeAbort = null;
   var stopRequested = false;
   modelField.value = defaultModel;
-  currentModel.textContent = defaultModel;
 
   async function loadModelOptions() {
     try {
@@ -472,30 +585,111 @@
           modelField.appendChild(option);
         });
       }
-      var preferredModel = defaultModel || data.default_model || data.model;
+      var preferredModel = defaultModel || data.model;
       if (preferredModel && Array.from(modelField.options).some(function (option) { return option.value === preferredModel; })) {
         modelField.value = preferredModel;
-      } else if (data.default_model && Array.from(modelField.options).some(function (option) { return option.value === data.default_model; })) {
-        modelField.value = data.default_model;
       }
     } catch (err) {
       modelField.value = defaultModel;
     }
   }
 
+  var SIDEBAR_WIDTH_KEY = "ai-agent-sidebar-width";
+  var SIDEBAR_FULLSCREEN_KEY = "ai-agent-fullscreen";
+  var MIN_SIDEBAR_WIDTH = 360;
+
+  function maxSidebarWidth() {
+    return Math.min(1200, Math.round(window.innerWidth * 0.92));
+  }
+
+  function applySidebarWidth(width, persist) {
+    var w = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxSidebarWidth(), Math.round(width)));
+    sidebar.style.setProperty("--ai-sidebar-width", w + "px");
+    if (persist !== false) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w));
+    return w;
+  }
+
+  function isFullscreen() {
+    return sidebar.classList.contains("is-fullscreen");
+  }
+
+  function syncBackdrop() {
+    if (!sidebar.classList.contains("open")) {
+      backdrop.classList.remove("open");
+      return;
+    }
+    if (isFullscreen()) backdrop.classList.remove("open");
+    else backdrop.classList.add("open");
+  }
+
+  function syncPageScrollLock() {
+    document.body.classList.toggle(
+      "ai-agent-page-locked",
+      sidebar.classList.contains("open") && isFullscreen()
+    );
+  }
+
+  function setFullscreen(on) {
+    sidebar.classList.toggle("is-fullscreen", !!on);
+    trigger.classList.toggle("is-hidden", !!on && sidebar.classList.contains("open"));
+    fullscreenBtn.title = on ? "退出全屏" : "全屏";
+    fullscreenBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, on ? "1" : "0");
+    syncBackdrop();
+    syncPageScrollLock();
+  }
+
   function openSidebar() {
     sidebar.classList.add("open");
-    backdrop.classList.add("open");
+    if (isFullscreen()) trigger.classList.add("is-hidden");
+    syncBackdrop();
+    syncPageScrollLock();
   }
 
   function closeSidebar() {
     sidebar.classList.remove("open");
     backdrop.classList.remove("open");
+    trigger.classList.remove("is-hidden");
+    syncPageScrollLock();
   }
+
+  function startSidebarResize(event) {
+    if (isFullscreen()) return;
+    event.preventDefault();
+    var startX = event.clientX;
+    var startW = sidebar.getBoundingClientRect().width;
+    sidebar.classList.add("is-resizing");
+    document.body.style.cursor = "ew-resize";
+
+    function onMove(moveEvent) {
+      applySidebarWidth(startW + (startX - moveEvent.clientX), true);
+    }
+
+    function onUp() {
+      sidebar.classList.remove("is-resizing");
+      document.body.style.cursor = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  var savedWidth = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10);
+  if (savedWidth) applySidebarWidth(savedWidth, false);
+  if (localStorage.getItem(SIDEBAR_FULLSCREEN_KEY) === "1") setFullscreen(true);
 
   trigger.onclick = openSidebar;
   closeBtn.onclick = closeSidebar;
   backdrop.onclick = closeSidebar;
+  fullscreenBtn.onclick = function () { setFullscreen(!isFullscreen()); };
+  resizeHandle.addEventListener("mousedown", startSidebarResize);
+  window.addEventListener("resize", function () {
+    if (isFullscreen()) return;
+    var current = sidebar.getBoundingClientRect().width;
+    applySidebarWidth(current, true);
+  });
 
   function escapeHtml(text) {
     return text
@@ -525,26 +719,54 @@
     });
   }
 
-  function isTableRow(line) {
-    return /^\|.+\|$/.test(line.trim());
+  function isTableRowLine(line) {
+    var trimmed = String(line || "").trim();
+    return trimmed.indexOf("|") >= 0 && /^\|?.+\|.+/.test(trimmed);
   }
 
-  function isTableSeparator(line) {
-    return /^\|[\s:|-]+\|$/.test(line.trim());
+  function parseTableCells(line) {
+    var trimmed = String(line || "").trim();
+    if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+    if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+    return trimmed.split("|").map(function (cell) { return cell.trim(); });
   }
 
-  function renderTableRows(rows) {
-    if (!rows.length) return "";
-    var html = ["<table>"];
-    rows.forEach(function (row, index) {
-      var cells = row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
-      var tag = index === 0 ? "th" : "td";
-      html.push("<tr>" + cells.map(function (cell) {
-        return "<" + tag + ">" + formatInlineMarkdown(cell.trim()) + "</" + tag + ">";
-      }).join("") + "</tr>");
+  function isTableSeparatorCells(cells) {
+    return cells.length > 0 && cells.every(function (cell) {
+      return /^:?-{3,}:?$/.test(cell);
     });
-    html.push("</table>");
-    return html.join("");
+  }
+
+  function readTableBlock(lines, start) {
+    var rows = [];
+    var i = start;
+    while (i < lines.length) {
+      var trimmed = lines[i].trim();
+      if (!trimmed) {
+        i += 1;
+        continue;
+      }
+      if (!isTableRowLine(lines[i])) break;
+      rows.push(parseTableCells(lines[i]));
+      i += 1;
+    }
+    if (rows.length < 2 || !isTableSeparatorCells(rows[1])) return null;
+    var header = rows[0];
+    var bodyRows = rows.slice(2);
+    var parts = ['<div class="md-table-wrap"><table><thead><tr>'];
+    header.forEach(function (cell) {
+      parts.push("<th>" + formatInlineMarkdown(cell) + "</th>");
+    });
+    parts.push("</tr></thead><tbody>");
+    bodyRows.forEach(function (row) {
+      parts.push("<tr>");
+      for (var c = 0; c < header.length; c += 1) {
+        parts.push("<td>" + formatInlineMarkdown(row[c] || "") + "</td>");
+      }
+      parts.push("</tr>");
+    });
+    parts.push("</tbody></table></div>");
+    return { html: parts.join(""), next: i };
   }
 
   function renderMarkdown(text) {
@@ -588,21 +810,14 @@
         html.push("<hr />");
         continue;
       }
-      if (isTableRow(trimmed)) {
-        closeList();
-        var tableRows = [trimmed];
-        while (i + 1 < lines.length && isTableRow(lines[i + 1].trim())) {
-          i += 1;
-          tableRows.push(lines[i].trim());
+      if (isTableRowLine(line)) {
+        var table = readTableBlock(lines, i);
+        if (table) {
+          closeList();
+          html.push(table.html);
+          i = table.next - 1;
+          continue;
         }
-        if (tableRows.length >= 2 && isTableSeparator(tableRows[1])) {
-          html.push(renderTableRows([tableRows[0]].concat(tableRows.slice(2))));
-        } else {
-          tableRows.forEach(function (row) {
-            html.push("<p>" + formatInlineMarkdown(row) + "</p>");
-          });
-        }
-        continue;
       }
       if (/^####\s+/.test(trimmed)) {
         closeList();
@@ -700,7 +915,6 @@
     msg.innerHTML =
       '<div class="ai-agent-avatar">' + avatarLabel + '</div>' +
       '<div class="ai-agent-msg-main">' +
-        '<div class="role">' + role + '</div>' +
         '<div class="ai-agent-worklog"></div>' +
         '<div class="body"></div>' +
       '</div>';
@@ -743,6 +957,8 @@
         startedAt: Date.now(),
         nextIndex: 1,
         thinkingStartedAt: 0,
+        thinkingDetail: "",
+        thinkingTimer: null,
       };
     }
     return msg.__runMeta;
@@ -750,22 +966,6 @@
 
   function ensureWorklog(msg) {
     return msg.querySelector(".ai-agent-worklog");
-  }
-
-  function elapsedLabel(startedAt) {
-    var seconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-    return seconds + "s";
-  }
-
-  function cardKindLabel(kind) {
-    if (kind === "plan") return "Plan";
-    if (kind === "think") return "Thought";
-    if (kind === "explore") return "Explore";
-    if (kind === "edit") return "Edit";
-    if (kind === "run") return "Run";
-    if (kind === "verify") return "Check";
-    if (kind === "tool") return "Tool";
-    return "Step";
   }
 
   function makePathsHtml(paths) {
@@ -790,33 +990,164 @@
     }).join("");
   }
 
+  function cardHasBody(merged) {
+    return !!(
+      (merged.detail && String(merged.detail).trim()) ||
+      (merged.paths && merged.paths.length) ||
+      (merged.diff && merged.diff.length)
+    );
+  }
+
+  function setCardExpanded(card, expanded) {
+    card.classList.toggle("is-expanded", !!expanded);
+    card.classList.toggle("is-collapsed", !expanded);
+    var header = card.querySelector(".ai-agent-card-header");
+    if (header) header.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+
+  function cardPreviewText(merged) {
+    if (merged.detail && String(merged.detail).trim()) return String(merged.detail).trim();
+    if (merged.paths && merged.paths.length) return merged.paths.join("\n");
+    return "";
+  }
+
+  function applyCardExpansion(card, merged, options) {
+    if (merged.live) {
+      setCardExpanded(card, true);
+      return;
+    }
+    if (options.forceCollapsed && !card.__userExpanded) {
+      setCardExpanded(card, false);
+      return;
+    }
+    if (card.__userExpanded) {
+      setCardExpanded(card, true);
+      return;
+    }
+    if (options.expand) {
+      setCardExpanded(card, true);
+      return;
+    }
+    setCardExpanded(card, card.classList.contains("is-expanded"));
+  }
+
+  function bindCardToggle(card) {
+    if (card.__toggleBound) return;
+    card.__toggleBound = true;
+    var header = card.querySelector(".ai-agent-card-header");
+    header.addEventListener("click", function () {
+      if (!card.classList.contains("has-body") || card.classList.contains("is-live")) return;
+      var next = !card.classList.contains("is-expanded");
+      card.__userExpanded = next;
+      setCardExpanded(card, next);
+    });
+    header.addEventListener("keydown", function (event) {
+      if (!card.classList.contains("has-body") || card.classList.contains("is-live")) return;
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        var next = !card.classList.contains("is-expanded");
+        card.__userExpanded = next;
+        setCardExpanded(card, next);
+      }
+    });
+  }
+
+  function thinkingTitle(meta, finalized) {
+    var elapsed = Date.now() - meta.thinkingStartedAt;
+    var seconds = Math.max(1, Math.round(elapsed / 1000));
+    if (!finalized) {
+      if (elapsed >= 10000) return "Thinking longer than expected";
+      return "Thinking";
+    }
+    if (seconds <= 2) return "Thought briefly";
+    return "Thought for " + seconds + "s";
+  }
+
+  function refreshThinkingCard(msg) {
+    var meta = getRunMeta(msg);
+    if (!meta.thinkingStartedAt) return;
+    upsertCard(msg, "think-live", {
+      kind: "think",
+      title: thinkingTitle(meta, false),
+      meta: "",
+      detail: meta.thinkingDetail || "",
+      paths: [],
+      live: true,
+    });
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function buildToolPresentation(payload, summary) {
+    var title = (summary && summary.title) ? String(summary.title).trim() : "";
+    var detail = (summary && summary.detail) ? String(summary.detail) : "";
+    var argsText = payload.args || "";
+    var resultText = payload.result || "";
+    if (!title || /^tool$/i.test(title)) {
+      var name = (payload.name || "").trim();
+      if (name && !/^tool$/i.test(name)) {
+        var pretty = name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ");
+        title = pretty.charAt(0).toUpperCase() + pretty.slice(1);
+      } else if (argsText) {
+        title = (payload.status === "running" ? "Running: " : "Ran: ") + argsText.split("\n")[0].slice(0, 96);
+      }
+    }
+    if (!detail || detail === payload.name) {
+      if (payload.status === "completed" && resultText) detail = resultText;
+      else if (argsText) detail = argsText;
+    }
+    return { title: title || "Shell", detail: detail };
+  }
+
   function upsertCard(msg, key, options) {
     var worklog = ensureWorklog(msg);
     var selector = '.ai-agent-card[data-card-key="' + key + '"]';
     var card = worklog.querySelector(selector);
     if (!card) {
       card = document.createElement("div");
-      card.className = "ai-agent-card";
+      card.className = "ai-agent-card is-collapsed";
       card.setAttribute("data-card-key", key);
       var meta = getRunMeta(msg);
       card.setAttribute("data-card-index", String(meta.nextIndex++));
-      card.innerHTML = '<div class="ai-agent-card-header"><span class="ai-agent-card-kind"></span><span class="ai-agent-card-title"></span><span class="ai-agent-card-meta"></span></div><div class="ai-agent-card-body"></div>';
+      card.innerHTML =
+        '<div class="ai-agent-card-header" role="button" tabindex="0" aria-expanded="false">' +
+          '<span class="ai-agent-card-chevron" aria-hidden="true">›</span>' +
+          '<span class="ai-agent-card-title"></span>' +
+          '<span class="ai-agent-card-meta"></span>' +
+        "</div>" +
+        '<div class="ai-agent-card-preview"></div>' +
+        '<div class="ai-agent-card-body"></div>';
+      bindCardToggle(card);
       worklog.appendChild(card);
+    } else if (!card.querySelector(".ai-agent-card-preview")) {
+      var existingBody = card.querySelector(".ai-agent-card-body");
+      var previewNode = document.createElement("div");
+      previewNode.className = "ai-agent-card-preview";
+      card.insertBefore(previewNode, existingBody);
     }
     var previous = card.__cardData || {};
     var merged = {
       kind: options.kind || previous.kind || "tool",
       title: options.title || previous.title || "",
-      meta: options.meta || previous.meta || "",
-      detail: options.detail || previous.detail || "",
+      meta: options.meta !== undefined ? options.meta : (previous.meta || ""),
+      detail: options.detail !== undefined ? options.detail : (previous.detail || ""),
       paths: (options.paths && options.paths.length) ? options.paths : (previous.paths || []),
       diff: (options.diff && options.diff.length) ? options.diff : (previous.diff || []),
+      live: options.live !== undefined ? !!options.live : !!previous.live,
     };
+    if (!merged.live && previous.live) card.__userExpanded = false;
     card.__cardData = merged;
     card.className = "ai-agent-card kind-" + merged.kind;
-    card.querySelector(".ai-agent-card-kind").textContent = cardKindLabel(merged.kind);
+    card.classList.toggle("is-live", merged.live);
+    card.classList.toggle("has-body", cardHasBody(merged));
+    card.classList.toggle("has-preview", cardHasBody(merged) && !merged.live);
+    var header = card.querySelector(".ai-agent-card-header");
+    var expandable = cardHasBody(merged);
+    header.setAttribute("tabindex", expandable ? "0" : "-1");
+    header.setAttribute("role", expandable ? "button" : "presentation");
     card.querySelector(".ai-agent-card-title").textContent = merged.title;
     card.querySelector(".ai-agent-card-meta").textContent = merged.meta;
+    var preview = card.querySelector(".ai-agent-card-preview");
+    preview.textContent = cardPreviewText(merged);
     var body = card.querySelector(".ai-agent-card-body");
     body.innerHTML = "";
     if (merged.detail) {
@@ -830,11 +1161,8 @@
       extra.innerHTML = extraHtml;
       body.appendChild(extra);
     }
-    if (!merged.detail && !extraHtml) {
-      body.style.display = "none";
-    } else {
-      body.style.display = "";
-    }
+    applyCardExpansion(card, merged, options);
+    if (merged.live) messagesDiv.scrollTop = messagesDiv.scrollHeight;
     return card;
   }
 
@@ -846,28 +1174,37 @@
   function finalizeThoughtCard(msg) {
     var meta = getRunMeta(msg);
     if (!meta.thinkingStartedAt) return;
-    appendCard(msg, {
+    if (meta.thinkingTimer) {
+      clearInterval(meta.thinkingTimer);
+      meta.thinkingTimer = null;
+    }
+    upsertCard(msg, "think-live", {
       kind: "think",
-      title: "Thought for " + elapsedLabel(meta.thinkingStartedAt),
+      title: thinkingTitle(meta, true),
       meta: "",
-      detail: "Reasoned through the next step before replying.",
+      detail: meta.thinkingDetail || "",
       paths: [],
+      live: false,
+      forceCollapsed: true,
     });
     meta.thinkingStartedAt = 0;
+    meta.thinkingDetail = "";
   }
 
   function noteThinking(msg, detail) {
     var meta = getRunMeta(msg);
     if (!meta.thinkingStartedAt) {
       meta.thinkingStartedAt = Date.now();
-      appendCard(msg, {
-        kind: "think",
-        title: "Thinking",
-        meta: "live",
-        detail: detail || "Working through the next step.",
-        paths: [],
-      });
+      meta.thinkingDetail = detail || "";
+      if (!meta.thinkingTimer) {
+        meta.thinkingTimer = setInterval(function () {
+          refreshThinkingCard(msg);
+        }, 1000);
+      }
+    } else if (detail) {
+      meta.thinkingDetail += detail;
     }
+    refreshThinkingCard(msg);
   }
 
   function renderAttachmentPreview() {
@@ -1059,7 +1396,6 @@
       runState.textContent = sendQueue.length ? ("就绪 · 队列 " + sendQueue.length) : "就绪";
     }
     runState.classList.toggle("is-busy", !!isRunning || runState.textContent.indexOf("中") >= 0);
-    currentModel.textContent = modelField.value;
     sendBtn.textContent = isRunning ? "…" : "↑";
     sendBtn.title = isRunning ? "加入队列" : "发送";
     sendBtn.classList.toggle("is-queue", !!isRunning);
@@ -1160,9 +1496,6 @@
             sessionId = payload.session_id;
             localStorage.setItem("ai-agent-session-id", sessionId);
           }
-          if (payload.model) {
-            currentModel.textContent = payload.model;
-          }
 
           if (payload.type === "text") {
             updateRunState("回复中");
@@ -1202,13 +1535,17 @@
             var toolKey = payload.call_id
               ? ("tool-" + payload.call_id)
               : ("tool-" + (payload.name || "tool") + "-" + Date.now());
+            var toolView = buildToolPresentation(payload, summary);
+            var toolRunning = payload.status === "running";
             upsertCard(agentMsg, toolKey, {
               kind: summary.kind || "tool",
-              title: summary.title || (payload.name || "tool"),
-              meta: payload.status === "running" ? "running" : "done",
-              detail: summary.detail || payload.args || payload.result || "",
+              title: toolView.title,
+              meta: "",
+              detail: toolView.detail,
               paths: summary.paths || [],
               diff: summary.diff || [],
+              live: toolRunning,
+              forceCollapsed: !toolRunning,
             });
           } else if (payload.type === "status") {
             updateRunState(payload.content || "正在处理");
@@ -1340,4 +1677,25 @@
   updateRunState("就绪");
   updateModeUI();
   loadModelOptions();
+
+  // ponytail: table self-check — ?mdcheck=1 on host page
+  if (/\bmdcheck=1\b/.test(String(location.search || ""))) {
+    var mdSample = [
+      "今天累计",
+      "",
+      "| 指标 | 数值 |",
+      "",
+      "|------|------|",
+      "",
+      "| 消费 | 4,843.95 |",
+      "",
+      "**结论**：ROAS 0.76",
+    ].join("\n");
+    var mdOut = renderMarkdown(mdSample);
+    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0) {
+      console.error("Ai-agent markdown self-check failed", mdOut);
+    } else {
+      console.log("Ai-agent markdown self-check ok");
+    }
+  }
 })();
