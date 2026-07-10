@@ -218,18 +218,26 @@
     #ai-agent-queue:empty { display: none; }
     .ai-agent-queue-item {
       display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
-      padding: 10px 12px; border: 1px dashed var(--ai-border); border-radius: 14px;
+      padding: 10px 12px; border: 1px solid var(--ai-border); border-radius: 14px;
       background: var(--ai-surface); color: var(--ai-text); font-size: 13px;
     }
     .ai-agent-queue-item .meta { color: #10a37f; font-size: 12px; margin-bottom: 4px; font-weight: 700; }
     .ai-agent-queue-item .text {
       white-space: pre-wrap; word-break: break-word; max-height: 72px; overflow: hidden;
+      cursor: text;
     }
-    .ai-agent-queue-item button {
-      flex: 0 0 auto; background: #fff; color: var(--ai-text);
-      border: 1px solid var(--ai-border); border-radius: 999px; padding: 6px 10px;
-      cursor: pointer; font-weight: 650; font-size: 12px;
+    .ai-agent-queue-item .text:hover { color: #111; }
+    .ai-agent-queue-actions {
+      display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
     }
+    .ai-agent-queue-actions button {
+      width: 28px; height: 28px; border: 0; border-radius: 8px;
+      background: transparent; color: #555; cursor: pointer;
+      display: grid; place-items: center; font-size: 14px; line-height: 1;
+    }
+    .ai-agent-queue-actions button:hover { background: #fff; color: #111; }
+    .ai-agent-queue-actions button.send-now { font-size: 15px; font-weight: 700; }
+    .ai-agent-queue-actions button.delete:hover { color: #b91c1c; }
     #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 0 4px; }
     #ai-agent-attachments:empty { display: none; }
     .ai-agent-thumb { position: relative; width: 64px; height: 64px; }
@@ -315,7 +323,7 @@
           <input id="ai-agent-input" type="text" placeholder="给 Ai-agent 发送消息" />
           <button id="ai-agent-send" type="button" title="发送">↑</button>
         </div>
-        <div id="ai-agent-hint">Enter 发送 · 回复中可继续编辑并排队 · 可附带文件</div>
+        <div id="ai-agent-hint">Enter 发送/排队 · 队列项可 ✎编辑 · ↑立即发送 · 🗑删除</div>
       </div>
       <span id="ai-agent-current-model"></span>
     </div>
@@ -342,6 +350,7 @@
   var sendQueue = [];
   var isRunning = false;
   var queueSeq = 0;
+  var activeAbort = null;
   modelField.value = defaultModel;
   currentModel.textContent = defaultModel;
 
@@ -700,30 +709,90 @@
     });
   }
 
+  function removeQueueItem(id, revokeFiles) {
+    var kept = [];
+    sendQueue.forEach(function (item) {
+      if (item.id !== id) {
+        kept.push(item);
+        return;
+      }
+      if (revokeFiles) {
+        item.files.forEach(function (file) {
+          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+        });
+      }
+    });
+    sendQueue = kept;
+    renderQueue();
+    updateRunState(isRunning ? "处理中" : "就绪");
+  }
+
+  function editQueueItem(item) {
+    // Pull queued prompt back into composer (Cursor-style edit).
+    if (inputField.value.trim() || pendingFiles.length) {
+      if (!confirm("编辑排队消息会覆盖当前输入框内容，继续？")) return;
+      clearPendingFiles(true);
+    }
+    inputField.value = item.text || "";
+    pendingFiles = item.files.slice();
+    removeQueueItem(item.id, false);
+    renderAttachmentPreview();
+    inputField.focus();
+  }
+
+  function sendQueueItemNow(item) {
+    // Cursor ↑ : jump this prompt to next / interrupt current run.
+    sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
+    sendQueue.unshift(item);
+    renderQueue();
+    if (isRunning && activeAbort) {
+      activeAbort.abort();
+      return;
+    }
+    drainQueue();
+  }
+
   function renderQueue() {
     queueDiv.innerHTML = "";
     sendQueue.forEach(function (item, index) {
       var row = document.createElement("div");
       row.className = "ai-agent-queue-item";
       var left = document.createElement("div");
-      left.innerHTML = '<div class="meta"></div><div class="text"></div>';
+      left.innerHTML = '<div class="meta"></div><div class="text" title="点击编辑"></div>';
       left.querySelector(".meta").textContent =
         "排队 #" + (index + 1) +
         (item.files.length ? " · " + item.files.length + " 个附件" : "");
       left.querySelector(".text").textContent = item.text || "(仅附件)";
-      var cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.textContent = "撤销";
-      cancelBtn.onclick = function () {
-        item.files.forEach(function (file) {
-          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-        });
-        sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
-        renderQueue();
-        updateRunState(isRunning ? "处理中" : "就绪");
-      };
+      left.querySelector(".text").onclick = function () { editQueueItem(item); };
+
+      var actions = document.createElement("div");
+      actions.className = "ai-agent-queue-actions";
+
+      var editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.title = "编辑";
+      editBtn.textContent = "✎";
+      editBtn.onclick = function () { editQueueItem(item); };
+
+      var sendNowBtn = document.createElement("button");
+      sendNowBtn.type = "button";
+      sendNowBtn.className = "send-now";
+      sendNowBtn.title = "立即发送";
+      sendNowBtn.textContent = "↑";
+      sendNowBtn.onclick = function () { sendQueueItemNow(item); };
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "delete";
+      deleteBtn.title = "删除";
+      deleteBtn.textContent = "🗑";
+      deleteBtn.onclick = function () { removeQueueItem(item.id, true); };
+
+      actions.appendChild(editBtn);
+      actions.appendChild(sendNowBtn);
+      actions.appendChild(deleteBtn);
       row.appendChild(left);
-      row.appendChild(cancelBtn);
+      row.appendChild(actions);
       queueDiv.appendChild(row);
     });
   }
@@ -819,6 +888,7 @@
     var filesPayload = buildFilesPayload(item.files);
     var agentMsg = appendMessage("Agent", "", "agent", true);
     var reply = "";
+    var aborted = false;
     appendCard(agentMsg, {
       kind: "plan",
       title: "Planning next move",
@@ -827,10 +897,13 @@
       paths: [],
     });
 
+    var controller = new AbortController();
+    activeAbort = controller;
     try {
       var res = await fetch(apiBase + "/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           message: item.text || (item.files.length ? "请查看我上传的附件。" : ""),
           session_id: sessionId || null,
@@ -943,17 +1016,25 @@
         }
       }
     } catch (err) {
-      var detail = (err && err.message) ? err.message : String(err);
-      setMessageBody(
-        agentMsg,
-        "请求失败 (" + apiBase + "): " + detail + "。请确认已用 python start.py 或 ./run.sh 启动服务（默认 http://127.0.0.1:8765）。",
-        false
-      );
+      if (err && err.name === "AbortError") {
+        aborted = true;
+        finalizeThoughtCard(agentMsg);
+        setMessageBody(agentMsg, "(已中断，准备发送下一条)", false);
+      } else {
+        var detail = (err && err.message) ? err.message : String(err);
+        setMessageBody(
+          agentMsg,
+          "请求失败 (" + apiBase + "): " + detail + "。请确认已用 python start.py 或 ./run.sh 启动服务（默认 http://127.0.0.1:8765）。",
+          false
+        );
+      }
     } finally {
+      if (activeAbort === controller) activeAbort = null;
       item.files.forEach(function (file) {
         if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
       });
     }
+    return aborted;
   }
 
   async function drainQueue() {
