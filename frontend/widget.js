@@ -172,6 +172,26 @@
       font-size: 15px;
       text-align: center;
     }
+    /* Empty chat greeting — sidebar + fullscreen. */
+    #ai-agent-sidebar.is-empty #ai-agent-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 160px;
+      margin: 0;
+      padding: 28px 12px 12px;
+      text-align: center !important;
+    }
+    #ai-agent-sidebar.is-empty #ai-agent-empty h1,
+    #ai-agent-sidebar.is-empty #ai-agent-empty p {
+      width: 100%;
+      text-align: center !important;
+    }
+    #ai-agent-sidebar.is-empty #ai-agent-jump-bottom {
+      display: none !important;
+    }
     /* Fullscreen landing: same column as composer, text centered (host h1 often forces left). */
     #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-scroll-wrap {
       flex: 0 0 auto;
@@ -190,18 +210,9 @@
       box-sizing: border-box;
     }
     #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
+      min-height: 0;
       margin: 0 0 18px;
       padding: 0;
-      text-align: center !important;
-    }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty h1,
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty p {
-      width: 100%;
-      text-align: center !important;
     }
     #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-footer {
       flex: 0 0 auto;
@@ -212,9 +223,6 @@
     #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-composer-wrap {
       width: min(var(--ai-content-width), 100%);
       margin: 0 auto;
-    }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-jump-bottom {
-      display: none !important;
     }
     .ai-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
     .ai-agent-worklog:empty { display: none; }
@@ -1358,8 +1366,8 @@
   }
 
   function updateEmptyState() {
-    // Greeting only in fullscreen empty chat (sidebar mode stays plain).
-    var show = isFullscreen() && isLandingState();
+    // Greeting whenever the thread is empty (sidebar + fullscreen).
+    var show = isLandingState();
     sidebar.classList.toggle("is-empty", show);
     if (emptyEl) emptyEl.setAttribute("aria-hidden", show ? "false" : "true");
   }
@@ -3174,14 +3182,18 @@
     } catch (err) {
       if (err && err.name === "AbortError") {
         // Keep whatever was already streamed; no "(已终止)/(已中断)" body text.
-        finalizeLiveCards(agentMsg);
-        if (reply && reply.trim() && !isInterimReplyText(reply)) {
-          streamTimelineText(agentMsg, reply, true);
+        // New-chat may have already detached this node — don't revive it.
+        if (threadDiv.contains(agentMsg)) {
+          finalizeLiveCards(agentMsg);
+          if (reply && reply.trim() && !isInterimReplyText(reply)) {
+            streamTimelineText(agentMsg, reply, true);
+          }
         }
         if (stopRequested) {
           // Remember for cleanup on the next send; queue-↑ interrupt keeps it.
-          stoppedAgentMsg = agentMsg;
+          if (threadDiv.contains(agentMsg)) stoppedAgentMsg = agentMsg;
           updateRunState("就绪");
+          updateEmptyState();
         } else {
           updateRunState("已中断");
         }
@@ -3334,6 +3346,8 @@
     stopRequested = false;
     updateEmptyState();
     updateRunState("就绪");
+    // Abort is async — a late stream chunk must not leave empty greeting hidden.
+    requestAnimationFrame(updateEmptyState);
   };
   updateEmptyState();
   updateRunState("就绪");
