@@ -114,6 +114,10 @@ def check_context_error() -> None:
     assert "Prompt is too long" in out, out
     plain = mgr._friendly_error("network timeout")
     assert plain == "network timeout", plain
+    busy = mgr._friendly_error("agent_busy")
+    assert "上一条仍在执行" in busy, busy
+    internal = mgr._friendly_error("internal error")
+    assert "内部错误" in internal, internal
     print("ok context error")
 
 

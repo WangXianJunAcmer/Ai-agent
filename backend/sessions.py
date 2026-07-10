@@ -25,6 +25,8 @@ from cursor_sdk import (
 
 from backend.model_catalog import model_display_name, normalize_model_id
 
+_TERMINAL_RUN_STATUSES = frozenset({"finished", "error", "cancelled", "expired"})
+
 
 @dataclass
 class Session:
@@ -33,6 +35,7 @@ class Session:
     model: str
     model_key: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    active_run: object | None = None
 
 
 class SessionManager:
@@ -127,6 +130,26 @@ class SessionManager:
     except Exception:
       # Bridge already down during process exit / hot reload.
       pass
+
+  async def _cancel_run(self, run) -> None:
+    if run is None:
+      return
+    try:
+      status = getattr(run, "status", None) or "running"
+      if status in _TERMINAL_RUN_STATUSES:
+        return
+      cancel = getattr(run, "cancel", None)
+      if cancel:
+        await cancel()
+    except Exception:
+      pass
+
+  async def _cancel_session_run(self, session: Session) -> None:
+    run = session.active_run
+    if run is None:
+      return
+    await self._cancel_run(run)
+    session.active_run = None
 
   def _stringify(self, value) -> str:
     if value is None:
@@ -489,6 +512,10 @@ class SessionManager:
       or ("上下文" in msg and ("超" in msg or "过长" in msg))
     ):
       return "上下文已超限，请点击「新对话」清空后重试，或缩短本次输入/附件。原始错误: " + msg
+    if "agent_busy" in lower or "agent is busy" in lower or "busy" in lower and "agent" in lower:
+      return "上一条仍在执行，请稍等片刻后重试，或点击「新对话」。原始错误: " + msg
+    if lower == "internal error" or "internal error" in lower:
+      return "服务内部错误，常见于上一条被中断后 Agent 尚未释放。请再发一次或开新对话。原始错误: " + msg
     return msg
 
   def _is_image(self, mime_type: str) -> bool:
@@ -693,10 +720,13 @@ class SessionManager:
   ) -> dict:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
+      run = None
       try:
+        await self._cancel_session_run(session)
         payload, files = self._build_message(message, attachments)
         upload_meta = self._upload_meta(attachments, files)
         run = await session.agent.send(payload, SendOptions(mode=mode))
+        session.active_run = run
         result = await run.wait()
         reply = await run.text()
         resolved = self._model_id_from_selection(getattr(result, "model", None))
@@ -719,6 +749,9 @@ class SessionManager:
           "error": self._friendly_error(err.message),
           "model": session.model,
         }
+      finally:
+        if session.active_run is run:
+          session.active_run = None
 
   async def stream(
     self,
@@ -730,7 +763,10 @@ class SessionManager:
   ) -> AsyncIterator[dict]:
     session = await self.get_or_create(session_id, model)
     async with session.lock:
+      run = None
+      forward_task = None
       try:
+        await self._cancel_session_run(session)
         payload, files = self._build_message(message, attachments)
         upload_meta = self._upload_meta(attachments, files)
         if upload_meta["images"] or upload_meta["files"]:
@@ -752,6 +788,7 @@ class SessionManager:
           payload,
           SendOptions(on_delta=on_delta, mode=mode),
         )
+        session.active_run = run
 
         async def forward_messages() -> None:
           try:
@@ -760,13 +797,21 @@ class SessionManager:
           finally:
             await queue.put(None)
 
-        task = asyncio.create_task(forward_messages())
-        while True:
-          event = await queue.get()
-          if event is None:
-            break
-          yield event
-        await task
+        forward_task = asyncio.create_task(forward_messages())
+        try:
+          while True:
+            event = await queue.get()
+            if event is None:
+              break
+            yield event
+        finally:
+          if forward_task and not forward_task.done():
+            forward_task.cancel()
+            try:
+              await forward_task
+            except asyncio.CancelledError:
+              pass
+
         result = await run.wait()
         resolved = self._model_id_from_selection(getattr(result, "model", None))
         yield {
@@ -778,6 +823,9 @@ class SessionManager:
           "model": session.model,
           **self._resolved_model_payload(resolved),
         }
+      except asyncio.CancelledError:
+        await self._cancel_run(run)
+        raise
       except CursorAgentError as err:
         yield {
           "type": "error",
@@ -785,3 +833,6 @@ class SessionManager:
           "content": self._friendly_error(err.message),
           "model": session.model,
         }
+      finally:
+        if session.active_run is run:
+          session.active_run = None

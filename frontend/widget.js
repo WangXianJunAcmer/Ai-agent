@@ -2161,15 +2161,7 @@
   }
 
   function sendQueueItemNow(item) {
-    // Cursor ↑ : jump this prompt to next / interrupt current run.
-    sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
-    sendQueue.unshift(item);
-    renderQueue();
-    if (isRunning && activeAbort) {
-      activeAbort.abort();
-      return;
-    }
-    drainQueue();
+    interruptAndSend(item);
   }
 
   function renderQueue() {
@@ -2293,10 +2285,10 @@
       runState.textContent = sendQueue.length ? ("就绪 · 队列 " + sendQueue.length) : "就绪";
     }
     runState.classList.toggle("is-busy", !!isRunning || runState.textContent.indexOf("中") >= 0);
-    sendBtn.textContent = isRunning ? "…" : "↑";
-    sendBtn.title = isRunning ? "加入队列" : "发送";
+    sendBtn.textContent = isRunning ? "↑" : "↑";
+    sendBtn.title = isRunning ? "中断当前回复并发送" : "发送";
     sendBtn.classList.toggle("is-queue", !!isRunning);
-    sendBtn.classList.toggle("hidden", !!isRunning);
+    sendBtn.classList.toggle("hidden", false);
     stopBtn.classList.toggle("visible", !!isRunning);
   }
 
@@ -2545,8 +2537,21 @@
     updateRunState("正在终止");
   }
 
+  function interruptAndSend(item) {
+    sendQueue = sendQueue.filter(function (x) { return x.id !== item.id; });
+    sendQueue.unshift(item);
+    renderQueue();
+    if (isRunning && activeAbort) activeAbort.abort();
+    else drainQueue();
+  }
+
   function sendMessage() {
-    if (!enqueueCurrentCompose()) return;
+    var item = enqueueCurrentCompose();
+    if (!item) return;
+    if (isRunning) {
+      interruptAndSend(item);
+      return;
+    }
     drainQueue();
   }
 
