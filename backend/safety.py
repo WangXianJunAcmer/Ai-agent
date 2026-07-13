@@ -89,22 +89,23 @@ _REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
   (_SECRET_SHAPE_RES[1], "[REDACTED_API_KEY]"),
   (_SECRET_SHAPE_RES[2], "[REDACTED_API_KEY]"),
   (_SECRET_SHAPE_RES[3], "[REDACTED_JWT]"),
-  (
-    re.compile(
-      r"(?i)((?:api[_-]?key|password|passwd|secret|token|access[_-]?key|CURSOR_API_KEY)\s*[=:：]\s*)(['\"]?)([^\s'\"|,}{]+)\2"
-    ),
-    r"\1\2[REDACTED]\2",
+]
+
+# key=value / 表格形式 — also used by text_has_secret (detect before soft-redact)
+_SECRET_ASSIGNMENT_RES: list[re.Pattern[str]] = [
+  re.compile(
+    r"(?i)((?:api[_-]?key|password|passwd|secret|token|access[_-]?key|CURSOR_API_KEY)\s*[=:：]\s*)(['\"]?)([^\s'\"|,}{]+)\2"
   ),
-  (
-    re.compile(r"(?i)((?:密码|口令|密钥|凭证)\s*[=:：]\s*)([^\s|，,；;]+)"),
-    r"\1[REDACTED]",
+  re.compile(r"(?i)((?:密码|口令|密钥|凭证)\s*[=:：]\s*)([^\s|，,；;]+)"),
+  re.compile(
+    r"(?i)((?:password|passwd|密码|口令)\s*[|｜]\s*)(`?)([A-Za-z0-9!@#$%^&*._-]{6,64})\2"
   ),
-  (
-    re.compile(
-      r"(?i)((?:password|passwd|密码|口令)\s*[|｜]\s*)(`?)([A-Za-z0-9!@#$%^&*._-]{6,64})\2"
-    ),
-    r"\1\2[REDACTED]\2",
-  ),
+]
+
+_REDACT_PATTERNS += [
+  (_SECRET_ASSIGNMENT_RES[0], r"\1\2[REDACTED]\2"),
+  (_SECRET_ASSIGNMENT_RES[1], r"\1[REDACTED]"),
+  (_SECRET_ASSIGNMENT_RES[2], r"\1\2[REDACTED]\2"),
 ]
 
 INPUT_BLOCK_SECRET = (
@@ -142,10 +143,6 @@ def set_safety_enabled(enabled: bool) -> None:
   _SAFETY_ENABLED = bool(enabled)
   if not _SAFETY_ENABLED:
     _KNOWN_SECRETS.clear()
-
-
-def is_safety_enabled() -> bool:
-  return _SAFETY_ENABLED
 
 
 def set_known_secrets(*values: str) -> None:
@@ -187,8 +184,7 @@ def text_has_secret(text: str) -> bool:
   for pat in _SECRET_SHAPE_RES:
     if pat.search(text):
       return True
-  # assignment / table forms that redact_secrets would scrub
-  for pat, _ in _REDACT_PATTERNS[4:]:
+  for pat in _SECRET_ASSIGNMENT_RES:
     if pat.search(text):
       return True
   return False
@@ -204,12 +200,14 @@ def sensitive_tool_block_reason(name: str, args) -> str | None:
   if not _SAFETY_ENABLED:
     return None
   norm = normalize_tool_name(name)
-  if norm in _READ_TOOL_NAMES or norm in {"read", "write"}:
+  # write: agent sometimes dumps secrets into a new file path like .env
+  if norm in _READ_TOOL_NAMES or norm == "write":
     for path in args_paths(args):
       if is_sensitive_path(path):
         return f"{SENSITIVE_READ_BLOCK} 拦截工具: 「{name}」（目标: {path}）"
     if isinstance(args, dict):
-      for key in ("path", "glob_pattern", "pattern", "target_file", "file"):
+      # glob_pattern / pattern cover Grep/Glob targeting sensitive names
+      for key in ("glob_pattern", "pattern"):
         val = args.get(key)
         if isinstance(val, str) and is_sensitive_path(val):
           return f"{SENSITIVE_READ_BLOCK} 拦截工具: 「{name}」（目标: {val}）"
@@ -274,6 +272,14 @@ def sanitize_event(event: dict) -> dict:
       if "result_json" in scrubbed:
         scrubbed["result_json"] = OUTPUT_BLOCK_SECRET
     return scrubbed
+  if t == "done":
+    # Match send()/scrub_reply: secret-bearing terminal fields → hard block, not soft redact.
+    out = dict(event)
+    for key in ("result", "error", "content"):
+      val = out.get(key)
+      if isinstance(val, str):
+        out[key] = scrub_reply(val)
+    return _redact_value(out)
   return _redact_value(event)
 
 
@@ -314,6 +320,11 @@ def _self_check() -> None:
   assert scrub_reply("here is super-secret-token-xyz ok") == OUTPUT_BLOCK_SECRET
   evt = sanitize_event({"type": "text", "content": "password: secret123"})
   assert evt["content"] == OUTPUT_BLOCK_SECRET
+  done = sanitize_event({
+    "type": "done",
+    "result": "api_key: crsr_abcdefghijklmnopqrstuvwxyz012345",
+  })
+  assert done["result"] == OUTPUT_BLOCK_SECRET, done
   set_known_secrets()
 
   set_safety_enabled(False)

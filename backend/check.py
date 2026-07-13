@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.attachments import build_message, materialize_files
+from backend.attachments import (
+    MAX_ATTACHMENT_BYTES,
+    build_message,
+    decode_attachment_bytes,
+    materialize_files,
+    prune_upload_dir,
+)
 from backend.model_catalog import model_display_name
 from backend.repo_write_guard import repo_write_block_reason
 from backend.runtime import SessionManager
@@ -22,6 +28,7 @@ from backend.safety import (
     OUTPUT_BLOCK_SECRET,
     input_block_reason,
     redact_secrets,
+    sanitize_event,
     scrub_reply,
     sensitive_tool_block_reason,
     set_known_secrets,
@@ -179,9 +186,46 @@ def check_attachments() -> None:
         )
         assert getattr(built2, "images", None) is not None, built2
         assert files2 == [], files2
+
+        huge = base64.b64encode(b"x" * (MAX_ATTACHMENT_BYTES + 1)).decode("ascii")
+        assert decode_attachment_bytes(huge) is None
+        skipped = materialize_files(
+            root, [{"name": "big.bin", "mime_type": "application/octet-stream", "data": huge}]
+        )
+        assert skipped == [], skipped
+
+        upload = root / ".ai-agent-uploads"
+        upload.mkdir(parents=True, exist_ok=True)
+        old = upload / "old.txt"
+        old.write_text("old", encoding="utf-8")
+        import os
+        import time
+        os.utime(old, (time.time() - 8 * 24 * 3600, time.time() - 8 * 24 * 3600))
+        assert prune_upload_dir(root) >= 1
+        assert not old.exists()
         print("ok attachments")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def check_idle_prune() -> None:
+    import asyncio
+    import time
+
+    from backend.sessions import Session
+
+    mgr = SessionManager(dict(_SETTINGS))
+    sess = Session(session_id="idle", agent=object(), model="m", model_key="m")
+    sess.live_done = True
+    sess.last_active = time.time() - 7200
+    mgr._sessions["idle"] = sess
+
+    async def _run() -> None:
+      await mgr._prune_idle_sessions()
+      assert "idle" not in mgr._sessions
+
+    asyncio.run(_run())
+    print("ok idle prune")
 
 
 def check_cancel_turn() -> None:
@@ -219,6 +263,11 @@ def check_safety() -> None:
     set_known_secrets("local-test-secret-value")
     assert text_has_secret("leak local-test-secret-value here")
     assert scrub_reply("leak local-test-secret-value here") == OUTPUT_BLOCK_SECRET
+    done = sanitize_event({
+        "type": "done",
+        "result": "api_key: crsr_abcdefghijklmnopqrstuvwxyz012345",
+    })
+    assert done["result"] == OUTPUT_BLOCK_SECRET, done
     set_known_secrets()
 
     assert repo_write_block_reason({"allow_repo_write": False}, "Write", {"path": "backend/main.py"})
@@ -239,13 +288,50 @@ def check_safety() -> None:
     print("ok safety")
 
 
+def check_live_tail() -> None:
+    """Buffered events survive; follow_log yields them without a live Cursor run."""
+    import asyncio
+
+    from backend.sessions import Session
+
+    mgr = SessionManager(dict(_SETTINGS))
+    sess = Session(session_id="t", agent=object(), model="m", model_key="m")
+    sess.live_done = False
+
+    async def producer() -> None:
+        await asyncio.sleep(0.05)
+        mgr._emit(sess, {"type": "text", "session_id": "t", "content": "hi", "model": "m"})
+        mgr._emit(sess, {"type": "done", "session_id": "t", "status": "finished", "model": "m"})
+        sess.live_done = True
+
+    async def main_coro() -> None:
+        sess.pump_task = asyncio.create_task(producer())
+        out = [e async for e in mgr._follow_log(sess, 0)]
+        await sess.pump_task
+        assert [e["type"] for e in out] == ["text", "done"], out
+        sess.pump_task = None
+        sess.live_done = True
+        late = [e async for e in mgr._follow_log(sess, 0)]
+        assert [e["type"] for e in late] == ["text", "done"], late
+        # after=1 skips the text event; after past end still yields a terminal done.
+        mid = [e async for e in mgr._follow_log(sess, 1)]
+        assert [e["type"] for e in mid] == ["done"], mid
+        past = [e async for e in mgr._follow_log(sess, 99)]
+        assert past and past[-1]["type"] == "done", past
+
+    asyncio.run(main_coro())
+    print("ok live tail")
+
+
 def main() -> None:
     check_config()
     check_tool_display()
     check_safety()
     check_context_error()
     check_attachments()
+    check_idle_prune()
     check_cancel_turn()
+    check_live_tail()
     print("ok all")
 
 

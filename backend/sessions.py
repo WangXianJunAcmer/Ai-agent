@@ -31,3 +31,9 @@ class Session:
   turn: int = 0
   safety_injected: bool = False
   identity_injected: bool = False
+  # Detached turn buffer: survives SSE disconnect so refresh can /follow.
+  live_events: list[dict] = field(default_factory=list)
+  live_done: bool = True
+  pump_task: asyncio.Task | None = None
+  # Wall-clock for idle prune (updated on send/stream/follow).
+  last_active: float = 0.0

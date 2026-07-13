@@ -335,6 +335,257 @@
     .ai-agent-msg { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
     .ai-agent-msg.user { justify-content: flex-end; }
     .ai-agent-msg.agent { justify-content: flex-start; }
+    .ai-agent-msg.user .ai-agent-msg-main {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .ai-agent-user-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 2px;
+      margin-top: 3px;
+      opacity: 0;
+      transition: opacity .12s ease;
+    }
+    .ai-agent-user-action {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--ai-muted);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      transition: background .12s ease, color .12s ease;
+    }
+    .ai-agent-user-action svg { width: 15px; height: 15px; display: block; }
+    .ai-agent-msg.user:hover .ai-agent-user-actions,
+    .ai-agent-msg.user:focus-within .ai-agent-user-actions,
+    .ai-agent-msg.user.is-editing .ai-agent-user-actions {
+      opacity: 1;
+    }
+    .ai-agent-msg.user.is-editing .ai-agent-user-action.is-edit {
+      background: rgba(0,0,0,.06);
+      color: var(--ai-text);
+    }
+    .ai-agent-edit-textarea {
+      display: block;
+      width: 100%;
+      min-width: 160px;
+      max-width: 100%;
+      resize: none;
+      overflow: hidden;
+      box-sizing: border-box;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      padding: 2px 2px 0;
+      font: inherit;
+      color: var(--ai-text);
+      line-height: 1.45;
+      outline: none;
+    }
+    .ai-agent-edit-shell {
+      width: 100%;
+      box-sizing: border-box;
+      background: #fff;
+      border: 0;
+      border-radius: 16px;
+      box-shadow: var(--ai-composer-shadow);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: visible;
+    }
+    .ai-agent-edit-shell.mode-plan {
+      box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.04);
+    }
+    .ai-agent-edit-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .ai-agent-edit-attachments:empty { display: none; }
+    .ai-agent-edit-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .ai-agent-edit-toolbar-left,
+    .ai-agent-edit-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .ai-agent-edit-mode {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 0;
+      outline: none;
+      background: #f4f4f4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 8px center no-repeat;
+      border-radius: 999px;
+      padding: 5px 20px 5px 10px;
+      max-width: 82px;
+      font: 12px/1.2 inherit;
+      color: var(--ai-muted);
+      cursor: pointer;
+    }
+    .ai-agent-edit-mode:hover { color: var(--ai-text); }
+    .ai-agent-edit-model-wrap {
+      position: relative;
+      flex: 0 0 auto;
+      min-width: 0;
+      z-index: 5;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-btn {
+      appearance: none;
+      border: 0;
+      outline: none;
+      background: transparent;
+      padding: 2px 4px 2px 8px;
+      font: 500 12px/1.2 inherit;
+      color: var(--ai-text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      max-width: min(280px, 48vw);
+      border-radius: 6px;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-btn:hover { background: rgba(0,0,0,.04); }
+    .ai-agent-edit-model-wrap .ai-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
+    .ai-agent-edit-model-wrap .ai-agent-model-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-chevron {
+      flex: 0 0 auto;
+      width: 12px;
+      height: 12px;
+      opacity: .55;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") center / 12px no-repeat;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-menu {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: calc(100% + 8px);
+      bottom: auto;
+      z-index: 50;
+      width: max-content;
+      min-width: 168px;
+      max-width: min(200px, calc(100vw - 24px));
+      border: 1px solid var(--ai-border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,.12);
+      padding: 8px;
+      overflow: hidden;
+    }
+    .ai-agent-edit-model-wrap.is-open .ai-agent-model-menu { display: block; }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto-row:hover { background: #f7f7f7; }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy strong {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ai-text);
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy span {
+      font-size: 11px;
+      color: var(--ai-muted);
+      line-height: 1.35;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto {
+      appearance: none;
+      flex: 0 0 auto;
+      width: 36px;
+      height: 20px;
+      border: 0;
+      border-radius: 999px;
+      background: #d4d4d4;
+      position: relative;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.18);
+      transition: transform .15s ease;
+    }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
+    .ai-agent-edit-model-wrap .ai-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
+    .ai-agent-edit-model-wrap .ai-agent-model-list {
+      display: none;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid var(--ai-border);
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .ai-agent-edit-model-wrap:not(.is-auto) .ai-agent-model-list { display: block; }
+    .ai-agent-edit-file-input { display: none; }
+    .ai-agent-edit-pick,
+    .ai-agent-edit-send {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      padding: 0;
+    }
+    .ai-agent-edit-pick {
+      background: transparent;
+      color: #555;
+      font-size: 16px;
+    }
+    .ai-agent-edit-pick:hover { background: #f3f3f3; }
+    .ai-agent-edit-send {
+      background: #0d0d0d;
+      color: #fff;
+    }
+    .ai-agent-edit-send:hover { background: #2a2a2a; }
+    .ai-agent-edit-send svg { width: 14px; height: 14px; display: block; }
+    .ai-agent-msg.user.is-editing .body,
+    .ai-agent-msg.user.is-editing .ai-agent-user-actions { display: none !important; }
+    .ai-agent-msg.user .body { cursor: text; }
+    .ai-agent-user-action:hover {
+      background: rgba(0,0,0,.05);
+      color: var(--ai-text);
+    }
+    @media (hover: none) {
+      .ai-agent-user-actions { opacity: 1; }
+    }
     .ai-agent-avatar {
       width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto; margin-top: 2px;
       display: grid; place-items: center; font: 700 11px/1 -apple-system, sans-serif; color: #fff;
@@ -953,6 +1204,38 @@
   var fileInput = document.getElementById("ai-agent-file-input");
   var newChatBtn = document.getElementById("ai-agent-new-chat");
   var stopBtn = document.getElementById("ai-agent-stop");
+  var SIDEBAR_WIDTH_KEY = "ai-agent-sidebar-width";
+  var SIDEBAR_OPEN_KEY = "ai-agent-sidebar-open";
+  var SIDEBAR_FULLSCREEN_KEY = "ai-agent-fullscreen";
+  var MIN_SIDEBAR_WIDTH = 360;
+
+  // Restore saved layout immediately; no health or placeholder UI.
+  (function openPanelImmediately() {
+    try {
+      var savedWidth = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10);
+      if (savedWidth >= MIN_SIDEBAR_WIDTH) {
+        var maxW = Math.min(1200, Math.round(window.innerWidth * 0.92));
+        var w = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxW, savedWidth));
+        sidebar.style.setProperty("--ai-sidebar-width", w + "px");
+      }
+      var fs = localStorage.getItem(SIDEBAR_FULLSCREEN_KEY) === "1";
+      var open = localStorage.getItem(SIDEBAR_OPEN_KEY) === "1" || fs;
+      if (!open) return;
+      sidebar.style.transition = "none";
+      if (fs) {
+        sidebar.classList.add("is-fullscreen");
+        trigger.classList.add("is-hidden");
+        document.body.classList.add("ai-agent-page-locked");
+      } else {
+        backdrop.classList.add("open");
+      }
+      sidebar.classList.add("open");
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { sidebar.style.transition = ""; });
+      });
+    } catch (err) {}
+  })();
+
   var pendingFiles = [];
   var sendQueue = [];
   var isRunning = false;
@@ -962,7 +1245,11 @@
   var queueCollapsed = false;
   // Agent bubble left after ■ stop; removed when the user sends again.
   var stoppedAgentMsg = null;
+  // Edit is staged until the bubble's own send; bottom composer stays independent.
+  var editingUserMsg = null;
   var serverBootId = "";
+  // Match backend attachments.MAX_ATTACHMENT_BYTES
+  var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
   var HISTORY_KEY = "ai-agent-chat-history";
   var historySaveTimer = null;
   var modelOptions = [
@@ -974,6 +1261,17 @@
   var autoResolvedLabel = "";
   modelField.value = defaultModel;
 
+  // Restore ASAP (functions are hoisted; don't wait for listener wiring).
+  var bootRestoredStreaming = false;
+  try {
+    var bootRestored = restoreChatHistory();
+    bootRestoredStreaming = !!(bootRestored && bootRestored.streaming);
+  } catch (err) {
+    console.warn("Ai-agent history restore failed", err);
+  }
+  updateEmptyState();
+  if (bootRestoredStreaming) updateRunState("继续接收");
+  else if (!threadDiv.querySelector(".ai-agent-msg")) updateRunState("就绪");
   function nearBottom(threshold) {
     var gap = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
     return gap <= (threshold || 80);
@@ -1049,17 +1347,28 @@
       else if (msg.classList.contains("system")) kind = "system";
       var role = kind === "user" ? "You" : (kind === "system" ? "System" : "Agent");
       var attachments = [];
-      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
-        attachments.push({ kind: "image", name: img.alt || "image", mime_type: "image/*" });
-      });
-      Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip")).forEach(function (chip) {
-        var nameEl = chip.querySelector(".name");
-        attachments.push({
-          kind: "file",
-          name: (nameEl && nameEl.textContent) || "file",
-          mime_type: chip.getAttribute("data-mime") || "",
+      if (msg.__attachments && msg.__attachments.length) {
+        attachments = msg.__attachments.map(function (item) {
+          return {
+            kind: item.kind || "file",
+            name: item.name || "file",
+            mime_type: item.mime_type || "",
+            data: item.data || "",
+          };
         });
-      });
+      } else {
+        Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
+          attachments.push({ kind: "image", name: img.alt || "image", mime_type: "image/*" });
+        });
+        Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip")).forEach(function (chip) {
+          var nameEl = chip.querySelector(".name");
+          attachments.push({
+            kind: "file",
+            name: (nameEl && nameEl.textContent) || "file",
+            mime_type: chip.getAttribute("data-mime") || "",
+          });
+        });
+      }
       return {
         role: role,
         kind: kind,
@@ -1083,14 +1392,20 @@
     try { localStorage.removeItem(HISTORY_KEY); } catch (err) {}
   }
 
-  function saveChatHistory() {
-    if (!serverBootId) return;
+  function saveChatHistory(opts) {
     try {
+      var forceStreaming = opts && Object.prototype.hasOwnProperty.call(opts, "streaming")
+        ? !!opts.streaming
+        : null;
+      var streaming = forceStreaming == null ? !!isRunning : forceStreaming;
       var payload = {
-        bootId: serverBootId,
+        bootId: serverBootId || "",
         sessionId: sessionId || "",
         model: modelField.value || defaultModel,
         messages: collectHistoryMessages(),
+        // streaming: mid-turn; refresh must /follow (pending kept for older caches)
+        streaming: streaming,
+        pending: streaming,
         savedAt: Date.now(),
       };
       localStorage.setItem(HISTORY_KEY, JSON.stringify(payload));
@@ -1107,6 +1422,14 @@
     }, 200);
   }
 
+  function flushChatHistory(opts) {
+    if (historySaveTimer) {
+      clearTimeout(historySaveTimer);
+      historySaveTimer = null;
+    }
+    saveChatHistory(opts || null);
+  }
+
   function restoreWorklog(msg, cards) {
     (cards || []).forEach(function (card, index) {
       upsertCard(msg, "restored-" + index + "-" + (card.title || "step"), {
@@ -1121,28 +1444,38 @@
     });
   }
 
-  function restoreChatHistory(bootId) {
+  function readChatHistory() {
     var raw = "";
-    try { raw = localStorage.getItem(HISTORY_KEY) || ""; } catch (err) { return false; }
-    if (!raw) return false;
-    var data = null;
-    try { data = JSON.parse(raw); } catch (err) {
+    try { raw = localStorage.getItem(HISTORY_KEY) || ""; } catch (err) { return null; }
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
       clearChatHistory();
-      return false;
+      return null;
     }
-    if (!data || data.bootId !== bootId) {
-      // Service restarted — drop stale UI history (backend sessions are gone).
-      clearChatHistory();
-      sessionId = "";
-      try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
-      return false;
+  }
+
+  function clearThreadMessages() {
+    Array.prototype.slice.call(threadDiv.querySelectorAll(".ai-agent-msg")).forEach(function (node) {
+      node.remove();
+    });
+  }
+
+  function restoreChatHistory() {
+    // Sync paint from localStorage — no /api/health gate.
+    var data = readChatHistory();
+    if (!data || !(data.messages || []).length) {
+      if (data) clearChatHistory();
+      return { ok: false, streaming: false };
     }
+    if (data.bootId) serverBootId = data.bootId;
     if (data.sessionId) {
       sessionId = data.sessionId;
       try { localStorage.setItem("ai-agent-session-id", sessionId); } catch (err) {}
     }
     if (data.model) setSelectedModel(data.model, false);
-    threadDiv.innerHTML = "";
+    clearThreadMessages();
     (data.messages || []).forEach(function (item) {
       var msg = appendMessage(
         item.role || (item.kind === "user" ? "You" : "Agent"),
@@ -1155,15 +1488,18 @@
         restoreWorklog(msg, item.worklog || []);
       }
     });
-    if (threadDiv.querySelector(".ai-agent-msg")) {
-      updateEmptyState();
-      scrollToBottom(true);
-      return true;
-    }
     updateEmptyState();
-    return false;
+    if (threadDiv.querySelector(".ai-agent-msg")) {
+      scrollToBottom(true);
+      var wasStreaming = !!(data.streaming || data.pending);
+      return {
+        ok: true,
+        // sessionId may still be empty if refresh beat the first SSE event.
+        streaming: !!wasStreaming,
+      };
+    }
+    return { ok: false, streaming: false };
   }
-
   function asModelLabel(value) {
     if (value == null) return "";
     if (typeof value === "string") return value;
@@ -1231,9 +1567,12 @@
   }
 
   function openModelMenu() {
+    if (editingUserMsg) closeEditModelMenu(editingUserMsg);
     modelWrap.classList.add("is-open");
     modelBtn.classList.add("is-open");
     modelBtn.setAttribute("aria-expanded", "true");
+    // First open only: refresh disk cache from Cursor; later opens use memory.
+    refreshModelOptionsOnce();
   }
 
   function syncModelPickerUI() {
@@ -1305,30 +1644,44 @@
     }
     renderModelList();
     setSelectedModel(current, false);
+    if (editingUserMsg) renderEditModelList(editingUserMsg);
   }
 
-  async function loadModelOptions() {
-    try {
-      var res = await fetch(apiBase + "/api/health");
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      var data = await res.json();
-      serverBootId = data.boot_id || "";
-      fillModelOptions(data.model_options, defaultModel || data.model);
-      if (serverBootId) restoreChatHistory(serverBootId);
-    } catch (err) {
-      fillModelOptions(
-        [
-          { id: "composer-2.5", label: "Composer 2.5" },
-          { id: "auto", label: "Auto" },
-        ],
-        defaultModel
-      );
+  // Paint from injected file cache; Cursor refresh only on first model-menu open.
+  var modelCatalogFetched = false;
+  var modelCatalogPromise = null;
+
+  function loadModelOptions() {
+    var cached = window.__aiAgentModelOptions;
+    if (Array.isArray(cached) && cached.length > 0) {
+      fillModelOptions(cached, modelField.value || defaultModel);
     }
   }
 
-  var SIDEBAR_WIDTH_KEY = "ai-agent-sidebar-width";
-  var SIDEBAR_FULLSCREEN_KEY = "ai-agent-fullscreen";
-  var MIN_SIDEBAR_WIDTH = 360;
+  function refreshModelOptionsOnce() {
+    if (modelCatalogFetched) return Promise.resolve();
+    if (modelCatalogPromise) return modelCatalogPromise;
+    modelCatalogPromise = fetch(apiBase + "/api/models/refresh")
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (refreshed) {
+        modelCatalogFetched = true;
+        if (!refreshed || !refreshed.model_options) return;
+        window.__aiAgentModelOptions = refreshed.model_options;
+        if (refreshed.changed) {
+          fillModelOptions(refreshed.model_options, modelField.value || defaultModel);
+          window.dispatchEvent(new CustomEvent("ai-agent-models-updated", {
+            detail: { model_options: refreshed.model_options },
+          }));
+        }
+      })
+      .catch(function () {
+        modelCatalogFetched = true;
+      })
+      .then(function () {
+        modelCatalogPromise = null;
+      });
+    return modelCatalogPromise;
+  }
 
   function maxSidebarWidth() {
     return Math.min(1200, Math.round(window.innerWidth * 0.92));
@@ -1386,6 +1739,7 @@
   function openSidebar() {
     sidebar.classList.add("open");
     if (isFullscreen()) trigger.classList.add("is-hidden");
+    try { localStorage.setItem(SIDEBAR_OPEN_KEY, "1"); } catch (err) {}
     syncBackdrop();
     syncPageScrollLock();
   }
@@ -1394,6 +1748,7 @@
     sidebar.classList.remove("open");
     backdrop.classList.remove("open");
     trigger.classList.remove("is-hidden");
+    try { localStorage.setItem(SIDEBAR_OPEN_KEY, "0"); } catch (err) {}
     syncPageScrollLock();
   }
 
@@ -1422,7 +1777,6 @@
 
   var savedWidth = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10);
   if (savedWidth) applySidebarWidth(savedWidth, false);
-  if (localStorage.getItem(SIDEBAR_FULLSCREEN_KEY) === "1") setFullscreen(true);
 
   trigger.onclick = openSidebar;
   closeBtn.onclick = closeSidebar;
@@ -2005,6 +2359,10 @@
       });
       main.appendChild(fileRow);
     }
+    if (kind === "user") {
+      msg.__attachments = (attachments || []).map(cloneAttachmentPayload);
+      bindUserMessageEdit(msg);
+    }
     threadDiv.appendChild(msg);
     updateEmptyState();
     scrollToBottom(true);
@@ -2078,15 +2436,11 @@
     if (meta.activeTextEl && !meta.activeTextEl.parentNode) meta.activeTextEl = null;
   }
 
-  function clearLeakedInterimText(msg) {
-    scrubInterimSegments(msg);
-  }
-
   // After assistant text, later tools open a new worklog *below* that text.
   function beginToolSegment(msg) {
     var meta = getRunMeta(msg);
     // Tools often interrupt mid-status ("正在" … later "读取您上传的…") — never seal those.
-    clearLeakedInterimText(msg);
+    scrubInterimSegments(msg);
     if (meta.interimSkipLen) {
       meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.interimSkipLen);
       meta.interimSkipLen = 0;
@@ -2152,6 +2506,496 @@
     meta.sealedReplyLen = 0;
     meta.activeTextEl = null;
     return streamTimelineText(msg, text, renderAsMarkdown);
+  }
+
+  function cloneAttachmentPayload(item) {
+    return {
+      kind: item.kind || ((item.mime_type || "").indexOf("image/") === 0 ? "image" : "file"),
+      name: item.name || "file",
+      mime_type: item.mime_type || "",
+      data: item.data || "",
+      previewUrl: "",
+    };
+  }
+
+  function attachmentsForResend(files) {
+    // Rebuild image preview URLs from base64 so composer thumbs work after edit.
+    return (files || []).map(function (item) {
+      var copy = cloneAttachmentPayload(item);
+      if (!copy.data) return copy;
+      if (copy.kind === "image" || (copy.mime_type || "").indexOf("image/") === 0) {
+        copy.kind = "image";
+        try {
+          var bin = atob(copy.data);
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          copy.previewUrl = URL.createObjectURL(new Blob([bytes], { type: copy.mime_type || "image/png" }));
+        } catch (err) {
+          copy.previewUrl = "";
+        }
+      }
+      return copy;
+    }).filter(function (item) {
+      // Need payload to resend; name-only restored chips can't go back on the wire.
+      return !!item.data;
+    });
+  }
+
+  function copyUserMessage(msg, btn) {
+    var body = msg.querySelector(".body");
+    var text = body ? (body.getAttribute("data-raw-text") || body.textContent || "") : "";
+    if (!text) return;
+
+    function copied() {
+      btn.title = "已复制";
+      setTimeout(function () { btn.title = "复制消息"; }, 1200);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(copied).catch(function () {});
+      return;
+    }
+    var input = document.createElement("textarea");
+    input.value = text;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    try {
+      if (document.execCommand("copy")) copied();
+    } catch (err) {}
+    input.remove();
+  }
+
+  function bindUserMessageEdit(msg) {
+    if (!msg || !msg.classList.contains("user") || msg.querySelector(".ai-agent-user-actions")) return;
+    var main = msg.querySelector(".ai-agent-msg-main");
+    if (!main) return;
+
+    var actions = document.createElement("div");
+    actions.className = "ai-agent-user-actions";
+
+    var copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "ai-agent-user-action";
+    copyBtn.title = "复制消息";
+    copyBtn.setAttribute("aria-label", "复制消息");
+    copyBtn.innerHTML = queueIcon("copy");
+    copyBtn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      copyUserMessage(msg, copyBtn);
+    };
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "ai-agent-user-action is-edit";
+    editBtn.title = "编辑消息";
+    editBtn.setAttribute("aria-label", "编辑消息");
+    editBtn.innerHTML = queueIcon("edit");
+    editBtn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      editUserMessage(msg);
+    };
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(editBtn);
+    main.appendChild(actions);
+
+    // Click the prompt itself to enter edit — Cursor-style, bottom stays independent.
+    var body = msg.querySelector(".body");
+    if (body && !body.__editClickBound) {
+      body.__editClickBound = true;
+      body.addEventListener("click", function (e) {
+        if (window.getSelection && String(window.getSelection())) {
+          var sel = window.getSelection();
+          if (sel && !sel.isCollapsed) return;
+        }
+        e.preventDefault();
+        editUserMessage(msg);
+      });
+    }
+  }
+
+  function clearSendQueue(revokeFiles) {
+    if (revokeFiles) {
+      sendQueue.forEach(function (item) { revokeFilePreviews(item.files); });
+    }
+    sendQueue = [];
+    renderQueue();
+  }
+
+  function truncateThreadFrom(msg) {
+    var node = msg;
+    var doomed = [];
+    while (node) {
+      doomed.push(node);
+      node = node.nextSibling;
+    }
+    doomed.forEach(function (el) { el.remove(); });
+  }
+
+  function autosizeEditTextarea(ta) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.max(44, ta.scrollHeight) + "px";
+  }
+
+  function leaveEditMode() {
+    if (!editingUserMsg) return;
+    var msg = editingUserMsg;
+    var shell = msg.querySelector(".ai-agent-edit-shell");
+    var body = msg.querySelector(".body");
+    var original = msg.__editOriginal != null ? msg.__editOriginal : "";
+    if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
+    if (body) {
+      body.style.display = "";
+      body.setAttribute("data-raw-text", original);
+      body.textContent = original;
+    }
+    msg.classList.remove("is-editing");
+    delete msg.__editOriginal;
+    delete msg.__editFiles;
+    delete msg.__editMode;
+    delete msg.__editModel;
+    editingUserMsg = null;
+    updateModeUI();
+  }
+
+  function commitInlineEdit() {
+    if (!editingUserMsg || !threadDiv.contains(editingUserMsg)) return;
+    var msg = editingUserMsg;
+    var ta = msg.querySelector(".ai-agent-edit-textarea");
+    var modeSel = msg.querySelector(".ai-agent-edit-mode");
+    var text = ta ? String(ta.value || "").trim() : "";
+    var files = (msg.__editFiles || []).slice();
+    if (!text && !files.length) return;
+
+    var item = {
+      id: "q-" + (++queueSeq),
+      text: text,
+      model: msg.__editModel || modelField.value,
+      mode: (modeSel && modeSel.value) || msg.__editMode || modeField.value,
+      files: files,
+    };
+
+    if (isRunning) {
+      requestCancel();
+      if (activeAbort) activeAbort.abort();
+    }
+    sendQueue.forEach(function (queued) { revokeFilePreviews(queued.files); });
+    sendQueue = [item];
+    editingUserMsg = null;
+    truncateThreadFrom(msg);
+    stoppedAgentMsg = null;
+    sessionId = "";
+    try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
+    renderQueue();
+    updateEmptyState();
+    scheduleSaveChatHistory();
+    updateModeUI();
+    if (!isRunning) drainQueue();
+  }
+
+  function closeEditModelMenu(msg) {
+    var wrap = msg && msg.querySelector(".ai-agent-edit-model-wrap");
+    if (!wrap) return;
+    wrap.classList.remove("is-open");
+    var btn = wrap.querySelector(".ai-agent-model-btn");
+    if (btn) {
+      btn.classList.remove("is-open");
+      btn.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function syncEditModelPicker(msg) {
+    if (!msg) return;
+    var wrap = msg.querySelector(".ai-agent-edit-model-wrap");
+    if (!wrap) return;
+    var id = msg.__editModel || defaultModel;
+    var isAuto = id === "auto";
+    wrap.classList.toggle("is-auto", isAuto);
+    var label = wrap.querySelector(".ai-agent-model-label");
+    var btn = wrap.querySelector(".ai-agent-model-btn");
+    var autoBtn = wrap.querySelector(".ai-agent-model-auto");
+    if (label) label.textContent = modelPickerLabel(id);
+    if (btn) btn.title = modelPickerLabel(id);
+    if (autoBtn) autoBtn.setAttribute("aria-checked", isAuto ? "true" : "false");
+    Array.prototype.forEach.call(wrap.querySelectorAll(".ai-agent-model-option"), function (opt) {
+      opt.classList.toggle("is-selected", !isAuto && opt.getAttribute("data-model-id") === id);
+    });
+  }
+
+  function setEditModel(msg, id, closeMenu) {
+    if (!msg) return;
+    var next = (id || "").trim() || defaultModel;
+    var ids = knownModelIds();
+    if (next !== "auto" && modelOptions.length && ids.indexOf(next) < 0) {
+      next = ids.indexOf(lastManualModel) >= 0 ? lastManualModel : (ids[0] || defaultModel);
+    }
+    msg.__editModel = next;
+    syncEditModelPicker(msg);
+    if (closeMenu !== false) closeEditModelMenu(msg);
+  }
+
+  function renderEditModelList(msg) {
+    if (!msg) return;
+    var list = msg.querySelector(".ai-agent-edit-model-list");
+    if (!list) return;
+    list.innerHTML = "";
+    modelOptions.forEach(function (model) {
+      if (!model.id || model.id === "auto") return;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-agent-model-option";
+      btn.setAttribute("data-model-id", model.id);
+      btn.setAttribute("role", "option");
+      btn.textContent = model.label || model.id;
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditModel(msg, model.id, true);
+      });
+      list.appendChild(btn);
+    });
+    syncEditModelPicker(msg);
+  }
+
+  function buildEditModelPicker(msg) {
+    var wrap = document.createElement("div");
+    wrap.className = "ai-agent-edit-model-wrap is-auto";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ai-agent-model-btn";
+    btn.title = "模型";
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    btn.innerHTML = '<span class="ai-agent-model-label"></span><span class="ai-agent-model-chevron" aria-hidden="true"></span>';
+    btn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeModelMenu();
+      var open = wrap.classList.contains("is-open");
+      if (open) closeEditModelMenu(msg);
+      else {
+        wrap.classList.add("is-open");
+        btn.classList.add("is-open");
+        btn.setAttribute("aria-expanded", "true");
+        refreshModelOptionsOnce();
+      }
+    };
+
+    var menu = document.createElement("div");
+    menu.className = "ai-agent-model-menu";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "选择模型");
+    menu.addEventListener("click", function (e) { e.stopPropagation(); });
+
+    var autoRow = document.createElement("div");
+    autoRow.className = "ai-agent-model-auto-row";
+    autoRow.innerHTML =
+      '<div class="ai-agent-model-auto-copy">' +
+      "<strong>Auto</strong>" +
+      "<span>自动选择适合当前任务的模型</span>" +
+      "</div>" +
+      '<button class="ai-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>';
+    var autoBtn = autoRow.querySelector(".ai-agent-model-auto");
+    autoBtn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var on = autoBtn.getAttribute("aria-checked") !== "true";
+      setEditModel(msg, on ? "auto" : (lastManualModel || "composer-2.5"), false);
+    };
+
+    var list = document.createElement("div");
+    list.className = "ai-agent-model-list ai-agent-edit-model-list";
+
+    menu.appendChild(autoRow);
+    menu.appendChild(list);
+    wrap.appendChild(btn);
+    wrap.appendChild(menu);
+    return wrap;
+  }
+
+  function renderEditAttachments(msg) {
+    if (!msg) return;
+    var box = msg.querySelector(".ai-agent-edit-attachments");
+    if (!box) return;
+    box.innerHTML = "";
+    (msg.__editFiles || []).forEach(function (item) {
+      var wrap = document.createElement("div");
+      if (item.kind === "image") {
+        wrap.className = "ai-agent-thumb";
+        wrap.innerHTML = '<img alt="" /><button type="button" title="移除">×</button>';
+        wrap.querySelector("img").src = item.previewUrl || ("data:" + item.mime_type + ";base64," + item.data);
+      } else {
+        wrap.className = "ai-agent-thumb file";
+        wrap.innerHTML = '<span class="ai-agent-file-icon" aria-hidden="true"></span><div class="meta"><span class="name"></span><span class="kind"></span></div><button type="button" title="移除">×</button>';
+        fillFileVisual(wrap.querySelector(".ai-agent-file-icon"), wrap.querySelector(".name"), wrap.querySelector(".kind"), item.name, item.mime_type);
+      }
+      wrap.querySelector("button").onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        revokeFilePreviews([item]);
+        msg.__editFiles = (msg.__editFiles || []).filter(function (x) { return x !== item; });
+        renderEditAttachments(msg);
+      };
+      box.appendChild(wrap);
+    });
+  }
+
+  async function handleEditFileSelection(msg, files) {
+    var list = Array.from(files || []);
+    for (var i = 0; i < list.length; i++) {
+      var file = list[i];
+      var data = await readFileAsBase64(file);
+      var mime = guessImageMime(file.name, file.type || "");
+      var isImage = mime.indexOf("image/") === 0;
+      msg.__editFiles = msg.__editFiles || [];
+      msg.__editFiles.push({
+        kind: isImage ? "image" : "file",
+        name: file.name,
+        mime_type: mime,
+        data: data,
+        previewUrl: isImage ? URL.createObjectURL(file) : "",
+      });
+    }
+    renderEditAttachments(msg);
+  }
+
+  function editUserMessage(msg) {
+    if (!msg || !msg.classList.contains("user") || !threadDiv.contains(msg)) return;
+    var main = msg.querySelector(".ai-agent-msg-main");
+    if (!main) return;
+    var body = msg.querySelector(".body");
+    var text = body
+      ? (body.getAttribute("data-raw-text") || body.textContent || "")
+      : "";
+    var files = attachmentsForResend(msg.__attachments || []);
+
+    // Re-click same bubble: keep staging, just refocus. Bottom composer stays alone.
+    if (editingUserMsg === msg) {
+      var existing = msg.querySelector(".ai-agent-edit-textarea");
+      if (existing) existing.focus();
+      return;
+    }
+
+    if (editingUserMsg) leaveEditMode();
+
+    editingUserMsg = msg;
+    msg.__editOriginal = text;
+    msg.__editFiles = files;
+    msg.__editMode = modeField.value || "agent";
+    msg.__editModel = modelField.value || defaultModel;
+    msg.classList.add("is-editing");
+
+    if (!body) {
+      body = document.createElement("div");
+      body.className = "body";
+      var actions = msg.querySelector(".ai-agent-user-actions");
+      if (actions) main.insertBefore(body, actions);
+      else main.appendChild(body);
+    }
+    body.style.display = "none";
+
+    var shell = document.createElement("div");
+    shell.className = "ai-agent-edit-shell" + (msg.__editMode === "plan" ? " mode-plan" : "");
+
+    var attachBox = document.createElement("div");
+    attachBox.className = "ai-agent-edit-attachments";
+
+    var ta = document.createElement("textarea");
+    ta.className = "ai-agent-edit-textarea";
+    ta.value = text;
+    ta.rows = 1;
+    ta.setAttribute("aria-label", "编辑消息");
+    ta.addEventListener("input", function () { autosizeEditTextarea(ta); });
+    ta.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        commitInlineEdit();
+      }
+    });
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "ai-agent-edit-toolbar";
+
+    var left = document.createElement("div");
+    left.className = "ai-agent-edit-toolbar-left";
+
+    var modeSel = document.createElement("select");
+    modeSel.className = "ai-agent-edit-mode";
+    modeSel.title = "模式";
+    modeSel.innerHTML = '<option value="agent">Agent</option><option value="plan">Plan</option>';
+    modeSel.value = msg.__editMode === "plan" ? "plan" : "agent";
+    modeSel.onchange = function () {
+      msg.__editMode = modeSel.value;
+      shell.classList.toggle("mode-plan", modeSel.value === "plan");
+    };
+
+    var modelPicker = buildEditModelPicker(msg);
+
+    left.appendChild(modeSel);
+    left.appendChild(modelPicker);
+
+    var right = document.createElement("div");
+    right.className = "ai-agent-edit-toolbar-right";
+
+    var fileInputEdit = document.createElement("input");
+    fileInputEdit.type = "file";
+    fileInputEdit.className = "ai-agent-edit-file-input";
+    fileInputEdit.multiple = true;
+    fileInputEdit.addEventListener("change", function () {
+      handleEditFileSelection(msg, fileInputEdit.files).then(function () {
+        fileInputEdit.value = "";
+      });
+    });
+
+    var pickEdit = document.createElement("button");
+    pickEdit.type = "button";
+    pickEdit.className = "ai-agent-edit-pick";
+    pickEdit.title = "添加文件";
+    pickEdit.textContent = "📎";
+    pickEdit.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      fileInputEdit.click();
+    };
+
+    var sendEdit = document.createElement("button");
+    sendEdit.type = "button";
+    sendEdit.className = "ai-agent-edit-send";
+    sendEdit.title = "发送修改";
+    sendEdit.setAttribute("aria-label", "发送修改");
+    sendEdit.innerHTML = queueIcon("send");
+    sendEdit.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      commitInlineEdit();
+    };
+
+    right.appendChild(fileInputEdit);
+    right.appendChild(pickEdit);
+    right.appendChild(sendEdit);
+    toolbar.appendChild(left);
+    toolbar.appendChild(right);
+
+    shell.appendChild(attachBox);
+    shell.appendChild(ta);
+    shell.appendChild(toolbar);
+
+    var actionsEl = msg.querySelector(".ai-agent-user-actions");
+    if (actionsEl) main.insertBefore(shell, actionsEl);
+    else main.appendChild(shell);
+
+    renderEditAttachments(msg);
+    renderEditModelList(msg);
+    autosizeEditTextarea(ta);
+    updateModeUI();
+    ta.focus();
+    try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) {}
   }
 
   function revokeFilePreviews(files) {
@@ -2489,6 +3333,7 @@
     var upper = String(text || "").trim().toUpperCase();
     return (
       !upper ||
+      upper === "STARTED" ||
       upper === "RUNNING" ||
       upper === "FINISHED" ||
       upper === "COMPLETED" ||
@@ -2691,6 +3536,9 @@
   }
 
   function queueIcon(name) {
+    if (name === "copy") {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path></svg>';
+    }
     if (name === "edit") {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
     }
@@ -2756,7 +3604,7 @@
       sendNowBtn.className = "send-now";
       sendNowBtn.title = "立即发送";
       sendNowBtn.innerHTML = queueIcon("send");
-      sendNowBtn.onclick = function () { sendQueueItemNow(item); };
+      sendNowBtn.onclick = function () { interruptAndSend(item); };
 
       var deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -2855,8 +3703,13 @@
 
   async function handleFileSelection(files) {
     var list = Array.from(files || []);
+    var skipped = [];
     for (var i = 0; i < list.length; i++) {
       var file = list[i];
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        skipped.push(file.name || "file");
+        continue;
+      }
       var data = await readFileAsBase64(file);
       var mime = guessImageMime(file.name, file.type || "");
       var isImage = mime.indexOf("image/") === 0;
@@ -2867,6 +3720,9 @@
         data: data,
         previewUrl: isImage ? URL.createObjectURL(file) : "",
       });
+    }
+    if (skipped.length) {
+      alert("以下文件超过 10MB 已跳过：\n" + skipped.join("\n"));
     }
     renderAttachmentPreview();
     fileInput.value = "";
@@ -2947,6 +3803,10 @@
   function updateModeUI() {
     var isPlan = modeField.value === "plan";
     composeShell.classList.toggle("mode-plan", isPlan);
+    if (editingUserMsg) {
+      inputField.placeholder = "添加后续消息";
+      return;
+    }
     inputField.placeholder = isPlan
       ? "描述你想先规划的问题"
       : "给 Ai-agent 发送消息";
@@ -2993,8 +3853,8 @@
       syncModelPickerUI();
     }
     notePlanning(agentMsg, "");
-    var reply = "";
-    var finished = false;
+    var state = { reply: "", finished: false };
+    flushChatHistory({ streaming: true });
 
     var controller = new AbortController();
     activeAbort = controller;
@@ -3017,176 +3877,15 @@
         throw new Error("HTTP " + res.status);
       }
 
-      var reader = res.body.getReader();
-      var decoder = new TextDecoder();
-      var buffer = "";
-
-      while (true) {
-        var chunk = await reader.read();
-        if (chunk.done) break;
-        buffer += decoder.decode(chunk.value, { stream: true });
-        var parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
-
-        for (var i = 0; i < parts.length; i++) {
-          var line = parts[i].trim();
-          if (!line.startsWith("data:")) continue;
-          var payload;
-          try {
-            payload = JSON.parse(line.slice(5).trim());
-          } catch (parseErr) {
-            continue;
-          }
-
-          if (payload.session_id) {
-            sessionId = payload.session_id;
-            localStorage.setItem("ai-agent-session-id", sessionId);
-          }
-
-          if (payload.resolved_model || payload.type === "model_resolved") {
-            applyResolvedModel(payload);
-          }
-
-          if (payload.type === "text") {
-            reply += payload.content || "";
-            var textMeta = getRunMeta(agentMsg);
-            var pendingChunk = reply.slice(Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen || 0));
-            // Full reply OR the post-tool slice may be a status fragment.
-            if (isInterimReplyText(reply) || isInterimReplyText(pendingChunk)) {
-              clearLeakedInterimText(agentMsg);
-              textMeta.interimSkipLen = reply.length;
-              updateRunState((pendingChunk || reply).trim() || "搜索中");
-              finalizePlanCard(agentMsg);
-              finalizeThoughtCard(agentMsg);
-              finalizeStatusCard(agentMsg);
-              scrollToBottom(false);
-            } else {
-              if (textMeta.interimSkipLen) {
-                textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen);
-                textMeta.interimSkipLen = 0;
-              }
-              updateRunState("回复中");
-              streamTimelineText(agentMsg, reply, true);
-              scrollToBottom(false);
-            }
-          } else if (payload.type === "planning") {
-            updateRunState("规划中");
-            beginToolSegment(agentMsg);
-            notePlanning(agentMsg, payload.content || "");
-          } else if (payload.type === "upload") {
-            updateRunState("已接收附件");
-            beginToolSegment(agentMsg);
-            finalizePlanCard(agentMsg);
-            var names = []
-              .concat(payload.images || [])
-              .concat(payload.files || [])
-              .map(function (f) { return f.name || f.path || "file"; })
-              .join(", ");
-            appendCard(agentMsg, {
-              kind: "run",
-              title: "Uploaded attachments",
-              meta: "",
-              detail: names,
-              paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
-            });
-          } else if (payload.type === "thinking") {
-            updateRunState("正在思考");
-            beginToolSegment(agentMsg);
-            noteThinking(agentMsg, payload.content || "");
-          } else if (payload.type === "tool_call") {
-            var summary = payload.summary || {};
-            var toolView = buildToolPresentation(payload, summary);
-            var toolRunning = payload.status === "running";
-            updateRunState(toolRunning ? (toolView.title || "执行中") : "执行中");
-            beginToolSegment(agentMsg);
-            finalizePlanCard(agentMsg);
-            finalizeStatusCard(agentMsg);
-            var isExplore = summary.kind === "explore";
-            // Within one Explored burst, keep a single Thought — don't re-archive each Read/Grep.
-            if (!(isExplore && getRunMeta(agentMsg).exploreActive)) finalizeThoughtCard(agentMsg);
-            if (isExplore) {
-              getRunMeta(agentMsg).exploreActive = true;
-              noteExploring(agentMsg, toolView.title, {
-                callId: payload.call_id || "",
-                running: toolRunning,
-                detail: toolView.detail || "",
-                paths: summary.paths || [],
-              });
-            } else {
-              finalizeExplorePhase(agentMsg);
-              var toolKey = payload.call_id
-                ? ("tool-" + payload.call_id)
-                : ("tool-" + (payload.name || "tool") + "-" + Date.now());
-              upsertCard(agentMsg, toolKey, {
-                kind: summary.kind || "tool",
-                title: toolView.title,
-                meta: "",
-                detail: toolView.detail,
-                paths: summary.paths || [],
-                diff: summary.diff || [],
-                live: toolRunning,
-                forceCollapsed: !toolRunning,
-              });
-            }
-          } else if (payload.type === "status") {
-            var statusText = payload.content || payload.status || "正在处理";
-            if (!isNoisyStatus(statusText)) updateRunState(statusText);
-          } else if (payload.type === "task") {
-            updateRunState(payload.content || "正在执行任务");
-            beginToolSegment(agentMsg);
-            finalizePlanCard(agentMsg);
-            finalizeStatusCard(agentMsg);
-            appendCard(agentMsg, {
-              kind: "plan",
-              title: payload.content || "Task update",
-              meta: "",
-              detail: "",
-              paths: [],
-            });
-          } else if (payload.type === "error") {
-            finished = true;
-            finalizeLiveCards(agentMsg);
-            streamStandaloneText(agentMsg, "错误: " + formatAgentError(payload.content || "unknown"), false);
-          } else if (payload.type === "done") {
-            finished = true;
-            clearLeakedInterimText(agentMsg);
-            finalizeLiveCards(agentMsg);
-            var doneStatus = String(payload.status || "").toLowerCase();
-            var doneErr = payload.error || payload.result || "";
-            var doneMeta = getRunMeta(agentMsg);
-            if (doneMeta.interimSkipLen) {
-              doneMeta.sealedReplyLen = Math.max(doneMeta.sealedReplyLen, doneMeta.interimSkipLen);
-              doneMeta.interimSkipLen = 0;
-            }
-            var visibleReply = reply ? reply.slice(doneMeta.sealedReplyLen).trim() : "";
-            if (visibleReply && !isInterimReplyText(visibleReply)) {
-              streamTimelineText(agentMsg, reply, true);
-            } else if (doneStatus === "error" || doneStatus === "failed") {
-              streamStandaloneText(
-                agentMsg,
-                "错误: " + formatAgentError(doneErr || "图片或请求处理失败，请重试或开新对话"),
-                false
-              );
-            } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
-              streamStandaloneText(agentMsg, doneErr, false);
-            } else if (!agentMsg.querySelector(".ai-agent-segment-text") && !visibleReply) {
-              streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
-            }
-          }
-        }
-      }
-      if (!finished) {
-        finalizeLiveCards(agentMsg);
-        if (reply) streamTimelineText(agentMsg, reply, true);
-      }
+      await consumeAgentSse(res, agentMsg, state, controller.signal);
     } catch (err) {
       if (err && err.name === "AbortError") {
         // Keep whatever was already streamed; no "(已终止)/(已中断)" body text.
         // New-chat may have already detached this node — don't revive it.
         if (threadDiv.contains(agentMsg)) {
           finalizeLiveCards(agentMsg);
-          if (reply && reply.trim() && !isInterimReplyText(reply)) {
-            streamTimelineText(agentMsg, reply, true);
+          if (state.reply && state.reply.trim() && !isInterimReplyText(state.reply)) {
+            streamTimelineText(agentMsg, state.reply, true);
           }
         }
         if (stopRequested) {
@@ -3194,11 +3893,12 @@
           if (threadDiv.contains(agentMsg)) stoppedAgentMsg = agentMsg;
           updateRunState("就绪");
           updateEmptyState();
+          // Only explicit ■ stop cancels the backend. Refresh must leave the pump running.
+          await requestCancel();
         } else {
-          updateRunState("已中断");
+          // Refresh/leave: sync streaming=true while isRunning is still true.
+          flushChatHistory({ streaming: true });
         }
-        // Always wait for backend cancel so the next queued send doesn't hit a busy agent.
-        await requestCancel();
       } else {
         finalizeLiveCards(agentMsg);
         var detail = formatAgentError((err && err.message) ? err.message : String(err));
@@ -3211,6 +3911,305 @@
     } finally {
       if (activeAbort === controller) activeAbort = null;
       revokeFilePreviews(item.files);
+      scheduleSaveChatHistory();
+    }
+  }
+
+  function applyStreamPayload(agentMsg, payload, state) {
+    if (payload.session_id) {
+      sessionId = payload.session_id;
+      localStorage.setItem("ai-agent-session-id", sessionId);
+      if (isRunning) flushChatHistory({ streaming: true });
+    }
+
+    if (payload.resolved_model || payload.type === "model_resolved") {
+      applyResolvedModel(payload);
+    }
+
+    if (payload.type === "text") {
+      state.reply += payload.content || "";
+      var textMeta = getRunMeta(agentMsg);
+      var pendingChunk = state.reply.slice(Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen || 0));
+      // Full reply OR the post-tool slice may be a status fragment.
+      if (isInterimReplyText(state.reply) || isInterimReplyText(pendingChunk)) {
+        scrubInterimSegments(agentMsg);
+        textMeta.interimSkipLen = state.reply.length;
+        updateRunState((pendingChunk || state.reply).trim() || "搜索中");
+        finalizePlanCard(agentMsg);
+        finalizeThoughtCard(agentMsg);
+        finalizeStatusCard(agentMsg);
+        scrollToBottom(false);
+      } else {
+        if (textMeta.interimSkipLen) {
+          textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen);
+          textMeta.interimSkipLen = 0;
+        }
+        updateRunState("回复中");
+        streamTimelineText(agentMsg, state.reply, true);
+        scrollToBottom(false);
+      }
+      scheduleSaveChatHistory();
+    } else if (payload.type === "planning") {
+      updateRunState("规划中");
+      beginToolSegment(agentMsg);
+      notePlanning(agentMsg, payload.content || "");
+      scheduleSaveChatHistory();
+    } else if (payload.type === "upload") {
+      updateRunState("已接收附件");
+      beginToolSegment(agentMsg);
+      finalizePlanCard(agentMsg);
+      var names = []
+        .concat(payload.images || [])
+        .concat(payload.files || [])
+        .map(function (f) { return f.name || f.path || "file"; })
+        .join(", ");
+      appendCard(agentMsg, {
+        kind: "run",
+        title: "Uploaded attachments",
+        meta: "",
+        detail: names,
+        paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
+      });
+    } else if (payload.type === "thinking") {
+      updateRunState("正在思考");
+      beginToolSegment(agentMsg);
+      noteThinking(agentMsg, payload.content || "");
+    } else if (payload.type === "tool_call") {
+      var summary = payload.summary || {};
+      var toolView = buildToolPresentation(payload, summary);
+      var toolRunning = payload.status === "running";
+      updateRunState(toolRunning ? (toolView.title || "执行中") : "执行中");
+      beginToolSegment(agentMsg);
+      finalizePlanCard(agentMsg);
+      finalizeStatusCard(agentMsg);
+      var isExplore = summary.kind === "explore";
+      // Within one Explored burst, keep a single Thought — don't re-archive each Read/Grep.
+      if (!(isExplore && getRunMeta(agentMsg).exploreActive)) finalizeThoughtCard(agentMsg);
+      if (isExplore) {
+        getRunMeta(agentMsg).exploreActive = true;
+        noteExploring(agentMsg, toolView.title, {
+          callId: payload.call_id || "",
+          running: toolRunning,
+          detail: toolView.detail || "",
+          paths: summary.paths || [],
+        });
+      } else {
+        finalizeExplorePhase(agentMsg);
+        var toolKey = payload.call_id
+          ? ("tool-" + payload.call_id)
+          : ("tool-" + (payload.name || "tool") + "-" + Date.now());
+        upsertCard(agentMsg, toolKey, {
+          kind: summary.kind || "tool",
+          title: toolView.title,
+          meta: "",
+          detail: toolView.detail,
+          paths: summary.paths || [],
+          diff: summary.diff || [],
+          live: toolRunning,
+          forceCollapsed: !toolRunning,
+        });
+      }
+      scheduleSaveChatHistory();
+    } else if (payload.type === "status") {
+      var statusText = payload.content || payload.status || "正在处理";
+      if (!isNoisyStatus(statusText)) updateRunState(statusText);
+    } else if (payload.type === "task") {
+      updateRunState(payload.content || "正在执行任务");
+      beginToolSegment(agentMsg);
+      finalizePlanCard(agentMsg);
+      finalizeStatusCard(agentMsg);
+      appendCard(agentMsg, {
+        kind: "plan",
+        title: payload.content || "Task update",
+        meta: "",
+        detail: "",
+        paths: [],
+      });
+    } else if (payload.type === "error") {
+      state.finished = true;
+      finalizeLiveCards(agentMsg);
+      var errText = formatAgentError(payload.content || "unknown");
+      // 已有正文时，SDK/链路的 network error 只收尾，不再盖一条「错误:」吓用户。
+      var hasBody = !!(state.reply && state.reply.trim() && !isInterimReplyText(state.reply));
+      var softNet = /network|timeout|failed to fetch|econnreset/i.test(String(payload.content || ""));
+      if (hasBody && softNet) {
+        streamTimelineText(agentMsg, state.reply, true);
+      } else {
+        streamStandaloneText(agentMsg, "错误: " + errText, false);
+      }
+      scheduleSaveChatHistory();
+    } else if (payload.type === "done") {
+      state.finished = true;
+      scrubInterimSegments(agentMsg);
+      finalizeLiveCards(agentMsg);
+      var doneStatus = String(payload.status || "").toLowerCase();
+      var doneErr = payload.error || payload.result || "";
+      var doneMeta = getRunMeta(agentMsg);
+      if (doneMeta.interimSkipLen) {
+        doneMeta.sealedReplyLen = Math.max(doneMeta.sealedReplyLen, doneMeta.interimSkipLen);
+        doneMeta.interimSkipLen = 0;
+      }
+      var visibleReply = state.reply ? state.reply.slice(doneMeta.sealedReplyLen).trim() : "";
+      if (visibleReply && !isInterimReplyText(visibleReply)) {
+        streamTimelineText(agentMsg, state.reply, true);
+      } else if (doneStatus === "expired") {
+        streamStandaloneText(agentMsg, "（上次回复已中断：服务已重启或会话已过期）", false);
+      } else if (doneStatus === "error" || doneStatus === "failed") {
+        streamStandaloneText(
+          agentMsg,
+          "错误: " + formatAgentError(doneErr || "图片或请求处理失败，请重试或开新对话"),
+          false
+        );
+      } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
+        streamStandaloneText(agentMsg, doneErr, false);
+      } else if (!agentMsg.querySelector(".ai-agent-segment-text") && !visibleReply) {
+        if (doneStatus !== "finished" && doneStatus !== "cancelled") {
+          streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
+        }
+      }
+      scheduleSaveChatHistory();
+    }
+  }
+
+  async function consumeAgentSse(res, agentMsg, state, signal) {
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+    var seen = 0;
+
+    while (true) {
+      if (signal && signal.aborted) {
+        var abortErr = new Error("Aborted");
+        abortErr.name = "AbortError";
+        throw abortErr;
+      }
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      var parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+
+      for (var i = 0; i < parts.length; i++) {
+        var line = parts[i].trim();
+        if (!line.startsWith("data:")) continue;
+        var payload;
+        try {
+          payload = JSON.parse(line.slice(5).trim());
+        } catch (parseErr) {
+          continue;
+        }
+        seen += 1;
+        applyStreamPayload(agentMsg, payload, state);
+      }
+    }
+    if (!state.finished) {
+      finalizeLiveCards(agentMsg);
+      if (state.reply) streamTimelineText(agentMsg, state.reply, true);
+    }
+    return { finished: !!state.finished, seen: seen };
+  }
+
+  function isSoftNetworkError(err) {
+    if (!err || err.name === "AbortError") return false;
+    var msg = String(err.message || err || "").toLowerCase();
+    return (
+      msg.indexOf("network") >= 0
+      || msg.indexOf("failed to fetch") >= 0
+      || msg.indexOf("load failed") >= 0
+      || msg.indexOf("fetch") >= 0
+    );
+  }
+
+  async function followIfNeeded() {
+    // Mid-turn refresh → drop stale last agent bubble, replay live_events.
+    // sessionId may be empty; backend find_running_session covers single-user mid-flight.
+    if (isRunning) return;
+    var agents = threadDiv.querySelectorAll(".ai-agent-msg.agent");
+    if (agents.length) agents[agents.length - 1].remove();
+    var agentMsg = appendMessage("Agent", "", "agent", true);
+    notePlanning(agentMsg, "");
+    var state = { reply: "", finished: false };
+
+    isRunning = true;
+    stopRequested = false;
+    updateRunState("继续接收");
+    updateEmptyState();
+    flushChatHistory({ streaming: true });
+
+    async function connectOnce() {
+      var controller = new AbortController();
+      activeAbort = controller;
+      try {
+        var res = await fetch(apiBase + "/api/chat/follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({ session_id: sessionId || null }),
+        });
+        if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+        await consumeAgentSse(res, agentMsg, state, controller.signal);
+      } finally {
+        if (activeAbort === controller) activeAbort = null;
+      }
+    }
+
+    function paintFollowResult() {
+      if (!threadDiv.contains(agentMsg)) return;
+      finalizeLiveCards(agentMsg);
+      if (state.reply && state.reply.trim() && !isInterimReplyText(state.reply)) {
+        streamTimelineText(agentMsg, state.reply, true);
+      }
+    }
+
+    try {
+      await connectOnce();
+      if (!state.finished) paintFollowResult();
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        paintFollowResult();
+        if (stopRequested) await requestCancel();
+        else flushChatHistory({ streaming: true });
+      } else if (isSoftNetworkError(err) && state.reply && state.reply.trim()) {
+        // 已收到部分/全部内容后断线：当作成功收尾，不弹「无法继续接收」。
+        paintFollowResult();
+      } else if (isSoftNetworkError(err)) {
+        // 空内容断线：静默重试一次
+        try {
+          state.reply = "";
+          state.finished = false;
+          delete agentMsg.__runMeta;
+          var wl = agentMsg.querySelector(".ai-agent-worklog");
+          if (wl) wl.innerHTML = "";
+          Array.prototype.slice.call(agentMsg.querySelectorAll(".ai-agent-segment-text")).forEach(function (el) {
+            if (el.parentNode) el.remove();
+          });
+          notePlanning(agentMsg, "");
+          await connectOnce();
+          if (!state.finished) paintFollowResult();
+        } catch (err2) {
+          if (err2 && err2.name === "AbortError") {
+            paintFollowResult();
+            if (stopRequested) await requestCancel();
+            else flushChatHistory({ streaming: true });
+          } else if (threadDiv.contains(agentMsg)) {
+            paintFollowResult();
+            if (!(state.reply && state.reply.trim())) {
+              streamStandaloneText(agentMsg, "无法继续接收上次回复，请再刷新一次或重新发送。", false);
+            }
+          }
+        }
+      } else if (threadDiv.contains(agentMsg)) {
+        paintFollowResult();
+        var detail = (err && err.message) ? err.message : String(err);
+        streamStandaloneText(agentMsg, "无法继续接收上次回复: " + formatAgentError(detail), false);
+      }
+    } finally {
+      isRunning = false;
+      stopRequested = false;
+      flushChatHistory({ streaming: false });
+      updateRunState("就绪");
+      updateEmptyState();
+      if (sendQueue.length) drainQueue();
     }
   }
 
@@ -3263,11 +4262,8 @@
     drainQueue();
   }
 
-  function sendQueueItemNow(item) {
-    interruptAndSend(item);
-  }
-
   function sendMessage() {
+    // Bottom composer is independent follow-up — never commits an inline edit.
     var item = enqueueCurrentCompose();
     if (!item) return;
     if (isRunning) {
@@ -3293,12 +4289,32 @@
   };
   modelMenu.addEventListener("click", function (e) { e.stopPropagation(); });
   document.addEventListener("click", function (e) {
-    if (!modelWrap.classList.contains("is-open")) return;
-    if (modelWrap.contains(e.target)) return;
-    closeModelMenu();
+    if (modelWrap.classList.contains("is-open")) {
+      if (!modelWrap.contains(e.target)) closeModelMenu();
+    }
+    if (!editingUserMsg) return;
+    var editWrap = editingUserMsg.querySelector(".ai-agent-edit-model-wrap");
+    if (editWrap && editWrap.classList.contains("is-open") && !editWrap.contains(e.target)) {
+      closeEditModelMenu(editingUserMsg);
+    }
+    // Click outside this bubble → restore original message style (ad-plex).
+    if (!editingUserMsg.contains(e.target)) {
+      leaveEditMode();
+      updateComposerButtons();
+    }
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeModelMenu();
+    if (e.key !== "Escape") return;
+    closeModelMenu();
+    if (editingUserMsg) {
+      var editWrap = editingUserMsg.querySelector(".ai-agent-edit-model-wrap.is-open");
+      if (editWrap) {
+        closeEditModelMenu(editingUserMsg);
+        return;
+      }
+      leaveEditMode();
+      updateComposerButtons();
+    }
   });
   window.__aiAgentSetModel = function (id) {
     setSelectedModel(id, false);
@@ -3341,7 +4357,8 @@
     localStorage.removeItem("ai-agent-session-id");
     clearChatHistory();
     stoppedAgentMsg = null;
-    threadDiv.innerHTML = "";
+    leaveEditMode();
+    clearThreadMessages();
     isRunning = false;
     stopRequested = false;
     updateEmptyState();
@@ -3349,17 +4366,56 @@
     // Abort is async — a late stream chunk must not leave empty greeting hidden.
     requestAnimationFrame(updateEmptyState);
   };
-  updateEmptyState();
-  updateRunState("就绪");
-  updateModeUI();
+  // History already restored right after panel open; finish UI + follow only.
   loadModelOptions();
-  window.addEventListener("beforeunload", function () {
-    if (historySaveTimer) {
-      clearTimeout(historySaveTimer);
-      historySaveTimer = null;
-    }
-    saveChatHistory();
-  });
+  updateModeUI();
+  (function maybeFollow() {
+    // BOOT_ID: process instance uuid. After restart, in-memory sessions are gone —
+    // mismatch vs localStorage bootId → drop session/follow, keep message history.
+    fetch(apiBase + "/api/health")
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (health) {
+        var boot = health && health.boot_id ? String(health.boot_id) : "";
+        if (boot) {
+          var prev = serverBootId || "";
+          if (prev && prev !== boot) {
+            sessionId = "";
+            try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
+            bootRestoredStreaming = false;
+            serverBootId = boot;
+            flushChatHistory({ streaming: false });
+            updateRunState("就绪");
+            return;
+          }
+          serverBootId = boot;
+          if (!prev) flushChatHistory({ streaming: !!bootRestoredStreaming });
+        }
+        if (bootRestoredStreaming) {
+          followIfNeeded();
+          return;
+        }
+        if (!sessionId) return;
+        return fetch(apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sessionId))
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data && data.running) followIfNeeded();
+          });
+      })
+      .catch(function () {
+        // Offline: keep restored UI; follow on next successful health.
+        if (bootRestoredStreaming) followIfNeeded();
+      });
+  })();
+  function persistUnloadState() {
+    // Force streaming while a turn is in flight — drainQueue may clear isRunning mid-unload.
+    flushChatHistory({ streaming: !!(isRunning || activeAbort) });
+    try {
+      localStorage.setItem(SIDEBAR_OPEN_KEY, sidebar.classList.contains("open") ? "1" : "0");
+      localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, isFullscreen() ? "1" : "0");
+    } catch (err) {}
+  }
+  window.addEventListener("pagehide", persistUnloadState);
+  window.addEventListener("beforeunload", persistUnloadState);
 
   // ponytail: table self-check — ?mdcheck=1 on host page
   if (/\bmdcheck=1\b/.test(String(location.search || ""))) {
@@ -3397,6 +4453,26 @@
       console.error("Ai-agent markdown self-check failed", mdOut);
     } else {
       console.log("Ai-agent markdown self-check ok");
+    }
+  }
+
+  // ponytail: ?editcheck=1 — inline edit mirrors bottom toolbar; bottom stays follow-up only.
+  if (/\beditcheck=1\b/.test(String(location.search || ""))) {
+    var stageSource = editUserMessage.toString();
+    var sendSource = sendMessage.toString();
+    var commitSource = commitInlineEdit.toString();
+    var stageIsSafe = stageSource.indexOf("truncateThreadFrom") < 0
+      && stageSource.indexOf("inputField.value") < 0
+      && stageSource.indexOf("ai-agent-edit-shell") >= 0
+      && stageSource.indexOf("ai-agent-edit-mode") >= 0
+      && stageSource.indexOf("ai-agent-edit-model-wrap") >= 0
+      && stageSource.indexOf("ai-agent-edit-pick") >= 0;
+    var bottomIsFollowUp = sendSource.indexOf("truncateThreadFrom") < 0;
+    var commitOk = commitSource.indexOf("truncateThreadFrom(msg)") >= 0;
+    if (!stageIsSafe || !bottomIsFollowUp || !commitOk) {
+      console.error("Ai-agent staged edit self-check failed");
+    } else {
+      console.log("Ai-agent staged edit self-check ok");
     }
   }
 })();

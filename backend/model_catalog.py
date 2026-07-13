@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import threading
+from pathlib import Path
+
 from cursor_sdk import Cursor
 
 DEFAULT_MODEL_OPTIONS = [
@@ -9,8 +13,34 @@ DEFAULT_MODEL_OPTIONS = [
     {"id": "auto", "display_name": "Auto", "hint": "", "params": []},
 ]
 
-_MODEL_CATALOG: dict[str, dict] = {}
-_MODEL_OPTIONS: list[dict] = []
+_CACHE_PATH = Path(__file__).with_name("model_options_cache.json")
+_REFRESH_LOCK = threading.Lock()
+
+
+def _read_cache() -> list[dict]:
+    try:
+        data = json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, list) and all(isinstance(item, dict) and item.get("id") for item in data):
+            return data
+    except (OSError, ValueError, TypeError):
+        pass
+    return list(DEFAULT_MODEL_OPTIONS)
+
+
+def _write_cache(options: list[dict]) -> None:
+    """Atomic replace so readers never observe a partial catalog."""
+    tmp = _CACHE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(options, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    tmp.replace(_CACHE_PATH)
+
+
+_MODEL_OPTIONS: list[dict] = _read_cache()
+_MODEL_CATALOG: dict[str, dict] = {
+    str(item["id"]): item for item in _MODEL_OPTIONS if item.get("id")
+}
 
 
 def normalize_model_id(model_id: str | None) -> str:
@@ -66,39 +96,45 @@ def _variant_hint(model) -> tuple[str, list[dict]]:
 
 
 def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
-    """Fetch model list once; reuse until refresh=True (health) or process restart."""
+    """Return disk/memory cache; refresh=True hits Cursor.models.list and rewrites file if changed."""
     global _MODEL_CATALOG, _MODEL_OPTIONS
     if _MODEL_OPTIONS and not refresh:
         return list(_MODEL_OPTIONS)
-    try:
-        models = Cursor.models.list(api_key=api_key)
-        options: list[dict] = []
-        catalog: dict[str, dict] = {}
-        seen: set[str] = set()
-        for model in models:
-            mid = normalize_model_id(getattr(model, "id", "") or "")
-            if not mid or mid in seen:
-                continue
-            seen.add(mid)
-            hint, params = _variant_hint(model)
-            display = (getattr(model, "display_name", "") or mid).strip() or mid
-            # SDK uses id=default for Auto.
-            if mid == "auto":
-                display = "Auto"
-            item = {"id": mid, "display_name": display, "hint": hint, "params": params}
-            options.append(item)
-            catalog[mid] = item
-        if "auto" not in catalog:
-            auto = {"id": "auto", "display_name": "Auto", "hint": "", "params": []}
-            options.insert(0, auto)
-            catalog["auto"] = auto
-        else:
-            options = [catalog["auto"]] + [o for o in options if o["id"] != "auto"]
-        _MODEL_CATALOG = catalog
-        _MODEL_OPTIONS = options or list(DEFAULT_MODEL_OPTIONS)
+    with _REFRESH_LOCK:
+        if _MODEL_OPTIONS and not refresh:
+            return list(_MODEL_OPTIONS)
+        try:
+            models = Cursor.models.list(api_key=api_key)
+            options: list[dict] = []
+            catalog: dict[str, dict] = {}
+            seen: set[str] = set()
+            for model in models:
+                mid = normalize_model_id(getattr(model, "id", "") or "")
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                hint, params = _variant_hint(model)
+                display = (getattr(model, "display_name", "") or mid).strip() or mid
+                # SDK uses id=default for Auto.
+                if mid == "auto":
+                    display = "Auto"
+                item = {"id": mid, "display_name": display, "hint": hint, "params": params}
+                options.append(item)
+                catalog[mid] = item
+            if "auto" not in catalog:
+                auto = {"id": "auto", "display_name": "Auto", "hint": "", "params": []}
+                options.insert(0, auto)
+                catalog["auto"] = auto
+            else:
+                options = [catalog["auto"]] + [o for o in options if o["id"] != "auto"]
+            options = options or list(DEFAULT_MODEL_OPTIONS)
+            if options != _MODEL_OPTIONS:
+                _write_cache(options)
+            _MODEL_CATALOG = {str(item["id"]): item for item in options}
+            _MODEL_OPTIONS = options
+        except Exception:
+            pass
         return list(_MODEL_OPTIONS)
-    except Exception:
-        return list(_MODEL_OPTIONS or DEFAULT_MODEL_OPTIONS)
 
 
 def model_display_name(model_id: str) -> str:

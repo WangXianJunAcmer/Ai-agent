@@ -172,26 +172,6 @@ def extract_tool_fields(update) -> tuple[str, object, object]:
   return name, args, result
 
 
-def command_preview(args) -> str:
-  if isinstance(args, str):
-    text = args.strip()
-    if text.startswith("{") and text.endswith("}"):
-      try:
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-          args = parsed
-        else:
-          return (text[:120] + "…") if len(text) > 120 else text
-      except json.JSONDecodeError:
-        return (text[:120] + "…") if len(text) > 120 else text
-    else:
-      cmd = " ".join(text.split())
-      return (cmd[:120] + "…") if len(cmd) > 120 else cmd
-  cmd = first_str(args, "command", "cmd", "script", "code", "input") if isinstance(args, dict) else ""
-  cmd = " ".join(str(cmd).split())
-  return (cmd[:120] + "…") if len(cmd) > 120 else cmd
-
-
 def shell_command_raw(args) -> str:
   if isinstance(args, str):
     text = args.strip()
@@ -213,6 +193,12 @@ def shell_command_raw(args) -> str:
     if isinstance(value, str) and value.strip():
       return value.strip()
   return ""
+
+
+def command_preview(args) -> str:
+  """Whitespace-collapsed, truncated shell command for card titles."""
+  cmd = " ".join(shell_command_raw(args).split())
+  return (cmd[:120] + "…") if len(cmd) > 120 else cmd
 
 
 def shell_title(cmd: str, status: str, description: str = "") -> str:

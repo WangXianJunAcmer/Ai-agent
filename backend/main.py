@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import html
 import json
+import queue
 import sys
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +30,73 @@ from backend.runtime import SessionManager
 settings = load_settings()
 sessions = SessionManager(settings)
 # Changes on every process start so clients can drop stale chat UI after restart.
+# Widget compares this with localStorage bootId: mismatch → session/follow is dead.
 BOOT_ID = uuid.uuid4().hex
+
+# Dedicated loop for pumps (ad-plex pattern): HTTP cancel must not kill the turn.
+_worker_loop: asyncio.AbstractEventLoop | None = None
+_worker_lock = threading.Lock()
+
+
+def _ensure_worker_loop() -> asyncio.AbstractEventLoop:
+    global _worker_loop
+    with _worker_lock:
+        if _worker_loop is not None:
+            return _worker_loop
+        loop = asyncio.new_event_loop()
+
+        def _run() -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        threading.Thread(target=_run, name="ai-agent-runtime", daemon=True).start()
+        _worker_loop = loop
+        return loop
+
+
+async def _worker_await(coro):
+    loop = _ensure_worker_loop()
+    return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coro, loop))
+
+
+async def _sse_from_worker(factory: Callable[[], AsyncIterator[dict]]) -> AsyncIterator[str]:
+    """Bridge worker-loop async iterator → uvicorn SSE. Cancel only stops this follower."""
+    loop = _ensure_worker_loop()
+    out: queue.Queue = queue.Queue()
+    # ponytail: box+Event so finally can cancel even if start races disconnect (ad-plex)
+    aio_box: list[asyncio.Future | None] = [None]
+    started = threading.Event()
+
+    async def _produce() -> None:
+        try:
+            async for event in factory():
+                out.put(event)
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            out.put({"type": "error", "content": str(exc)})
+        finally:
+            out.put(None)
+
+    def _start() -> None:
+        aio_box[0] = asyncio.ensure_future(_produce(), loop=loop)
+        started.set()
+
+    loop.call_soon_threadsafe(_start)
+    started.wait(timeout=5)
+    try:
+        while True:
+            event = await asyncio.to_thread(out.get)
+            if event is None:
+                break
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        def _cancel_follow() -> None:
+            task = aio_box[0]
+            if task is not None and not task.done():
+                task.cancel()
+
+        loop.call_soon_threadsafe(_cancel_follow)
 
 
 def _resolve_model(model_id: str | None) -> str | dict:
@@ -36,9 +107,10 @@ def _resolve_model(model_id: str | None) -> str | dict:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    await sessions.start()
+    _ensure_worker_loop()
+    await _worker_await(sessions.start())
     yield
-    await sessions.stop()
+    await _worker_await(sessions.stop())
 
 
 app = FastAPI(title="Ai-agent", lifespan=lifespan)
@@ -81,9 +153,32 @@ class CancelRequest(BaseModel):
     session_id: str | None = None
 
 
+class FollowRequest(BaseModel):
+    session_id: str | None = None
+    after: int = 0
+
+
+frontend_dir = ROOT / "frontend"
+frontend_dir.mkdir(exist_ok=True)
+
+
 @app.get("/")
 async def index():
-    return FileResponse(frontend_dir / "index.html")
+    options = get_model_options(settings["api_key"])
+    cache_json = json.dumps(options, ensure_ascii=False).replace("<", "\\u003c")
+    selected = settings.get("model", "composer-2.5")
+    option_html = "\n".join(
+        (
+            f'<option value="{html.escape(str(item["id"]), quote=True)}"'
+            f'{" selected" if item["id"] == selected else ""}>'
+            f'{html.escape(str(item.get("display_name") or item["id"]))}</option>'
+        )
+        for item in options
+    )
+    page = (frontend_dir / "index.html").read_text(encoding="utf-8")
+    page = page.replace("__AI_AGENT_MODEL_CACHE__", cache_json)
+    page = page.replace("__AI_AGENT_MODEL_OPTIONS__", option_html)
+    return Response(page, media_type="text/html; charset=utf-8")
 
 
 @app.get("/favicon.ico")
@@ -101,7 +196,20 @@ async def health():
         "model": settings["model"],
         "allow_repo_write": settings.get("allow_repo_write", True),
         "safety_enabled": settings.get("safety_enabled", True),
-        "model_options": get_model_options(settings["api_key"], refresh=True),
+        "model_options": get_model_options(settings["api_key"]),
+    }
+
+
+@app.get("/api/models/refresh")
+async def refresh_models():
+    """Hit Cursor.models.list (off the event loop) and report whether the catalog changed."""
+    before = get_model_options(settings["api_key"])
+    after = await asyncio.to_thread(
+        get_model_options, settings["api_key"], refresh=True
+    )
+    return {
+        "changed": after != before,
+        "model_options": after,
     }
 
 
@@ -129,7 +237,9 @@ def _parse_chat(req: ChatRequest) -> tuple[str, list[dict] | None, str | dict, s
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     prompt, attachments, model, mode = _parse_chat(req)
-    result = await sessions.send(req.session_id, prompt, model, mode, attachments)
+    result = await _worker_await(
+        sessions.send(req.session_id, prompt, model, mode, attachments)
+    )
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
     return result
@@ -137,8 +247,29 @@ async def chat(req: ChatRequest):
 
 @app.post("/api/chat/cancel")
 async def cancel_chat(req: CancelRequest):
-    await sessions.cancel(req.session_id)
+    await _worker_await(sessions.cancel(req.session_id))
     return {"ok": True}
+
+
+@app.get("/api/chat/status")
+async def chat_status(session_id: str = ""):
+    async def _get():
+        return sessions.session_status(session_id or None)
+
+    return await _worker_await(_get())
+
+
+@app.post("/api/chat/follow")
+async def chat_follow(req: FollowRequest):
+    """Replay + continue a detached turn after refresh (ChatGPT-style)."""
+
+    async def event_gen():
+        async for chunk in _sse_from_worker(
+            lambda: sessions.follow(req.session_id, req.after)
+        ):
+            yield chunk
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.post("/api/chat/stream")
@@ -146,13 +277,24 @@ async def chat_stream(req: ChatRequest):
     prompt, attachments, model, mode = _parse_chat(req)
 
     async def event_gen():
-        async for event in sessions.stream(req.session_id, prompt, model, mode, attachments):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        async for chunk in _sse_from_worker(
+            lambda: sessions.stream(req.session_id, prompt, model, mode, attachments)
+        ):
+            yield chunk
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
-frontend_dir = ROOT / "frontend"
-frontend_dir.mkdir(exist_ok=True)
+
+@app.get("/static/widget.js")
+async def widget_js():
+    # Avoid sticky browser cache during local reload (restore / edit UX).
+    return FileResponse(
+        frontend_dir / "widget.js",
+        media_type="application/javascript; charset=utf-8",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
 app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 
 

@@ -85,15 +85,19 @@
       .btn { margin-left: 0; }
     }
   </style>
+  <script>
+    window.__aiAgentModelOptions = __AI_AGENT_MODEL_CACHE__;
+  </script>
 </head>
 <body>
+  <script src="/static/widget.js?v=restore27"></script>
   <div class="wrap">
     <div class="toolbar">
-      <span class="pill" id="health-status">Checking...</span>
+      <span class="pill" id="health-status">本地</span>
       <label class="model-picker">
         <span>模型</span>
         <select id="model-select">
-          <option value="composer-2.5">加载中...</option>
+          __AI_AGENT_MODEL_OPTIONS__
         </select>
       </label>
       <button class="btn" id="open-widget" type="button">打开聊天</button>
@@ -195,66 +199,63 @@ python -m backend.check</code></pre>
   </div>
 
   <script>
-    var selectedModel = "composer-2.5";
+    var modelSelect = document.getElementById("model-select");
+    var selectedModel = modelSelect.value || "composer-2.5";
 
-    async function checkHealth() {
-      var el = document.getElementById("health-status");
-      var modelSelect = document.getElementById("model-select");
-      try {
-        var res = await fetch("/api/health");
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        var data = await res.json();
-        if (Array.isArray(data.model_options) && data.model_options.length) {
-          modelSelect.innerHTML = "";
-          data.model_options.forEach(function (model) {
-            var id = typeof model === "string" ? model : (model && model.id) || "";
-            var label = typeof model === "string"
-              ? model
-              : ((model && model.display_name) || id);
-            if (!id) return;
-            var option = document.createElement("option");
-            option.value = id;
-            option.textContent = label || id;
-            modelSelect.appendChild(option);
-          });
-        }
-        if (!Array.from(modelSelect.options).some(function (o) { return o.value === selectedModel; })) {
-          selectedModel = data.model || selectedModel;
-        }
-        modelSelect.value = selectedModel;
-        el.textContent = "在线";
-      } catch (err) {
-        el.textContent = "离线";
-        el.style.background = "#fef2f2";
-        el.style.color = "#b91c1c";
+    function renderLandingModels(options) {
+      if (!Array.isArray(options) || !options.length) return;
+      var previous = selectedModel;
+      modelSelect.innerHTML = "";
+      options.forEach(function (model) {
+        if (!model || !model.id) return;
+        var option = document.createElement("option");
+        option.value = model.id;
+        option.textContent = model.display_name || model.label || model.id;
+        modelSelect.appendChild(option);
+      });
+      var values = Array.prototype.map.call(modelSelect.options, function (o) { return o.value; });
+      selectedModel = values.indexOf(previous) >= 0 ? previous : (values[0] || "composer-2.5");
+      modelSelect.value = selectedModel;
+      if (typeof window.__aiAgentSetModel === "function") {
+        window.__aiAgentSetModel(selectedModel);
       }
     }
 
-    document.getElementById("open-widget").addEventListener("click", function () {
-      if (!document.getElementById("ai-agent-trigger")) {
-        var script = document.createElement("script");
-        script.src = "/static/widget.js";
-        script.setAttribute("data-api-base", window.location.origin);
-        script.setAttribute("data-default-model", selectedModel);
+    window.addEventListener("ai-agent-models-updated", function (event) {
+      renderLandingModels(event.detail && event.detail.model_options);
+    });
+
+    function ensureWidget(thenOpen) {
+      if (document.getElementById("ai-agent-trigger")) {
+        if (thenOpen) {
+          var trigger = document.getElementById("ai-agent-trigger");
+          if (trigger) trigger.click();
+        }
+        return;
+      }
+      var script = document.createElement("script");
+      script.src = "/static/widget.js?v=restore27";
+      script.setAttribute("data-default-model", selectedModel);
+      if (thenOpen) {
         script.onload = function () {
           var trigger = document.getElementById("ai-agent-trigger");
           if (trigger) trigger.click();
         };
-        document.body.appendChild(script);
-        return;
       }
-      var trigger = document.getElementById("ai-agent-trigger");
-      if (trigger) trigger.click();
+      document.body.appendChild(script);
+    }
+
+    document.getElementById("open-widget").addEventListener("click", function () {
+      ensureWidget(true);
     });
 
-    document.getElementById("model-select").addEventListener("change", function (e) {
+    modelSelect.addEventListener("change", function (e) {
       selectedModel = e.target.value;
       if (typeof window.__aiAgentSetModel === "function") {
         window.__aiAgentSetModel(selectedModel);
       }
     });
-
-    checkHealth();
+    // ponytail: no boot /api/health — offline/key errors show on send.
   </script>
 </body>
 </html>

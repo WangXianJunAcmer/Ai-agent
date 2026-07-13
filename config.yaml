@@ -13,7 +13,7 @@ agent:
   # false = 只读（拦截 Write/StrReplace/Delete 与写文件 Shell）
   allow_repo_write: true
   # true = 双向密钥防护（索密拦截、输出脱敏、禁止读 .env）；false = 更高权限，自行承担风险
-  safety_enabled: false
+  safety_enabled: true
   cloud:
     repo_url: ""
     starting_ref: "main"

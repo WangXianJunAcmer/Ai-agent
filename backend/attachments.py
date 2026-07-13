@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import re
+import time
 import uuid
 from pathlib import Path
 
@@ -11,6 +12,13 @@ from cursor_sdk import SDKImage, UserMessage
 
 from backend.repo_write_guard import UPLOAD_DIR, identity_prefix
 from backend.safety import policy_prefix
+
+# Per-file decoded size cap (images + non-images). Oversize → skipped.
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Cap how many files we keep under .ai-agent-uploads (oldest mtime first).
+MAX_UPLOAD_FILES = 40
+# Also drop uploads older than this even if under the count cap.
+UPLOAD_MAX_AGE_SEC = 7 * 24 * 3600
 
 _IMAGE_EXT_MIME = {
   ".png": "image/png",
@@ -42,10 +50,67 @@ def resolve_attachment_mime(item: dict) -> str:
   return _IMAGE_EXT_MIME.get(ext, mime or "application/octet-stream")
 
 
+def attachment_within_size_limit(raw: str) -> bool:
+  """True if base64 payload is non-empty and under MAX_ATTACHMENT_BYTES (approx)."""
+  if not raw:
+    return False
+  # base64 expands ~4/3; reject before decode to avoid huge allocations.
+  return len(raw) <= int(MAX_ATTACHMENT_BYTES * 1.4) + 64
+
+
+def decode_attachment_bytes(raw: str) -> bytes | None:
+  """Decode base64 payload; None if empty, invalid, or over MAX_ATTACHMENT_BYTES."""
+  if not attachment_within_size_limit(raw):
+    return None
+  try:
+    pad = (-len(raw)) % 4
+    data = base64.b64decode(raw + ("=" * pad), validate=False)
+  except Exception:
+    return None
+  if not data or len(data) > MAX_ATTACHMENT_BYTES:
+    return None
+  return data
+
+
+def prune_upload_dir(host_root: str | Path) -> int:
+  """Delete stale/excess files under .ai-agent-uploads. Returns removed count."""
+  upload_dir = Path(host_root).resolve() / UPLOAD_DIR
+  if not upload_dir.is_dir():
+    return 0
+  now = time.time()
+  files = [p for p in upload_dir.iterdir() if p.is_file()]
+  removed = 0
+  keep: list[Path] = []
+  for path in files:
+    try:
+      age = now - path.stat().st_mtime
+    except OSError:
+      continue
+    if age > UPLOAD_MAX_AGE_SEC:
+      try:
+        path.unlink()
+        removed += 1
+      except OSError:
+        pass
+    else:
+      keep.append(path)
+  if len(keep) > MAX_UPLOAD_FILES:
+    keep.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0)
+    for path in keep[: len(keep) - MAX_UPLOAD_FILES]:
+      try:
+        path.unlink()
+        removed += 1
+      except OSError:
+        pass
+  return removed
+
+
 def image_attachments(attachments: list[dict] | None) -> list[dict]:
   out: list[dict] = []
   for item in attachments or []:
-    if not item.get("data"):
+    raw = item.get("data") or ""
+    # Size-check only — SDK consumes the base64 string as-is (padding may be loose).
+    if not attachment_within_size_limit(raw):
       continue
     mime = resolve_attachment_mime(item)
     if is_image(mime):
@@ -60,17 +125,14 @@ def materialize_files(host_root: str | Path, attachments: list[dict] | None) -> 
   root = Path(host_root).resolve()
   upload_dir = root / UPLOAD_DIR
   upload_dir.mkdir(parents=True, exist_ok=True)
+  prune_upload_dir(root)
   saved: list[dict] = []
   for item in attachments:
     mime = resolve_attachment_mime(item)
     if is_image(mime):
       continue
-    raw = item.get("data") or ""
-    try:
-      data = base64.b64decode(raw, validate=False)
-    except Exception:
-      continue
-    if not data:
+    data = decode_attachment_bytes(item.get("data") or "")
+    if data is None:
       continue
     filename = safe_filename(item.get("name") or "file")
     path = upload_dir / f"{uuid.uuid4().hex[:8]}_{filename}"
