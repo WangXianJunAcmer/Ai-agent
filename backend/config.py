@@ -32,6 +32,8 @@ def load_settings() -> dict:
         "reload": bool(server.get("reload", False)),
         "model": agent.get("model", "composer-2.5"),
         "runtime": agent.get("runtime", "local"),
+        # Coding sidecar defaults to writable; set false for read-only embed hosts.
+        "allow_repo_write": bool(agent.get("allow_repo_write", True)),
         "cloud_repo_url": (cloud.get("repo_url") or "").strip(),
         "cloud_starting_ref": cloud.get("starting_ref", "main"),
         "cloud_auto_create_pr": bool(cloud.get("auto_create_pr", False)),

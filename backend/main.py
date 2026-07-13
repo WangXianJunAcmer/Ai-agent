@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from backend.config import load_settings
 from backend.model_catalog import get_model_options, resolve_model_selection
-from backend.sessions import SessionManager
+from backend.runtime import SessionManager
 
 settings = load_settings()
 sessions = SessionManager(settings)

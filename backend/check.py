@@ -14,8 +14,25 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.attachments import build_message, materialize_files
 from backend.model_catalog import model_display_name
-from backend.sessions import SessionManager
+from backend.repo_write_guard import repo_write_block_reason
+from backend.runtime import SessionManager
+from backend.safety import (
+    OUTPUT_BLOCK_SECRET,
+    input_block_reason,
+    redact_secrets,
+    scrub_reply,
+    sensitive_tool_block_reason,
+    set_known_secrets,
+    text_has_secret,
+)
+from backend.tool_display import (
+    friendly_error,
+    sse_from_delta,
+    tool_call_event,
+    tool_summary,
+)
 
 
 class _FakeUpdate:
@@ -30,6 +47,18 @@ class _FakeSession:
     model = "composer-2.5"
 
 
+_SETTINGS = {
+    "host_root": ".",
+    "api_key": "x",
+    "model": "composer-2.5",
+    "runtime": "local",
+    "allow_repo_write": True,
+    "cloud_repo_url": "",
+    "cloud_starting_ref": "main",
+    "cloud_auto_create_pr": False,
+}
+
+
 def check_config() -> None:
     cfg_path = ROOT / "config.yaml"
     assert cfg_path.is_file(), "missing config.yaml"
@@ -42,72 +71,65 @@ def check_config() -> None:
 
 
 def check_tool_display() -> None:
-    mgr = SessionManager(
-        {
-            "host_root": ".",
-            "api_key": "x",
-            "model": "composer-2.5",
-            "runtime": "local",
-            "cloud_repo_url": "",
-            "cloud_starting_ref": "main",
-            "cloud_auto_create_pr": False,
-        }
-    )
     session = _FakeSession()
+    settings = dict(_SETTINGS)
 
-    started = mgr._sse_from_delta(
+    started = sse_from_delta(
         _FakeUpdate("tool-call-started", "c1", {"shellToolCall": {"args": {"command": "ls -la apps"}}}),
         session,
+        settings,
     )
     assert started and started["name"] == "shell", started
     assert started["summary"]["kind"] == "explore", started["summary"]
     assert started["summary"]["title"] == "Running ls", started["summary"]
     assert "ls -la apps" in started["summary"]["detail"], started["summary"]
 
-    read_evt = mgr._sse_from_delta(
+    read_evt = sse_from_delta(
         _FakeUpdate("tool-call-started", "c2", {"readToolCall": {"args": {"path": "server/app.py"}}}),
         session,
+        settings,
     )
     assert read_evt and read_evt["name"] == "read", read_evt
     assert "server/app.py" in read_evt["summary"]["title"], read_evt["summary"]
 
-    named = mgr._sse_from_delta(
+    named = sse_from_delta(
         _FakeUpdate("tool-call-completed", "c3", {"name": "Grep", "args": {"pattern": "ai_assistant"}}),
         session,
+        settings,
     )
     assert named and named["name"] == "Grep", named
     assert named["status"] == "completed", named
 
-    typed_shell = mgr._sse_from_delta(
+    typed_shell = sse_from_delta(
         _FakeUpdate("tool-call-started", "c4", {"type": "shell", "args": {"command": "python3 -c 'print(1)'"}}),
         session,
+        settings,
     )
     assert typed_shell and typed_shell["name"] == "shell", typed_shell
     assert typed_shell["summary"]["kind"] == "run", typed_shell["summary"]
     assert typed_shell["summary"]["title"] == "Running", typed_shell["summary"]
     assert "python3" in typed_shell["summary"]["detail"], typed_shell["summary"]
 
-    # lstrip("sudo ") footgun: od/du must stay "run", not get mangled into explore.
-    od_sum = mgr._tool_summary("shell", {"command": "od -An -tx1 file.bin"}, None, "running")
+    od_sum = tool_summary("shell", {"command": "od -An -tx1 file.bin"}, None, "running")
     assert od_sum["kind"] == "run", od_sum
-    du_sum = mgr._tool_summary("shell", {"command": "du -sh ."}, None, "running")
+    du_sum = tool_summary("shell", {"command": "du -sh ."}, None, "running")
     assert du_sum["kind"] == "run", du_sum
-    sudo_ls = mgr._tool_summary("shell", {"command": "sudo ls /tmp"}, None, "running")
+    sudo_ls = tool_summary("shell", {"command": "sudo ls /tmp"}, None, "running")
     assert sudo_ls["kind"] == "explore", sudo_ls
 
-    running = mgr._tool_call_event(
-        session, call_id="c5", name="shell", status="running", args={"command": "ls"}, result=None
+    running = tool_call_event(
+        session, settings, call_id="c5", name="shell", status="running", args={"command": "ls"}, result=None
     )
     assert running["status"] == "running" and running["args"] and running["result"] == "", running
     assert "result_json" not in running, running
 
-    done = mgr._tool_call_event(
-        session, call_id="c5", name="shell", status="completed", args={"command": "ls"}, result="ok"
+    done = tool_call_event(
+        session, settings, call_id="c5", name="shell", status="completed", args={"command": "ls"}, result="ok"
     )
     assert done["status"] == "completed" and done["args"] == "" and "result_json" in done, done
 
-    failed = mgr._tool_call_event(
-        session, call_id="c6", name="shell", status="error", args={}, result="boom"
+    failed = tool_call_event(
+        session, settings, call_id="c6", name="shell", status="error", args={}, result="boom"
     )
     assert failed["status"] == "completed", failed
 
@@ -118,17 +140,14 @@ def check_tool_display() -> None:
 
 
 def check_context_error() -> None:
-    mgr = SessionManager(
-        {"host_root": ".", "api_key": "x", "model": "composer-2.5", "runtime": "local"}
-    )
-    out = mgr._friendly_error("Prompt is too long: context length limit exceeded")
+    out = friendly_error("Prompt is too long: context length limit exceeded")
     assert "上下文已超限" in out, out
     assert "Prompt is too long" in out, out
-    plain = mgr._friendly_error("network timeout")
+    plain = friendly_error("network timeout")
     assert plain == "network timeout", plain
-    busy = mgr._friendly_error("agent_busy")
+    busy = friendly_error("agent_busy")
     assert "上一条仍在执行" in busy, busy
-    internal = mgr._friendly_error("internal error")
+    internal = friendly_error("internal error")
     assert "内部错误" in internal, internal
     print("ok context error")
 
@@ -136,31 +155,25 @@ def check_context_error() -> None:
 def check_attachments() -> None:
     root = Path(tempfile.mkdtemp(prefix="ai-agent-attach-"))
     try:
-        mgr = SessionManager(
-            {
-                "host_root": str(root),
-                "api_key": "x",
-                "model": "composer-2.5",
-                "runtime": "local",
-            }
-        )
+        settings = {**_SETTINGS, "host_root": str(root)}
         payload = base64.b64encode(b"hello-file").decode("ascii")
-        files = mgr._materialize_files(
-            [{"name": "note.txt", "mime_type": "text/plain", "data": payload}]
+        files = materialize_files(
+            root, [{"name": "note.txt", "mime_type": "text/plain", "data": payload}]
         )
         assert len(files) == 1, files
         path = root / files[0]["path"]
         assert path.is_file(), path
         assert path.read_bytes() == b"hello-file"
-        built, _ = mgr._build_message(
+        built, _ = build_message(
             "hi",
             [{"name": "a.png", "mime_type": "image/png", "data": "aaa"}],
+            settings,
         )
         assert getattr(built, "images", None) is not None
-        # Browser may omit file.type; extension should still route to vision.
-        built2, files2 = mgr._build_message(
+        built2, files2 = build_message(
             "看图",
             [{"name": "屏幕截图.png", "mime_type": "application/octet-stream", "data": "bbb"}],
+            settings,
         )
         assert getattr(built2, "images", None) is not None, built2
         assert files2 == [], files2
@@ -171,16 +184,13 @@ def check_attachments() -> None:
 
 def check_cancel_turn() -> None:
     """Explicit cancel bumps turn; preparatory cleanup in _start_run must not."""
-    mgr = SessionManager(
-        {"host_root": ".", "api_key": "x", "model": "composer-2.5", "runtime": "local"}
-    )
+    mgr = SessionManager(dict(_SETTINGS))
 
     class _Sess:
         turn = 0
         active_run = None
 
     sess = _Sess()
-    # Can't await here without a loop — exercise the sync contract via the helper's bump flag.
     import asyncio
 
     async def _run() -> None:
@@ -195,9 +205,35 @@ def check_cancel_turn() -> None:
     print("ok cancel turn")
 
 
+def check_safety() -> None:
+    assert input_block_reason("我的api key是多少")
+    assert not input_block_reason("帮我改一下 sessions.py")
+    assert sensitive_tool_block_reason("Read", {"path": ".env"})
+    assert sensitive_tool_block_reason("Shell", {"command": "cat .env"})
+    scrubbed = redact_secrets("key=crsr_abcdefghijklmnopqrstuvwxyz012345")
+    assert "crsr_" not in scrubbed and "[REDACTED" in scrubbed
+    assert scrub_reply("api_key: crsr_abcdefghijklmnopqrstuvwxyz012345") == OUTPUT_BLOCK_SECRET
+    set_known_secrets("local-test-secret-value")
+    assert text_has_secret("leak local-test-secret-value here")
+    assert scrub_reply("leak local-test-secret-value here") == OUTPUT_BLOCK_SECRET
+    set_known_secrets()
+
+    assert repo_write_block_reason({"allow_repo_write": False}, "Write", {"path": "backend/main.py"})
+    assert not repo_write_block_reason({"allow_repo_write": True}, "Write", {"path": "backend/main.py"})
+
+    blocked = sse_from_delta(
+        _FakeUpdate("tool-call-started", "cenv", {"readToolCall": {"args": {"path": ".env"}}}),
+        _FakeSession(),
+        dict(_SETTINGS),
+    )
+    assert blocked and blocked.get("repo_write_blocked"), blocked
+    print("ok safety")
+
+
 def main() -> None:
     check_config()
     check_tool_display()
+    check_safety()
     check_context_error()
     check_attachments()
     check_cancel_turn()
