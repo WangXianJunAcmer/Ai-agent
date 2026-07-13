@@ -24,6 +24,7 @@ from backend.safety import (
   sanitize_event,
   scrub_reply,
   set_known_secrets,
+  set_safety_enabled,
   text_has_secret,
 )
 from backend.sessions import Session, model_key
@@ -45,11 +46,13 @@ class SessionManager:
     self._client: AsyncClient | None = None
     self._sessions: dict[str, Session] = {}
     self._started = False
+    set_safety_enabled(bool(settings.get("safety_enabled", True)))
     set_known_secrets(str(settings.get("api_key") or ""))
 
   async def start(self) -> None:
     if self._started:
       return
+    set_safety_enabled(bool(self.settings.get("safety_enabled", True)))
     set_known_secrets(str(self.settings.get("api_key") or ""))
     host_root = str(self.settings["host_root"])
     self._client = await self._stack.enter_async_context(

@@ -10,8 +10,10 @@ agent:
   model: "composer-2.5"
   # local: 直接操作本机宿主项目；cloud: 在 Cursor 云端 VM 上跑（需配置 cloud 段）
   runtime: "local"
-  # false = 只读（拦截 Write/StrReplace/Delete 与写文件 Shell）；敏感文件读取始终拦截
+  # false = 只读（拦截 Write/StrReplace/Delete 与写文件 Shell）
   allow_repo_write: true
+  # true = 双向密钥防护（索密拦截、输出脱敏、禁止读 .env）；false = 更高权限，自行承担风险
+  safety_enabled: false
   cloud:
     repo_url: ""
     starting_ref: "main"

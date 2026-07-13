@@ -25,6 +25,7 @@ from backend.safety import (
     scrub_reply,
     sensitive_tool_block_reason,
     set_known_secrets,
+    set_safety_enabled,
     text_has_secret,
 )
 from backend.tool_display import (
@@ -53,6 +54,7 @@ _SETTINGS = {
     "model": "composer-2.5",
     "runtime": "local",
     "allow_repo_write": True,
+    "safety_enabled": True,
     "cloud_repo_url": "",
     "cloud_starting_ref": "main",
     "cloud_auto_create_pr": False,
@@ -206,6 +208,7 @@ def check_cancel_turn() -> None:
 
 
 def check_safety() -> None:
+    set_safety_enabled(True)
     assert input_block_reason("我的api key是多少")
     assert not input_block_reason("帮我改一下 sessions.py")
     assert sensitive_tool_block_reason("Read", {"path": ".env"})
@@ -227,6 +230,12 @@ def check_safety() -> None:
         dict(_SETTINGS),
     )
     assert blocked and blocked.get("repo_write_blocked"), blocked
+
+    set_safety_enabled(False)
+    assert input_block_reason("我的api key是多少") is None
+    assert sensitive_tool_block_reason("Read", {"path": ".env"}) is None
+    assert scrub_reply("key=crsr_abcdefghijklmnopqrstuvwxyz012345") == "key=crsr_abcdefghijklmnopqrstuvwxyz012345"
+    set_safety_enabled(True)
     print("ok safety")
 
 

@@ -14,23 +14,25 @@
 cd /path/to/your-project
 git clone <this-repo-url> Ai-agent
 
-# 2. 创建虚拟环境并安装依赖（venv 目录名：ai）
+# 2. 创建 conda 环境并安装依赖
 cd Ai-agent
-python3.10 -m venv ai
-./ai/bin/pip install -r requirements.txt
+conda create -n ai-agent python=3.10 -y
+conda activate ai-agent
+pip install -r requirements.txt
 
 # 3. 配置
 cp .env.example .env
 # 编辑 .env，填入 CURSOR_API_KEY
 
-# 4. 启动（先激活你的 Python 3.10+ 环境）
-./ai/bin/python start.py
+# 4. 启动（run.sh 会优先用已激活的 conda 或 ai-agent 环境）
+./run.sh
 ```
 
 自检（不依赖 API Key）：
 
 ```bash
-./ai/bin/python backend/check.py
+conda activate ai-agent
+python -m backend.check
 ```
 
 确认服务正常：

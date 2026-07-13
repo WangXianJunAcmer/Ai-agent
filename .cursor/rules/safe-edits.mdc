@@ -13,7 +13,7 @@ This repo is a **sidecar service**. Every change must leave `./run.sh` and `pyth
 - Delete or gut: `backend/main.py`, `backend/sessions.py`, `frontend/widget.js`, `frontend/index.html`
 - Run destructive git commands (`reset --hard`, `clean -fd`, force-push)
 - Edit or commit `.env`, API keys, or credentials
-- Modify vendored env `ai/` (site-packages, bridge binaries) — use `pip install -r requirements.txt` instead
+- Modify conda/site-packages under `miniconda3/envs/ai-agent` — use `pip install -r requirements.txt` in that env instead
 - Mass-delete files, folders, or large unrelated blocks “while refactoring”
 
 ## Before editing

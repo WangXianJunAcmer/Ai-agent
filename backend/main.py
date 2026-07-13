@@ -99,6 +99,8 @@ async def health():
         "host_root": str(settings["host_root"]),
         "runtime": settings["runtime"],
         "model": settings["model"],
+        "allow_repo_write": settings.get("allow_repo_write", True),
+        "safety_enabled": settings.get("safety_enabled", True),
         "model_options": get_model_options(settings["api_key"], refresh=True),
     }
 
