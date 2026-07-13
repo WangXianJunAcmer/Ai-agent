@@ -7,3 +7,4 @@ ai/
 # Agent chat scratch (trees, demos, uploads) — do not commit
 examples/
 .ai-agent-uploads/
+backend/model_options_cache.json
