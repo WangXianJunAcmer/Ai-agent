@@ -34,7 +34,8 @@
       --ai-user-bg: #f4f4f4;
       --ai-composer-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
       --ai-sidebar-width: 520px;
-      --ai-content-width: 768px;
+      /* Fullscreen reading column — wide enough for code/paths; matches composer. */
+      --ai-content-width: min(1100px, 92%);
       position: fixed; top: 0;
       right: calc(-1 * var(--ai-sidebar-width));
       width: var(--ai-sidebar-width);
@@ -578,6 +579,16 @@
     .ai-agent-edit-send svg { width: 14px; height: 14px; display: block; }
     .ai-agent-msg.user.is-editing .body,
     .ai-agent-msg.user.is-editing .ai-agent-user-actions { display: none !important; }
+    /* Edit composer: same full width as #ai-agent-compose-shell (not 88% bubble). */
+    .ai-agent-msg.user.is-editing {
+      width: 100%;
+      justify-content: stretch;
+    }
+    .ai-agent-msg.user.is-editing .ai-agent-msg-main {
+      max-width: 100%;
+      width: 100%;
+      align-items: stretch;
+    }
     .ai-agent-msg.user .body { cursor: text; }
     .ai-agent-user-action:hover {
       background: rgba(0,0,0,.05);
@@ -664,17 +675,32 @@
       border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
     }
     .ai-agent-msg .body .md-table-wrap {
-      overflow-x: auto; margin: 0 0 12px; -webkit-overflow-scrolling: touch;
+      overflow-x: auto;
+      margin: 0 0 12px;
+      -webkit-overflow-scrolling: touch;
+      max-width: 100%;
     }
     .ai-agent-msg .body table {
-      width: 100%; border-collapse: collapse; margin: 0 0 12px;
-      font-size: 14px; line-height: 1.45;
+      /* Grow with columns; wrap scrolls horizontally — don't squeeze cells. */
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.4;
+      table-layout: auto;
     }
     .ai-agent-msg .body .md-table-wrap table { margin: 0; }
     .ai-agent-msg .body th,
     .ai-agent-msg .body td {
-      border: 1px solid var(--ai-border); padding: 8px 10px; text-align: left;
-      vertical-align: top;
+      border: 1px solid var(--ai-border);
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: middle;
+      /* Override .body word-break so "15,481" / "click" / "4.62%" stay on one line. */
+      white-space: nowrap;
+      word-break: normal;
+      overflow-wrap: normal;
     }
     .ai-agent-msg .body th { background: var(--ai-surface); font-weight: 600; }
     .ai-agent-msg .body tr:nth-child(even) td { background: #fafafa; }
@@ -2499,6 +2525,24 @@
     return meta.activeTextEl;
   }
 
+  // SSE 长静默断连时，早先正文可能已被 sealedReplyLen 吃掉；收尾时若气泡无正文，强制重绘。
+  function paintEnsuredReply(msg, reply, renderAsMarkdown) {
+    if (!msg || !threadDiv.contains(msg)) return null;
+    var full = String(reply || "");
+    if (!full.trim() || isInterimReplyText(full)) return null;
+    var meta = getRunMeta(msg);
+    var hasBody = !!msg.querySelector(".ai-agent-segment-text");
+    var visible = full.slice(meta.sealedReplyLen || 0).trim();
+    if (!visible || isInterimReplyText(visible)) {
+      if (hasBody) return meta.activeTextEl;
+      // 工具阶段把 sealed 推到全文末尾后断连 → chunk 为空，界面只剩 Thought。回退整段重绘。
+      meta.sealedReplyLen = 0;
+      meta.interimSkipLen = 0;
+      meta.activeTextEl = null;
+    }
+    return streamTimelineText(msg, full, renderAsMarkdown !== false);
+  }
+
   function streamStandaloneText(msg, text, renderAsMarkdown) {
     // Error / status lines are not part of the cumulative reply — don't slice by sealedReplyLen.
     beginToolSegment(msg);
@@ -3878,15 +3922,46 @@
       }
 
       await consumeAgentSse(res, agentMsg, state, controller.signal);
+      if (!state.finished) {
+        // 长工具/思考静默时浏览器或代理可能先掐断 SSE；后端 pump 仍可能写完 live_events。
+        // 清空气泡后整段 /follow replay，避免半截 reply + sealedReplyLen 把正文封死。
+        if (sessionId && threadDiv.contains(agentMsg) && !stopRequested) {
+          delete agentMsg.__runMeta;
+          var wl = agentMsg.querySelector(".ai-agent-worklog");
+          if (wl) wl.innerHTML = "";
+          Array.prototype.slice.call(
+            agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
+          ).forEach(function (el) { el.remove(); });
+          state.reply = "";
+          state.finished = false;
+          try {
+            var followCtrl = new AbortController();
+            activeAbort = followCtrl;
+            var followRes = await fetch(apiBase + "/api/chat/follow", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: followCtrl.signal,
+              body: JSON.stringify({ session_id: sessionId || null }),
+            });
+            if (followRes.ok && followRes.body) {
+              await consumeAgentSse(followRes, agentMsg, state, followCtrl.signal);
+            }
+          } catch (followErr) {
+            if (followErr && followErr.name === "AbortError" && stopRequested) throw followErr;
+          } finally {
+            if (activeAbort === followCtrl) activeAbort = null;
+          }
+        }
+        finalizeLiveCards(agentMsg);
+        paintEnsuredReply(agentMsg, state.reply, true);
+      }
     } catch (err) {
       if (err && err.name === "AbortError") {
         // Keep whatever was already streamed; no "(已终止)/(已中断)" body text.
         // New-chat may have already detached this node — don't revive it.
         if (threadDiv.contains(agentMsg)) {
           finalizeLiveCards(agentMsg);
-          if (state.reply && state.reply.trim() && !isInterimReplyText(state.reply)) {
-            streamTimelineText(agentMsg, state.reply, true);
-          }
+          paintEnsuredReply(agentMsg, state.reply, true);
         }
         if (stopRequested) {
           // Remember for cleanup on the next send; queue-↑ interrupt keeps it.
@@ -3898,6 +3973,47 @@
         } else {
           // Refresh/leave: sync streaming=true while isRunning is still true.
           flushChatHistory({ streaming: true });
+        }
+      } else if (isSoftNetworkError(err) && threadDiv.contains(agentMsg)) {
+        // 长静默导致 fetch 抛错：后端可能仍在跑，跟未 finished 一样走 follow 重放。
+        finalizeLiveCards(agentMsg);
+        if (sessionId && !stopRequested && !state.finished) {
+          try {
+            delete agentMsg.__runMeta;
+            var softWl = agentMsg.querySelector(".ai-agent-worklog");
+            if (softWl) softWl.innerHTML = "";
+            Array.prototype.slice.call(
+              agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
+            ).forEach(function (el) { el.remove(); });
+            state.reply = "";
+            state.finished = false;
+            var softCtrl = new AbortController();
+            activeAbort = softCtrl;
+            var softRes = await fetch(apiBase + "/api/chat/follow", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: softCtrl.signal,
+              body: JSON.stringify({ session_id: sessionId || null }),
+            });
+            if (softRes.ok && softRes.body) {
+              await consumeAgentSse(softRes, agentMsg, state, softCtrl.signal);
+            }
+          } catch (softErr) {
+            if (softErr && softErr.name === "AbortError" && stopRequested) {
+              /* stop handled below via drainQueue */
+            }
+          } finally {
+            if (activeAbort === softCtrl) activeAbort = null;
+          }
+        }
+        finalizeLiveCards(agentMsg);
+        paintEnsuredReply(agentMsg, state.reply, true);
+        if (!state.finished && !(state.reply && state.reply.trim())) {
+          streamStandaloneText(
+            agentMsg,
+            "连接中断，请刷新继续接收，或重新发送。",
+            false
+          );
         }
       } else {
         finalizeLiveCards(agentMsg);
@@ -4033,7 +4149,7 @@
       var hasBody = !!(state.reply && state.reply.trim() && !isInterimReplyText(state.reply));
       var softNet = /network|timeout|failed to fetch|econnreset/i.test(String(payload.content || ""));
       if (hasBody && softNet) {
-        streamTimelineText(agentMsg, state.reply, true);
+        paintEnsuredReply(agentMsg, state.reply, true);
       } else {
         streamStandaloneText(agentMsg, "错误: " + errText, false);
       }
@@ -4049,9 +4165,9 @@
         doneMeta.sealedReplyLen = Math.max(doneMeta.sealedReplyLen, doneMeta.interimSkipLen);
         doneMeta.interimSkipLen = 0;
       }
-      var visibleReply = state.reply ? state.reply.slice(doneMeta.sealedReplyLen).trim() : "";
-      if (visibleReply && !isInterimReplyText(visibleReply)) {
-        streamTimelineText(agentMsg, state.reply, true);
+      var painted = paintEnsuredReply(agentMsg, state.reply, true);
+      if (painted) {
+        /* reply painted (incl. sealedReplyLen reset path) */
       } else if (doneStatus === "expired") {
         streamStandaloneText(agentMsg, "（上次回复已中断：服务已重启或会话已过期）", false);
       } else if (doneStatus === "error" || doneStatus === "failed") {
@@ -4062,7 +4178,7 @@
         );
       } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
         streamStandaloneText(agentMsg, doneErr, false);
-      } else if (!agentMsg.querySelector(".ai-agent-segment-text") && !visibleReply) {
+      } else if (!agentMsg.querySelector(".ai-agent-segment-text")) {
         if (doneStatus !== "finished" && doneStatus !== "cancelled") {
           streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
         }
@@ -4098,13 +4214,14 @@
         } catch (parseErr) {
           continue;
         }
+        if (payload && payload.type === "heartbeat") continue;
         seen += 1;
         applyStreamPayload(agentMsg, payload, state);
       }
     }
     if (!state.finished) {
       finalizeLiveCards(agentMsg);
-      if (state.reply) streamTimelineText(agentMsg, state.reply, true);
+      paintEnsuredReply(agentMsg, state.reply, true);
     }
     return { finished: !!state.finished, seen: seen };
   }
@@ -4156,9 +4273,7 @@
     function paintFollowResult() {
       if (!threadDiv.contains(agentMsg)) return;
       finalizeLiveCards(agentMsg);
-      if (state.reply && state.reply.trim() && !isInterimReplyText(state.reply)) {
-        streamTimelineText(agentMsg, state.reply, true);
-      }
+      paintEnsuredReply(agentMsg, state.reply, true);
     }
 
     try {

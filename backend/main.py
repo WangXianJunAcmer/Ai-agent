@@ -66,6 +66,8 @@ async def _sse_from_worker(factory: Callable[[], AsyncIterator[dict]]) -> AsyncI
     # ponytail: box+Event so finally can cancel even if start races disconnect (ad-plex)
     aio_box: list[asyncio.Future | None] = [None]
     started = threading.Event()
+    # Keep proxies/browsers from killing long-thinking streams (no agent events for a while).
+    _HEARTBEAT_SEC = 15.0
 
     async def _produce() -> None:
         try:
@@ -86,7 +88,12 @@ async def _sse_from_worker(factory: Callable[[], AsyncIterator[dict]]) -> AsyncI
     started.wait(timeout=5)
     try:
         while True:
-            event = await asyncio.to_thread(out.get)
+            try:
+                event = await asyncio.to_thread(out.get, True, _HEARTBEAT_SEC)
+            except queue.Empty:
+                # SSE comment — ignored by EventSource/fetch parsers; keeps the socket warm.
+                yield ": ping\n\n"
+                continue
             if event is None:
                 break
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
