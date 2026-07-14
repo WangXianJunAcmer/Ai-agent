@@ -537,30 +537,6 @@ def model_id_from_selection(value) -> str:
     return normalize_model_id(mid)
 
 
-def is_gpt_family(model_id: str | None) -> bool:
-    """Cursor GPT / OpenAI-family model ids (probe labeling; not a seal special-case)."""
-    mid = (model_id or "").strip().lower()
-    if not mid or mid in {"auto", "default"}:
-        return False
-    if "gpt" in mid or "chatgpt" in mid:
-        return True
-    # o1 / o3 / o4-mini …
-    if mid[0] == "o" and len(mid) > 1 and mid[1].isdigit():
-        return True
-    return False
-
-
-def session_is_gpt_family(session) -> bool:
-    for raw in (
-        getattr(session, "resolved_model", None),
-        getattr(session, "model_selection", None),
-        getattr(session, "model", None),
-    ):
-        if is_gpt_family(model_id_from_selection(raw)):
-            return True
-    return False
-
-
 def resolved_model_payload(resolved_id: str) -> dict:
     rid = (resolved_id or "").strip()
     if not rid or rid in {"auto", "default"}:
@@ -962,55 +938,9 @@ def assistant_text_from_message(message) -> str:
     return "".join(parts)
 
 
-def _think_probe_enabled() -> bool:
-    # Temporary: AI_AGENT_THINK_PROBE=1 python start.py
-    import os
-
-    return os.environ.get("AI_AGENT_THINK_PROBE", "").strip().lower() in {"1", "true", "yes"}
-
-
-def _think_probe(event: str, session, **fields) -> None:
-    """Append one JSON line for thinking-event A/B checks. No-op unless probe env set."""
-    if not _think_probe_enabled():
-        return
-    import json
-    import os
-    import time
-    from pathlib import Path
-
-    path = Path(os.environ.get("AI_AGENT_THINK_PROBE_PATH", "/tmp/ai-agent-think-probe.jsonl"))
-    mid = model_id_from_selection(
-        getattr(session, "resolved_model", None)
-        or getattr(session, "model_selection", None)
-        or getattr(session, "model", None)
-    )
-    row = {
-        "ts": time.time(),
-        "event": event,
-        "session_id": getattr(session, "session_id", ""),
-        "model": mid,
-        "gpt_family": session_is_gpt_family(session),
-        **fields,
-    }
-    try:
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
 def sse_from_delta(update, session, settings: dict) -> dict | None:
     """Map Cursor InteractionUpdate → widget SSE. Types must match cursor_sdk.types."""
     update_type = getattr(update, "type", None)
-    # Probe: count every update type (find what GPT emits instead of thinking-*).
-    if _think_probe_enabled() and update_type:
-        extra = {}
-        if update_type in {"thinking-delta", "text-delta"}:
-            t = getattr(update, "text", "") or ""
-            extra = {"text_len": len(t), "text_preview": str(t)[:80].replace("\n", "\\n")}
-        elif update_type == "thinking-completed":
-            extra = {"thinking_duration_ms": getattr(update, "thinking_duration_ms", None)}
-        _think_probe(f"sdk:{update_type}", session, **extra)
     if update_type == "summary-started":
         return _session_event(session, "summary", content="", summary="")
     if update_type == "summary":
@@ -1025,32 +955,14 @@ def sse_from_delta(update, session, settings: dict) -> dict | None:
             completed=True,
         )
     if update_type == "thinking-delta":
-        text = getattr(update, "text", "") or ""
-        _think_probe(
-            "thinking-delta",
-            session,
-            text_len=len(text),
-            text_preview=text[:80].replace("\n", "\\n"),
-            wordish=len(text.split()) <= 2 and len(text) <= 24,
-        )
-        return _session_event(session, "thinking", content=text)
+        return _session_event(session, "thinking", content=getattr(update, "text", "") or "")
     if update_type == "thinking-completed":
-        duration = getattr(update, "thinking_duration_ms", None)
-        _think_probe(
-            "thinking-completed",
-            session,
-            thinking_duration_ms=duration,
-            dropped_for_gpt=False,
-        )
-        # Probe (tool turns): GPT and Claude both emit ~1 completed per think
-        # burst, not per token. Per-word Thought spam was from sealing each
-        # thinking-message — that path no longer emits completed.
         return _session_event(
             session,
             "thinking",
             content="",
             completed=True,
-            thinking_duration_ms=duration,
+            thinking_duration_ms=getattr(update, "thinking_duration_ms", None),
         )
     if update_type in {"tool-call-started", "partial-tool-call", "tool-call-completed"}:
         name, args, result = extract_tool_fields(update)
@@ -1093,8 +1005,6 @@ async def sse_from_run_messages(run, session, settings: dict) -> AsyncIterator[d
             resolved = model_id_from_selection(getattr(message, "model", None))
             payload = resolved_model_payload(resolved)
             if payload:
-                # So thinking-completed can detect GPT when picker is Auto.
-                session.resolved_model = resolved
                 yield {
                     "type": "model_resolved",
                     "session_id": session.session_id,
@@ -1114,13 +1024,6 @@ async def sse_from_run_messages(run, session, settings: dict) -> AsyncIterator[d
             # delta, tool_call start, or turn end instead.
             text = getattr(message, "text", "") or ""
             if text:
-                _think_probe(
-                    "thinking-message",
-                    session,
-                    text_len=len(text),
-                    text_preview=text[:80].replace("\n", "\\n"),
-                    cumulative=True,
-                )
                 yield _session_event(session, "thinking", content=text, cumulative=True)
         elif msg_type == "status":
             yield {
