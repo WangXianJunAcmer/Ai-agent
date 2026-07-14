@@ -125,7 +125,7 @@ curl -X POST http://<ai-agent-host>:8765/api/chat \
 ```
 Ai-agent/
 ├── backend/          # FastAPI + Cursor SDK
-├── frontend/         # widget.js
+├── frontend/         # index.html + js/（拼成 /static/widget.js）
 ├── config.yaml
 ├── .env.example
 ├── requirements.txt

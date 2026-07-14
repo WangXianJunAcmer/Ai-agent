@@ -4,7 +4,8 @@ host_project_root: "."
 server:
   host: "0.0.0.0"
   port: 8765
-  reload: true
+  # Agent writes files under cwd — never enable reload while serving chat SSE.
+  reload: false
 
 agent:
   model: "composer-2.5"

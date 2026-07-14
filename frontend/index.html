@@ -90,7 +90,7 @@
   </script>
 </head>
 <body>
-  <script src="/static/widget.js?v=restore27"></script>
+  <script src="/static/widget.js?v=restore32"></script>
   <div class="wrap">
     <div class="toolbar">
       <span class="pill" id="health-status">本地</span>
@@ -177,7 +177,7 @@ python -m backend.check</code></pre>
       <li><code>GET /</code> — 本页（部署说明）</li>
       <li><code>POST /api/chat</code> — 同步对话</li>
       <li><code>POST /api/chat/stream</code> — SSE 流式对话（widget 使用）</li>
-      <li><code>GET /static/widget.js</code> — 可嵌入前端组件</li>
+      <li><code>GET /static/widget.js</code> — 可嵌入前端组件（由 <code>frontend/js/*.js</code> 拼接）</li>
     </ul>
 
     <h2>安全提示</h2>
@@ -190,7 +190,9 @@ python -m backend.check</code></pre>
     <h2>目录结构</h2>
     <pre><code>Ai-agent/
 ├── backend/          # FastAPI + Cursor SDK
-├── frontend/         # widget.js + 本页
+├── frontend/
+│   ├── index.html
+│   └── js/           # 侧边栏源码，/static/widget.js 运行时拼接
 ├── config.yaml
 ├── .env.example
 ├── requirements.txt
@@ -234,7 +236,7 @@ python -m backend.check</code></pre>
         return;
       }
       var script = document.createElement("script");
-      script.src = "/static/widget.js?v=restore27";
+      script.src = "/static/widget.js?v=restore32";
       script.setAttribute("data-default-model", selectedModel);
       if (thenOpen) {
         script.onload = function () {

@@ -15,7 +15,7 @@ from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -168,6 +168,27 @@ class FollowRequest(BaseModel):
 frontend_dir = ROOT / "frontend"
 frontend_dir.mkdir(exist_ok=True)
 
+# Source parts under frontend/js/; /static/widget.js stays the embed URL.
+_JS_PARTS = (
+    "shell.js",
+    "chrome.js",
+    "markdown.js",
+    "thread.js",
+    "runtime.js",
+)
+
+
+def build_widget_js() -> str:
+    """Concatenate frontend/js parts in order (single IIFE across files)."""
+    js_dir = frontend_dir / "js"
+    chunks: list[str] = []
+    for name in _JS_PARTS:
+        path = js_dir / name
+        if not path.is_file():
+            raise FileNotFoundError(f"missing js part: {path}")
+        chunks.append(path.read_text(encoding="utf-8"))
+    return "\n".join(chunks)
+
 
 @app.get("/")
 async def index():
@@ -295,8 +316,12 @@ async def chat_stream(req: ChatRequest):
 @app.get("/static/widget.js")
 async def widget_js():
     # Avoid sticky browser cache during local reload (restore / edit UX).
-    return FileResponse(
-        frontend_dir / "widget.js",
+    try:
+        body = build_widget_js()
+    except FileNotFoundError as err:
+        raise HTTPException(status_code=500, detail=str(err)) from err
+    return Response(
+        body,
         media_type="application/javascript; charset=utf-8",
         headers={"Cache-Control": "no-cache, must-revalidate"},
     )
@@ -346,13 +371,18 @@ def main():
     port = settings["port"]
     _quiet_uvicorn_bind_log()
     _print_urls(host, port)
-    uvicorn.run(
-        "backend.main:app",
-        host=host,
-        port=port,
-        reload=settings["reload"],
-        reload_dirs=[str(ROOT)],
-    )
+    # reload=True is unsafe for this service: the WatchFiles parent keeps its
+    # initial watch set for the whole process lifetime, and agent file writes
+    # under cwd kill mid-turn SSE. Prefer a manual restart while developing.
+    run_kwargs = {
+        "app": "backend.main:app",
+        "host": host,
+        "port": port,
+        "reload": bool(settings["reload"]),
+    }
+    if settings["reload"]:
+        run_kwargs["reload_dirs"] = [str(ROOT / "backend"), str(ROOT / "frontend")]
+    uvicorn.run(**run_kwargs)
 
 
 if __name__ == "__main__":

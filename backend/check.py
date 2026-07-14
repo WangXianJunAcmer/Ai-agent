@@ -40,6 +40,8 @@ from backend.tool_display import (
     sse_from_delta,
     tool_call_event,
     tool_summary,
+    assistant_text_from_message,
+    dedupe_cumulative,
 )
 
 
@@ -75,7 +77,18 @@ def check_config() -> None:
         cfg = yaml.safe_load(f) or {}
     host_root = (ROOT / cfg.get("host_project_root", "..")).resolve()
     assert host_root.is_dir(), f"host_project_root does not exist: {host_root}"
-    assert (ROOT / "frontend" / "widget.js").is_file(), "missing frontend/widget.js"
+    from backend.main import _JS_PARTS, build_widget_js
+
+    js_dir = ROOT / "frontend" / "js"
+    for name in _JS_PARTS:
+        assert (js_dir / name).is_file(), f"missing frontend/js/{name}"
+    bundle = build_widget_js()
+    assert "(function ()" in bundle[:500], "widget bundle missing IIFE open"
+    assert bundle.rstrip().endswith("})();"), "widget bundle missing IIFE close"
+    assert "function renderMarkdown" in bundle, "widget bundle missing renderMarkdown"
+    assert "function safeMarkdownHref" in bundle, "widget bundle missing safeMarkdownHref"
+    # Agent writes under cwd; reload parent watcher would kill mid-turn SSE.
+    assert not bool((cfg.get("server") or {}).get("reload", False)), "server.reload must be false"
     print(f"ok config host_root={host_root}")
 
 
@@ -90,7 +103,7 @@ def check_tool_display() -> None:
     )
     assert started and started["name"] == "shell", started
     assert started["summary"]["kind"] == "explore", started["summary"]
-    assert started["summary"]["title"] == "Running ls", started["summary"]
+    assert started["summary"]["title"] == "Running", started["summary"]
     assert "ls -la apps" in started["summary"]["detail"], started["summary"]
 
     read_evt = sse_from_delta(
@@ -118,6 +131,34 @@ def check_tool_display() -> None:
     assert typed_shell["summary"]["kind"] == "run", typed_shell["summary"]
     assert typed_shell["summary"]["title"] == "Running", typed_shell["summary"]
     assert "python3" in typed_shell["summary"]["detail"], typed_shell["summary"]
+
+    class _Sum:
+        type = "summary"
+        summary = "next: read auth"
+
+    plan = sse_from_delta(_Sum(), session, settings)
+    assert plan and plan["type"] == "planning" and "read auth" in plan["content"], plan
+
+    class _ThinkDone:
+        type = "thinking-completed"
+        thinking_duration_ms = 1200
+
+    done_think = sse_from_delta(_ThinkDone(), session, settings)
+    assert done_think and done_think.get("completed") is True, done_think
+
+    class _Block:
+        type = "text"
+        text = "hello"
+
+    class _AssistContent:
+        content = (_Block(),)
+
+    class _Assist:
+        message = _AssistContent()
+
+    assert assistant_text_from_message(_Assist()) == "hello"
+    assert dedupe_cumulative("hel", "hello") == ("hello", "lo")
+    assert dedupe_cumulative("hello", "hello") == ("hello", "")
 
     od_sum = tool_summary("shell", {"command": "od -An -tx1 file.bin"}, None, "running")
     assert od_sum["kind"] == "run", od_sum
@@ -221,8 +262,8 @@ def check_idle_prune() -> None:
     mgr._sessions["idle"] = sess
 
     async def _run() -> None:
-      await mgr._prune_idle_sessions()
-      assert "idle" not in mgr._sessions
+        await mgr._prune_idle_sessions()
+        assert "idle" not in mgr._sessions
 
     asyncio.run(_run())
     print("ok idle prune")
@@ -257,6 +298,7 @@ def check_safety() -> None:
     assert not input_block_reason("帮我改一下 sessions.py")
     assert sensitive_tool_block_reason("Read", {"path": ".env"})
     assert sensitive_tool_block_reason("Shell", {"command": "cat .env"})
+    assert sensitive_tool_block_reason("AwaitShell", {"command": "cat .env"})
     scrubbed = redact_secrets("key=crsr_abcdefghijklmnopqrstuvwxyz012345")
     assert "crsr_" not in scrubbed and "[REDACTED" in scrubbed
     assert scrub_reply("api_key: crsr_abcdefghijklmnopqrstuvwxyz012345") == OUTPUT_BLOCK_SECRET
@@ -271,6 +313,9 @@ def check_safety() -> None:
     set_known_secrets()
 
     assert repo_write_block_reason({"allow_repo_write": False}, "Write", {"path": "backend/main.py"})
+    assert repo_write_block_reason(
+        {"allow_repo_write": False}, "AwaitShell", {"command": "rm -rf /tmp/x"}
+    )
     assert not repo_write_block_reason({"allow_repo_write": True}, "Write", {"path": "backend/main.py"})
 
     blocked = sse_from_delta(

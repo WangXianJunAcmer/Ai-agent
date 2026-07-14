@@ -10,7 +10,7 @@ This repo is a **sidecar service**. Every change must leave `./run.sh` and `pyth
 ## Never without explicit user request
 
 - Delete or rename core entrypoints: `start.py`, `run.sh`, `config.yaml`, `requirements.txt`
-- Delete or gut: `backend/main.py`, `backend/sessions.py`, `frontend/widget.js`, `frontend/index.html`
+- Delete or gut: `backend/main.py`, `backend/sessions.py`, `frontend/js/`, `frontend/index.html`
 - Run destructive git commands (`reset --hard`, `clean -fd`, force-push)
 - Edit or commit `.env`, API keys, or credentials
 - Modify conda/site-packages under `miniconda3/envs/ai-agent` — use `pip install -r requirements.txt` in that env instead
