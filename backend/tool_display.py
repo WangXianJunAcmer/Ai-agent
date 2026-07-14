@@ -957,13 +957,9 @@ def sse_from_delta(update, session, settings: dict) -> dict | None:
     if update_type == "thinking-delta":
         return _session_event(session, "thinking", content=getattr(update, "text", "") or "")
     if update_type == "thinking-completed":
-        return _session_event(
-            session,
-            "thinking",
-            content="",
-            completed=True,
-            thinking_duration_ms=getattr(update, "thinking_duration_ms", None),
-        )
+        # GPT fires this nearly every token; sealing on it = one Thought card per word.
+        # Duration is unused by the widget — drop the event. Seal via tool/text/done.
+        return None
     if update_type in {"tool-call-started", "partial-tool-call", "tool-call-completed"}:
         name, args, result = extract_tool_fields(update)
         status = "completed" if update_type == "tool-call-completed" else "running"

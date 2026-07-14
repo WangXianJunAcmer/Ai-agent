@@ -588,6 +588,8 @@
             textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, splitAt);
           }
         }
+        // Seal think before prose so the next burst (if any) opens below tools/text.
+        finalizeThoughtCard(agentMsg);
         updateRunState(currentActivityTitle(agentMsg));
         streamTimelineText(agentMsg, state.reply, true);
         noteWorking(agentMsg, currentActivityTitle(agentMsg));
@@ -625,17 +627,19 @@
         paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
       });
     } else if (payload.type === "thinking") {
+      // GPT via Cursor fires thinking-completed after almost every token — sealing
+      // on completed made one "Thought briefly" card per word. Keep one live card;
+      // seal on tool start / real text / turn end instead.
+      if (payload.completed) {
+        scheduleSaveChatHistory();
+        return;
+      }
       rememberActivity(agentMsg, "Thinking");
       updateRunState(currentActivityTitle(agentMsg));
-      // Seal on completed so the next think burst opens BELOW tools (not resume above).
-      if (payload.completed) {
-        finalizeThoughtCard(agentMsg);
-      } else {
-        if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
-          beginToolSegment(agentMsg);
-        }
-        noteThinking(agentMsg, payload.content || "");
+      if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
+        beginToolSegment(agentMsg);
       }
+      noteThinking(agentMsg, payload.content || "");
       scheduleSaveChatHistory();
     } else if (payload.type === "tool_call") {
       var summary = payload.summary || {};
