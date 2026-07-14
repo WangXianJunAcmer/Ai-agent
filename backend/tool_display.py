@@ -537,6 +537,30 @@ def model_id_from_selection(value) -> str:
     return normalize_model_id(mid)
 
 
+def is_gpt_family(model_id: str | None) -> bool:
+    """Cursor GPT / OpenAI reasoning ids — they emit thinking-completed per token."""
+    mid = (model_id or "").strip().lower()
+    if not mid or mid in {"auto", "default"}:
+        return False
+    if "gpt" in mid or "chatgpt" in mid:
+        return True
+    # o1 / o3 / o4-mini …
+    if mid[0] == "o" and len(mid) > 1 and mid[1].isdigit():
+        return True
+    return False
+
+
+def session_is_gpt_family(session) -> bool:
+    for raw in (
+        getattr(session, "resolved_model", None),
+        getattr(session, "model_selection", None),
+        getattr(session, "model", None),
+    ):
+        if is_gpt_family(model_id_from_selection(raw)):
+            return True
+    return False
+
+
 def resolved_model_payload(resolved_id: str) -> dict:
     rid = (resolved_id or "").strip()
     if not rid or rid in {"auto", "default"}:
@@ -957,9 +981,17 @@ def sse_from_delta(update, session, settings: dict) -> dict | None:
     if update_type == "thinking-delta":
         return _session_event(session, "thinking", content=getattr(update, "text", "") or "")
     if update_type == "thinking-completed":
-        # GPT fires this nearly every token; sealing on it = one Thought card per word.
-        # Duration is unused by the widget — drop the event. Seal via tool/text/done.
-        return None
+        # Non-GPT: seal Thought on completed (normal Cursor behavior).
+        # GPT: skip — they fire completed almost every token → one card per word.
+        if session_is_gpt_family(session):
+            return None
+        return _session_event(
+            session,
+            "thinking",
+            content="",
+            completed=True,
+            thinking_duration_ms=getattr(update, "thinking_duration_ms", None),
+        )
     if update_type in {"tool-call-started", "partial-tool-call", "tool-call-completed"}:
         name, args, result = extract_tool_fields(update)
         status = "completed" if update_type == "tool-call-completed" else "running"
@@ -1001,6 +1033,8 @@ async def sse_from_run_messages(run, session, settings: dict) -> AsyncIterator[d
             resolved = model_id_from_selection(getattr(message, "model", None))
             payload = resolved_model_payload(resolved)
             if payload:
+                # So thinking-completed can detect GPT when picker is Auto.
+                session.resolved_model = resolved
                 yield {
                     "type": "model_resolved",
                     "session_id": session.session_id,

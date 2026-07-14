@@ -395,6 +395,17 @@
       : "给 " + target + " 发送消息";
   }
 
+  function isGptFamilyModel() {
+    // Match backend tool_display.is_gpt_family — only these coalesce thinking.
+    var picked = String((modelField && modelField.value) || "").toLowerCase();
+    var resolved = String(typeof autoResolvedModel !== "undefined" ? autoResolvedModel : "").toLowerCase();
+    var id = (!picked || picked === "auto" || picked === "default") ? resolved : picked;
+    if (!id) id = resolved;
+    if (!id) return false;
+    if (id.indexOf("gpt") >= 0 || id.indexOf("chatgpt") >= 0) return true;
+    return /^o[1-9]/.test(id);
+  }
+
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
@@ -627,20 +638,20 @@
         paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
       });
     } else if (payload.type === "thinking") {
-      // GPT via Cursor fires thinking-completed after almost every token — sealing
-      // on completed made one "Thought briefly" card per word. Keep one live card;
-      // seal on tool start / real text / turn end instead.
+      // Seal on completed for non-GPT. GPT (Cursor) fires completed per token —
+      // backend drops those; if one slips through, still don't seal here.
       if (payload.completed) {
+        if (!isGptFamilyModel()) finalizeThoughtCard(agentMsg);
         scheduleSaveChatHistory();
-        return;
+      } else {
+        rememberActivity(agentMsg, "Thinking");
+        updateRunState(currentActivityTitle(agentMsg));
+        if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
+          beginToolSegment(agentMsg);
+        }
+        noteThinking(agentMsg, payload.content || "");
+        scheduleSaveChatHistory();
       }
-      rememberActivity(agentMsg, "Thinking");
-      updateRunState(currentActivityTitle(agentMsg));
-      if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
-        beginToolSegment(agentMsg);
-      }
-      noteThinking(agentMsg, payload.content || "");
-      scheduleSaveChatHistory();
     } else if (payload.type === "tool_call") {
       var summary = payload.summary || {};
       var toolView = buildToolPresentation(payload, summary);
@@ -1247,7 +1258,14 @@
       "",
       "```cpp",
       "#include <vector>",
-      "void dfs(int u) { vis[u] = true; }",
+      "using std::vector;",
+      "",
+      "void dfs(int u, const vector<vector<int>>& graph, vector<bool>& seen) {",
+      "  seen[u] = true;",
+      "  for (int v : graph[u]) {",
+      "    if (!seen[v]) dfs(v, graph, seen);",
+      "  }",
+      "}",
       "```",
       "",
       "```143:161:src/demo.cpp",

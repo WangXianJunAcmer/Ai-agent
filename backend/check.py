@@ -157,6 +157,15 @@ def check_tool_display() -> None:
     done_think = sse_from_delta(_ThinkDone(), session, settings)
     assert done_think and done_think.get("completed") is True, done_think
 
+    # GPT family: drop per-token thinking-completed (would spam Thought cards).
+    from backend.tool_display import is_gpt_family
+
+    assert is_gpt_family("gpt-5.2") and is_gpt_family("o3-mini")
+    assert not is_gpt_family("composer-2.5") and not is_gpt_family("claude-4-sonnet")
+    gpt_session = _FakeSession()
+    gpt_session.model = "gpt-5.2"
+    assert sse_from_delta(_ThinkDone(), gpt_session, settings) is None
+
     class _Block:
         type = "text"
         text = "hello"
