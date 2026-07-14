@@ -23,13 +23,8 @@ def normalize_provider(name: str | None) -> str:
 
 
 def require_implemented(provider: str) -> None:
-    p = normalize_provider(provider)
-    if p in IMPLEMENTED:
-        return
-    raise RuntimeError(
-        f"agent.provider={p!r} is reserved under backend/providers/ but not wired yet. "
-        f"Set agent.provider: cursor, or implement providers/{p}.py and add it to IMPLEMENTED."
-    )
+    # All names in RESERVED are wired; unknown names already raise in normalize_provider.
+    normalize_provider(provider)
 
 
 def describe_provider(settings: dict) -> dict:

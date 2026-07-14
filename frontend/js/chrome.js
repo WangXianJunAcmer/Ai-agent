@@ -74,6 +74,19 @@
   function serializeTurnChanges(msg) {
     var panel = msg.querySelector(".ai-agent-turn-changes");
     if (!panel) return null;
+    // Prefer the live payload (keeps line-level diffs across refresh).
+    if (panel.__turnPayload && panel.__turnPayload.files && panel.__turnPayload.files.length) {
+      var cached = panel.__turnPayload;
+      return {
+        turn_id: panel.getAttribute("data-turn-id") || cached.turn_id || "",
+        files: cached.files,
+        file_count: cached.files.length,
+        additions: Number(cached.additions || 0),
+        deletions: Number(cached.deletions || 0),
+        undoable: !!(panel.getAttribute("data-turn-id") && !panel.classList.contains("is-undone")),
+        undone: panel.classList.contains("is-undone"),
+      };
+    }
     var files = [];
     Array.prototype.slice.call(panel.querySelectorAll(".ai-agent-turn-file")).forEach(function (row) {
       var pathEl = row.querySelector(".ai-agent-turn-file-path");
@@ -81,9 +94,12 @@
       var meta = (metaEl && metaEl.textContent) || "";
       var addMatch = meta.match(/\+(\d+)/);
       var delMatch = meta.match(/-(\d+)/);
+      var statusEl = row.querySelector(".ai-agent-turn-file-status");
+      var statusText = ((statusEl && statusEl.textContent) || meta).toLowerCase();
       files.push({
         path: (pathEl && pathEl.textContent) || "",
-        status: /新建/.test(meta) ? "created" : (/删除/.test(meta) ? "deleted" : "modified"),
+        status: /deleted|删除/.test(statusText) ? "deleted"
+          : (/added|新建|created/.test(statusText) ? "created" : "modified"),
         additions: addMatch ? Number(addMatch[1]) : 0,
         deletions: delMatch ? Number(delMatch[1]) : 0,
         diff: [],

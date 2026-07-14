@@ -108,12 +108,16 @@ async def _sse_from_worker(factory: Callable[[], AsyncIterator[dict]]) -> AsyncI
 
 def _resolve_model(model_id: str | None, *, provider: str = "cursor") -> str | dict:
     """Warm catalog once if empty, then expand id → SDK model selection (Cursor only)."""
-    if provider in {"openai", "deepseek"}:
+    from backend.providers import COMPAT_PROVIDERS
+
+    if provider in COMPAT_PROVIDERS:
         from backend.providers.compat_agent import default_model
 
         mid = (model_id or "").strip() or default_model(provider)
         return mid
-    get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
+    from backend.config import cursor_api_key
+
+    get_model_options(cursor_api_key(settings))
     return resolve_model_selection(model_id, settings.get("model", "composer-2.5"))
 
 
@@ -150,7 +154,7 @@ class ChatRequest(BaseModel):
     mode: str | None = None
     # cursor | openai | deepseek — omitted → config.yaml agent.provider
     provider: str | None = None
-    # DeepSeek thinking mode (ignored for other providers). Default enabled.
+    # DeepSeek thinking mode (ignored for other providers). Default off when omitted.
     thinking: bool | None = None
     reasoning_effort: str | None = None  # high | max (aliases mapped server-side)
     images: list[AttachmentPayload] | None = None
@@ -180,6 +184,7 @@ class ChatRequest(BaseModel):
             return None, None
         from backend.providers.compat_agent import normalize_reasoning_effort
 
+        # Match UI pill default (off) and stream_compat_turn when thinking is omitted.
         on = False if self.thinking is None else bool(self.thinking)
         effort = normalize_reasoning_effort(self.reasoning_effort) if on else None
         return on, effort
@@ -193,6 +198,7 @@ class CancelRequest(BaseModel):
 class UndoRequest(BaseModel):
     session_id: str | None = None
     turn_id: str | None = None
+    path: str | None = None  # set → undo one file; omit → undo all
 
 
 class FollowRequest(BaseModel):
@@ -222,31 +228,25 @@ def build_widget_js() -> str:
         if not path.is_file():
             raise FileNotFoundError(f"missing js part: {path}")
         chunks.append(path.read_text(encoding="utf-8"))
-    return "\n".join(chunks)
+    # ponytail: wrap here so each part is valid JS alone (IDE/node --check); shared scope still one IIFE.
+    return "(function () {\n" + "\n".join(chunks) + "\n})();\n"
 
 
 def _inject_page(name: str, *, provider: str = "cursor") -> Response:
     """Serve an HTML page with model catalog placeholders filled."""
+    from backend.config import cursor_api_key
+    from backend.providers import COMPAT_PROVIDERS
     from backend.providers.compat_agent import default_model, model_options
 
-    if provider in {"openai", "deepseek"}:
+    if provider in COMPAT_PROVIDERS:
         options = model_options(provider)
         selected = default_model(provider)
     else:
-        options = get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
+        options = get_model_options(cursor_api_key(settings))
         selected = str(settings.get("model", "composer-2.5"))
     cache_json = json.dumps(options, ensure_ascii=False).replace("<", "\\u003c")
-    option_html = "\n".join(
-        (
-            f'<option value="{html.escape(str(item["id"]), quote=True)}"'
-            f'{" selected" if item["id"] == selected else ""}>'
-            f'{html.escape(str(item.get("display_name") or item["id"]))}</option>'
-        )
-        for item in options
-    )
     page = (frontend_dir / name).read_text(encoding="utf-8")
     page = page.replace("__AI_AGENT_MODEL_CACHE__", cache_json)
-    page = page.replace("__AI_AGENT_MODEL_OPTIONS__", option_html)
     page = page.replace("__AI_AGENT_DEFAULT_MODEL__", html.escape(selected, quote=True))
     page = page.replace("__AI_AGENT_PROVIDER__", html.escape(provider, quote=True))
     return Response(page, media_type="text/html; charset=utf-8")
@@ -290,7 +290,15 @@ async def favicon():
 
 @app.get("/api/health")
 async def health():
-    from backend.providers import describe_provider
+    from backend.config import cursor_api_key
+    from backend.providers import COMPAT_PROVIDERS, describe_provider
+    from backend.providers.compat_agent import model_options
+
+    prov = settings.get("provider") or "cursor"
+    if prov in COMPAT_PROVIDERS:
+        catalog = model_options(prov)
+    else:
+        catalog = get_model_options(cursor_api_key(settings))
 
     return {
         "ok": True,
@@ -307,28 +315,24 @@ async def health():
             "openai": bool(settings.get("openai_api_key")),
             "deepseek": bool(settings.get("deepseek_api_key")),
         },
-        "model_options": get_model_options(
-            settings.get("cursor_api_key") or settings.get("api_key") or ""
-        ),
+        "model_options": catalog,
     }
 
 
 @app.get("/api/models/refresh")
 async def refresh_models(provider: str = "cursor"):
     """Refresh model catalog. Cursor hits remote list; OpenAI/DeepSeek return static lists."""
-    from backend.providers import normalize_provider
+    from backend.config import cursor_api_key
+    from backend.providers import COMPAT_PROVIDERS, normalize_provider
     from backend.providers.compat_agent import model_options
 
     prov = normalize_provider(provider)
-    if prov in {"openai", "deepseek"}:
+    if prov in COMPAT_PROVIDERS:
         options = model_options(prov)
         return {"changed": False, "model_options": options, "provider": prov}
-    before = get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
-    after = await asyncio.to_thread(
-        get_model_options,
-        settings.get("cursor_api_key") or settings.get("api_key") or "",
-        refresh=True,
-    )
+    key = cursor_api_key(settings)
+    before = get_model_options(key)
+    after = await asyncio.to_thread(get_model_options, key, refresh=True)
     return {
         "changed": after != before,
         "model_options": after,
@@ -396,7 +400,9 @@ async def undo_chat(req: UndoRequest):
     """Undo file changes from a tracked agent turn (OpenAI / DeepSeek)."""
     if not req.session_id or not req.turn_id:
         raise HTTPException(status_code=422, detail="session_id and turn_id are required")
-    result = await _worker_await(sessions.undo_turn(req.session_id, req.turn_id))
+    result = await _worker_await(
+        sessions.undo_turn(req.session_id, req.turn_id, path=req.path)
+    )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error") or "undo failed")
     return result

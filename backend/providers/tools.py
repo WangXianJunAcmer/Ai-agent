@@ -44,9 +44,12 @@ def make_tool_kit(
 ) -> tuple[list[dict], dict[str, Callable[..., str]]]:
     """Return (OpenAI tools schemas, name → executor)."""
     host_root = Path(settings["host_root"]).resolve()
+    # Plan mode passes allow_write=False while config may still have allow_repo_write=True —
+    # gate shell mutations on the effective flag, not the raw config.
+    guard = {**settings, "allow_repo_write": bool(allow_write)}
 
     def _block(name: str, args: dict) -> str | None:
-        return repo_write_block_reason(settings, name, args) or sensitive_tool_block_reason(
+        return repo_write_block_reason(guard, name, args) or sensitive_tool_block_reason(
             name, args
         )
 
@@ -134,23 +137,27 @@ def make_tool_kit(
                         return "\n".join(hits)
         return "\n".join(hits) or "(no matches)"
 
-    def write_file(path: str, content: str) -> str:
+    def write_file(path: str, content: str = "", contents: str = "", fileText: str = "", file_text: str = "", **_extra) -> str:
         if not allow_write:
             return "writes disabled (plan mode or allow_repo_write=false)"
         blocked = _block("write", {"path": path})
         if blocked:
             return blocked
+        # Models vary: content (schema) | contents | fileText (Cursor-shaped).
+        body = content or contents or fileText or file_text
+        if not isinstance(body, str):
+            body = "" if body is None else str(body)
         target = _safe_resolve(host_root, path)
         if isinstance(target, str):
             return target
         if tracker is not None:
             tracker.snapshot_before(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        target.write_text(body, encoding="utf-8")
         _track(path)
-        return f"wrote {len(content)} chars to {path}"
+        return f"wrote {len(body)} chars to {path}"
 
-    def str_replace(path: str, old_string: str, new_string: str) -> str:
+    def str_replace(path: str, old_string: str = "", new_string: str = "", **_extra) -> str:
         if not allow_write:
             return "writes disabled (plan mode or allow_repo_write=false)"
         blocked = _block("strreplace", {"path": path})
@@ -300,6 +307,8 @@ def run_tool(executors: dict[str, Callable[..., str]], name: str, arguments: str
 def demo() -> None:
     import tempfile
 
+    from backend.turn_changes import TurnChangeTracker
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "a.txt").write_text("hello", encoding="utf-8")
@@ -308,6 +317,18 @@ def demo() -> None:
         assert any(s["function"]["name"] == "read_file" for s in schemas)
         assert "hello" in run_tool(ex, "read_file", {"path": "a.txt"})
         assert "escapes" in run_tool(ex, "read_file", {"path": "../outside"}).lower()
+
+        # contents/fileText aliases must write + track for undo (DeepSeek often uses these).
+        tr = TurnChangeTracker(root)
+        _, ex2 = make_tool_kit(settings, allow_write=True, tracker=tr)
+        out = run_tool(ex2, "write_file", {"path": "b.txt", "contents": "one\ntwo\nthree\n"})
+        assert out.startswith("wrote "), out
+        assert (root / "b.txt").read_text(encoding="utf-8") == "one\ntwo\nthree\n"
+        s = tr.summary()
+        assert s["file_count"] == 1 and s["undoable"], s
+        assert s["files"][0]["status"] == "created" and s["files"][0]["additions"] == 3, s["files"]
+        u = tr.undo()
+        assert u["ok"] and not (root / "b.txt").exists(), u
         print("tools demo ok")
 
 

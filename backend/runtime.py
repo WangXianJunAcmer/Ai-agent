@@ -6,6 +6,7 @@ import asyncio
 import time
 import uuid
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import AsyncIterator
 
 from cursor_sdk import (
@@ -55,13 +56,6 @@ class SessionManager:
         self._map_lock = asyncio.Lock()
         # Keep strong refs so request disconnect cannot GC / drop pumps.
         self._background_tasks: set[asyncio.Task] = set()
-        set_safety_enabled(bool(settings.get("safety_enabled", True)))
-        set_known_secrets(
-            str(settings.get("cursor_api_key") or ""),
-            str(settings.get("openai_api_key") or ""),
-            str(settings.get("deepseek_api_key") or ""),
-            str(settings.get("api_key") or ""),
-        )
 
     async def start(self) -> None:
         if self._started:
@@ -81,7 +75,9 @@ class SessionManager:
         if self._client is not None:
             return
         host_root = str(self.settings["host_root"])
-        if not (self.settings.get("cursor_api_key") or self.settings.get("api_key")):
+        from backend.config import cursor_api_key
+
+        if not cursor_api_key(self.settings):
             raise RuntimeError("CURSOR_API_KEY is not set.")
         self._client = await self._stack.enter_async_context(
             await AsyncClient.launch_bridge(workspace=host_root)
@@ -151,11 +147,20 @@ class SessionManager:
                             self._touch(current)
                             return current
                         if current is not None:
-                            await self._cancel_session_run(current, bump=False)
+                            # bump+stop pump: compat has no active_run; orphan pumps keep writing otherwise.
+                            await self._cancel_session_run(current, bump=True)
+                            await self._stop_pump(current)
                             await self._close_agent(current.agent)
                             del self._sessions[session_id]
                 else:
-                    # Different provider on same id → mint a fresh session below.
+                    # Different provider on same id → close orphan, mint a fresh session below.
+                    async with session.lock:
+                        current = self._sessions.get(session_id)
+                        if current is not None:
+                            await self._cancel_session_run(current, bump=True)
+                            await self._stop_pump(current)
+                            await self._close_agent(current.agent)
+                            del self._sessions[session_id]
                     session_id = None
 
             sid = session_id or uuid.uuid4().hex
@@ -184,23 +189,21 @@ class SessionManager:
             return session
 
     def _default_model(self, provider: str) -> str:
-        if provider == "openai":
-            from backend.providers.openai import provider_default_model
+        if provider in COMPAT_PROVIDERS:
+            from backend.providers.compat_agent import default_model
 
-            return provider_default_model()
-        if provider == "deepseek":
-            from backend.providers.deepseek import provider_default_model
-
-            return provider_default_model()
+            return default_model(provider)
         return str(self.settings.get("model") or "composer-2.5")
 
     def _agent_options(self, model: str | dict):
+        from backend.config import cursor_api_key
+
         settings = self.settings
         model_id = model.get("id") if isinstance(model, dict) else model
         label = model_id or settings["model"]
         opts: dict = {
             "model": model,
-            "api_key": self.settings.get("cursor_api_key") or self.settings.get("api_key"),
+            "api_key": cursor_api_key(settings),
             "name": f"Ai-agent ({label})",
         }
         if settings["runtime"] == "cloud":
@@ -257,9 +260,15 @@ class SessionManager:
             return
         session = self._sessions[session_id]
         await self._cancel_session_run(session, bump=True)
+        # Compat pumps never set active_run — cancel the task so the loop exits.
+        task = session.pump_task
+        if task is not None and not task.done():
+            task.cancel()
 
-    async def undo_turn(self, session_id: str | None, turn_id: str | None) -> dict:
-        """Restore files from a prior compat-agent turn snapshot."""
+    async def undo_turn(
+        self, session_id: str | None, turn_id: str | None, path: str | None = None
+    ) -> dict:
+        """Restore files from a prior agent turn snapshot (all or one path)."""
         from backend.turn_changes import get_tracker
 
         if not session_id or not turn_id or session_id not in self._sessions:
@@ -270,7 +279,23 @@ class SessionManager:
         tracker = get_tracker(session, turn_id)
         if tracker is None:
             return {"ok": False, "error": "undo snapshot expired or unavailable"}
+        if path:
+            return tracker.undo_file(path)
         return tracker.undo()
+
+    def _emit_turn_changes(self, session: Session, tracker) -> None:
+        """Emit undoable turn summary + keep tracker (Cursor + compat)."""
+        from backend.turn_changes import store_tracker
+
+        summary = tracker.summary()
+        if not summary.get("file_count"):
+            return
+        store_tracker(session, tracker)
+        self._emit(session, {
+            **summary,
+            "session_id": session.session_id,
+            "model": session.model,
+        })
 
     async def _recycle_agent(self, session: Session) -> None:
         """Close the busy agent and create a fresh one (keeps session_id)."""
@@ -285,15 +310,11 @@ class SessionManager:
         await self._close_agent(old)
 
     def _is_busy_error(self, err: Exception) -> bool:
-        msg = (getattr(err, "message", None) or str(err) or "").lower()
+        # Only known busy signals — generic "internal error" must not trigger a resend.
         if isinstance(err, AgentBusyError):
             return True
-        return (
-            "agent_busy" in msg
-            or "agent is busy" in msg
-            or msg.strip() == "internal error"
-            or "internal error" in msg
-        )
+        msg = (getattr(err, "message", None) or str(err) or "").lower()
+        return "agent_busy" in msg or "agent is busy" in msg
 
     async def _start_run(self, session: Session, payload, mode: str, on_delta=None):
         """Send with one recycle+retry if the previous turn left the agent busy."""
@@ -323,36 +344,43 @@ class SessionManager:
         session = await self.get_or_create(session_id, model, provider=provider)
         self._touch(session)
         if session.provider in COMPAT_PROVIDERS:
-            # Collect streamed turn into a sync reply.
-            await self._launch_turn(
-                session,
-                message,
-                mode,
-                attachments,
-                thinking=thinking,
-                reasoning_effort=reasoning_effort,
-            )
-            reply_parts: list[str] = []
-            status = "finished"
-            async for event in self._follow_log(session, 0):
-                if event.get("type") == "text" and event.get("content"):
-                    reply_parts.append(str(event["content"]))
-                if event.get("type") == "done":
-                    status = str(event.get("status") or "finished")
-                if event.get("type") == "error" and event.get("content"):
-                    return {
-                        "session_id": session.session_id,
-                        "reply": "",
-                        "status": "error",
-                        "error": event["content"],
-                        "model": session.model,
-                    }
-            return {
-                "session_id": session.session_id,
-                "reply": scrub_reply("".join(reply_parts)),
-                "status": status,
-                "model": session.model,
-            }
+            # Hold lock for the whole turn (same as Cursor) so concurrent /chat can't interleave.
+            async with session.lock:
+                await self._launch_turn_locked(
+                    session,
+                    message,
+                    mode,
+                    attachments,
+                    thinking=thinking,
+                    reasoning_effort=reasoning_effort,
+                )
+                reply_parts: list[str] = []
+                status = "finished"
+                async for event in self._follow_log(session, 0):
+                    if event.get("type") == "text" and event.get("content"):
+                        reply_parts.append(str(event["content"]))
+                    if event.get("type") == "done":
+                        status = str(event.get("status") or "finished")
+                    if event.get("type") == "error" and event.get("content"):
+                        # Stop pump so session_status isn't stuck "running" after we return.
+                        await self._cancel_session_run(session, bump=True)
+                        task = session.pump_task
+                        if task is not None and not task.done():
+                            task.cancel()
+                        await self._stop_pump(session)
+                        return {
+                            "session_id": session.session_id,
+                            "reply": "",
+                            "status": "error",
+                            "error": event["content"],
+                            "model": session.model,
+                        }
+                return {
+                    "session_id": session.session_id,
+                    "reply": scrub_reply("".join(reply_parts)),
+                    "status": status,
+                    "model": session.model,
+                }
         async with session.lock:
             run = None
             turn = session.turn
@@ -484,10 +512,16 @@ class SessionManager:
                     yield event
                 # Empty buffer, or client already has every event — close SSE so refresh doesn't hang.
                 if idx == 0 or (start_idx >= len(session.live_events) and session.live_done):
+                    # Prefer the real terminal status over a synthetic "finished".
+                    last_status = "finished"
+                    for ev in reversed(session.live_events):
+                        if isinstance(ev, dict) and ev.get("type") == "done":
+                            last_status = str(ev.get("status") or "finished")
+                            break
                     yield sanitize_event({
                         "type": "done",
                         "session_id": session.session_id,
-                        "status": "finished",
+                        "status": last_status,
                         "model": session.model,
                     })
                 return
@@ -506,6 +540,48 @@ class SessionManager:
             except Exception:
                 pass
 
+    async def _launch_turn_locked(
+        self,
+        session: Session,
+        message: str,
+        mode: str,
+        attachments: list[dict] | None,
+        thinking: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> None:
+        """Caller must hold session.lock."""
+        if session.pump_task and not session.pump_task.done():
+            await self._cancel_session_run(session, bump=True)
+            await self._stop_pump(session)
+        session.live_events = []
+        session.live_done = False
+        # Buffer session_id before pump awaits Cursor — refresh can /follow immediately.
+        self._emit(session, {
+            "type": "status",
+            "session_id": session.session_id,
+            "status": "started",
+            "content": "started",
+            "model": session.model,
+        })
+        turn = session.turn
+        # Detached from the HTTP request cancel scope so refresh cannot kill the run.
+        if session.provider in COMPAT_PROVIDERS:
+            session.pump_task = self._spawn_pump(
+                self._pump_compat_turn(
+                    session,
+                    message,
+                    mode,
+                    attachments,
+                    turn,
+                    thinking=thinking,
+                    reasoning_effort=reasoning_effort,
+                )
+            )
+        else:
+            session.pump_task = self._spawn_pump(
+                self._pump_turn(session, message, mode, attachments, turn)
+            )
+
     async def _launch_turn(
         self,
         session: Session,
@@ -516,39 +592,16 @@ class SessionManager:
         reasoning_effort: str | None = None,
     ) -> None:
         async with session.lock:
-            if session.pump_task and not session.pump_task.done():
-                await self._cancel_session_run(session, bump=True)
-                await self._stop_pump(session)
-            session.live_events = []
-            session.live_done = False
-            # Buffer session_id before pump awaits Cursor — refresh can /follow immediately.
-            self._emit(session, {
-                "type": "status",
-                "session_id": session.session_id,
-                "status": "started",
-                "content": "started",
-                "model": session.model,
-            })
-            turn = session.turn
-            # Detached from the HTTP request cancel scope so refresh cannot kill the run.
-            if session.provider in COMPAT_PROVIDERS:
-                session.pump_task = self._spawn_pump(
-                    self._pump_lc_turn(
-                        session,
-                        message,
-                        mode,
-                        attachments,
-                        turn,
-                        thinking=thinking,
-                        reasoning_effort=reasoning_effort,
-                    )
-                )
-            else:
-                session.pump_task = self._spawn_pump(
-                    self._pump_turn(session, message, mode, attachments, turn)
-                )
+            await self._launch_turn_locked(
+                session,
+                message,
+                mode,
+                attachments,
+                thinking=thinking,
+                reasoning_effort=reasoning_effort,
+            )
 
-    async def _pump_lc_turn(
+    async def _pump_compat_turn(
         self,
         session: Session,
         message: str,
@@ -571,9 +624,32 @@ class SessionManager:
                 self._emit_done(session, "cancelled")
                 return
 
+            reply_so_far = ""
+            secret_in_output = False
+
             def emit(event: dict) -> None:
+                nonlocal reply_so_far, secret_in_output
                 if session.turn != turn:
                     return
+                # Mirror Cursor path: accumulate across chunks so split secrets still block.
+                if isinstance(event, dict) and event.get("type") in {"text", "thinking", "summary"}:
+                    chunk = event.get("content") or ""
+                    if not isinstance(chunk, str):
+                        chunk = str(chunk) if chunk else ""
+                    if secret_in_output:
+                        return
+                    if chunk:
+                        reply_so_far += chunk
+                    # ponytail: 按 chunk 检测会漏跨片密钥；真 DLP 要 holdback。
+                    if text_has_secret(reply_so_far) or (chunk and text_has_secret(chunk)):
+                        secret_in_output = True
+                        self._emit(session, {
+                            "type": "text",
+                            "session_id": session.session_id,
+                            "content": OUTPUT_BLOCK_SECRET,
+                            "model": session.model,
+                        })
+                        return
                 self._emit(session, event)
 
             status = await stream_compat_turn(
@@ -609,8 +685,12 @@ class SessionManager:
         turn: int,
     ) -> None:
         """Run Cursor turn in the background; buffer events for stream + follow."""
+        from backend.turn_changes import TurnChangeTracker
+
         run = None
         forward_task = None
+        tracker = TurnChangeTracker(Path(self.settings["host_root"]))
+        session._active_tracker = tracker
         try:
             input_block = input_block_reason(message)
             if input_block:
@@ -756,11 +836,13 @@ class SessionManager:
                         self._emit_error(session, str(exc))
 
             if write_block_notice or session.turn != turn:
+                self._emit_turn_changes(session, tracker)
                 self._emit_done(session, "cancelled")
                 return
 
             result = await run.wait()
             if session.turn != turn:
+                self._emit_turn_changes(session, tracker)
                 self._emit_done(session, "cancelled")
                 return
             status = getattr(result, "status", None) or "finished"
@@ -785,6 +867,7 @@ class SessionManager:
                 done_extra["result"] = terminal
                 if str(status).lower() in {"error", "failed"}:
                     done_extra["error"] = friendly_error(terminal)
+            self._emit_turn_changes(session, tracker)
             self._emit_done(session, status, **done_extra)
         except asyncio.CancelledError:
             # Match ad-plex: only cancel Cursor run on turn bump, not on subscriber cancel.
@@ -794,8 +877,10 @@ class SessionManager:
         except (CursorAgentError, RuntimeError) as err:
             msg = getattr(err, "message", None) or str(err)
             self._emit_error(session, msg)
+            self._emit_turn_changes(session, tracker)
             self._emit_done(session, "error")
         finally:
+            session._active_tracker = None
             if session.active_run is run:
                 session.active_run = None
             # Only cancel on turn mismatch — never because an SSE client disconnected.
@@ -837,8 +922,11 @@ class SessionManager:
         session_id: str | None,
         after: int = 0,
     ) -> AsyncIterator[dict]:
-        session = self._sessions.get(session_id) if session_id else None
-        if session is None:
+        # Unknown id → expired (don't attach to someone else's run).
+        # Empty id → single-user mid-flight fallback via find_running_session.
+        if session_id:
+            session = self._sessions.get(session_id)
+        else:
             session = self.find_running_session()
         if session is None:
             yield sanitize_event({

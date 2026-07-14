@@ -14,7 +14,7 @@ def load_settings() -> dict:
     with open(ROOT / "config.yaml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    host_rel = cfg.get("host_project_root", "..")
+    host_rel = cfg.get("host_project_root", ".")
     host_root = (ROOT / host_rel).resolve()
 
     server = cfg.get("server") or {}
@@ -74,3 +74,9 @@ def load_settings() -> dict:
         "cloud_starting_ref": cloud.get("starting_ref", "main"),
         "cloud_auto_create_pr": bool(cloud.get("auto_create_pr", False)),
     }
+
+
+def cursor_api_key(settings: dict) -> str:
+    """Cursor catalog / SDK key. Prefer cursor_api_key; api_key is active-provider key."""
+    return str(settings.get("cursor_api_key") or settings.get("api_key") or "")
+

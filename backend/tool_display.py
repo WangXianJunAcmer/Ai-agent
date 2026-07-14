@@ -136,6 +136,7 @@ def tool_args_from_payload(payload):
         "command", "cmd", "path", "paths", "file", "files", "target_file",
         "glob_pattern", "pattern", "query", "search_term", "url", "description",
         "working_directory", "cwd", "old_string", "new_string", "patch",
+        "contents", "content", "text", "file_text", "fileText",
     ):
         if key in payload:
             keep[key] = payload[key]
@@ -149,6 +150,29 @@ def tool_result_from_payload(payload):
         if key in payload and payload[key] is not None:
             return payload[key]
     return None
+
+
+def _result_value(result) -> dict:
+    """Cursor SDK nests success fields under result.value."""
+    if not isinstance(result, dict):
+        return {}
+    value = result.get("value")
+    return value if isinstance(value, dict) else result
+
+
+def _result_line_counts(result) -> tuple[int | None, int | None]:
+    """Prefer SDK-provided line counts (edit: linesAdded/Removed; write: linesCreated)."""
+    val = _result_value(result)
+    if not val:
+        return None, None
+    added = val.get("linesAdded")
+    removed = val.get("linesRemoved")
+    created = val.get("linesCreated")
+    if isinstance(added, int) or isinstance(removed, int):
+        return (added if isinstance(added, int) else 0), (removed if isinstance(removed, int) else 0)
+    if isinstance(created, int):
+        return created, 0
+    return None, None
 
 
 def extract_tool_fields(update) -> tuple[str, object, object]:
@@ -260,6 +284,9 @@ def extract_patch_preview(text: str) -> list[dict]:
 def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> dict:
     raw_name = (name or "tool").strip() or "tool"
     lowered = normalize_tool_name(raw_name)
+    # Cursor SDK often names updates deleteToolCall / writeToolCall.
+    if lowered.endswith("toolcall") and len(lowered) > len("toolcall"):
+        lowered = lowered[: -len("toolcall")]
     paths = collect_paths(args) or collect_paths(result)
     cmd = command_preview(args)
     query = ""
@@ -350,36 +377,70 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
         }
     if lowered in {"applypatch", "editnotebook", "strreplace", "edit", "searchreplace"}:
         # Prefer old/new string preview when no patch format.
+        # Count by lines (Codex), not one blob = +1/-1.
         diff = patch_preview
         if not diff and isinstance(args, dict):
             old_s = args.get("old_string")
             new_s = args.get("new_string")
             if isinstance(old_s, str) or isinstance(new_s, str):
-                diff = [{
-                    "path": paths[0] if paths else "",
-                    "removed": [old_s] if isinstance(old_s, str) and old_s else [],
-                    "added": [new_s] if isinstance(new_s, str) and new_s else [],
-                }]
-        return {
+                removed = (old_s or "").splitlines() if isinstance(old_s, str) else []
+                added = (new_s or "").splitlines() if isinstance(new_s, str) else []
+                diff = [{"path": paths[0] if paths else "", "removed": removed, "added": added}]
+        out = {
             "kind": "edit",
             "title": ("Editing " if status == "running" else "Edited ") + (paths[0] if paths else "code"),
-            "detail": detail,
+            # Path lives in the title only — body is diff (Codex).
+            "detail": "",
             "paths": paths,
             "diff": diff,
+            "status": "modified",
         }
+        if diff:
+            out["additions"] = sum(len(d.get("added") or []) for d in diff)
+            out["deletions"] = sum(len(d.get("removed") or []) for d in diff)
+        # Cursor EditSuccess: authoritative line counts on completed.
+        sdk_add, sdk_del = _result_line_counts(result)
+        if sdk_add is not None:
+            out["additions"] = sdk_add
+            out["deletions"] = sdk_del if sdk_del is not None else 0
+        return out
     if lowered in {"write", "writefile"}:
-        return {
+        content = ""
+        if isinstance(args, dict):
+            # Cursor SDK uses fileText; compat tools use contents.
+            for key in ("fileText", "file_text", "contents", "content", "text", "new_string"):
+                if isinstance(args.get(key), str):
+                    content = args[key]
+                    break
+        if not content:
+            content = str(_result_value(result).get("fileContentAfterWrite") or "")
+        added = content.splitlines() if content else []
+        out = {
             "kind": "edit",
             "title": ("Writing " if status == "running" else "Wrote ") + (paths[0] if paths else "file"),
-            "detail": detail,
+            "detail": "",
             "paths": paths,
+            "status": "created",
         }
-    if lowered in {"delete"}:
+        if added:
+            out["diff"] = [{"path": paths[0] if paths else "", "removed": [], "added": added[:80]}]
+            out["additions"] = len(added)
+            out["deletions"] = 0
+        # Cursor WriteSuccess.linesCreated — count at edit completion, not later.
+        sdk_add, sdk_del = _result_line_counts(result)
+        if sdk_add is not None:
+            out["additions"] = sdk_add
+            out["deletions"] = sdk_del if sdk_del is not None else 0
+            if not out.get("diff") and content:
+                out["diff"] = [{"path": paths[0] if paths else "", "removed": [], "added": content.splitlines()[:80]}]
+        return out
+    if lowered in {"delete", "deletefile"}:
         return {
             "kind": "edit",
             "title": ("Deleting " if status == "running" else "Deleted ") + (paths[0] if paths else "file"),
-            "detail": detail,
+            "detail": "",
             "paths": paths,
+            "status": "deleted",
         }
     if lowered in {"todowrite", "todo", "updatetodos"}:
         return {"kind": "plan", "title": "Updated todos", "detail": detail or "Refreshed task list", "paths": []}
@@ -408,7 +469,8 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
     if lowered in {"recordscreen"}:
         return {"kind": "run", "title": "Recorded screen", "detail": detail, "paths": paths}
     if lowered in {"readlints", "lint", "diagnostics"}:
-        return {"kind": "verify", "title": "Read lints", "detail": detail, "paths": paths}
+        # Paths render as pills — don't also put them in detail (plain + pill echo).
+        return {"kind": "verify", "title": "Read lints", "detail": "", "paths": paths}
     if lowered in {"shell", "awaitshell", "bash", "terminal", "runterminalcmd", "runterminal"}:
         desc = first_str(args, "description") if isinstance(args, dict) else ""
         full_cmd = shell_command_raw(args) or cmd
@@ -500,6 +562,21 @@ def tool_call_event(
     raw = (status or "running").strip().lower()
     status = "completed" if raw in {"completed", "error", "failed", "cancelled", "canceled"} else "running"
     summary = tool_summary(name, args, result, status)
+    title = str(summary.get("title") or "")
+    is_edit = summary.get("kind") == "edit" or title.startswith(
+        ("Deleting ", "Deleted ", "Editing ", "Edited ", "Writing ", "Wrote ")
+    )
+    # Snapshot edit counts BEFORE warming cache — completed writes already
+    # sit on disk; warming first would poison "before" with after-content.
+    if is_edit:
+        if summary.get("kind") != "edit":
+            summary["kind"] = "edit"
+        _attach_file_change_preview(
+            session, settings, summary, args=args, result=result, call_id=call_id or "", status=status
+        )
+    # Cache file text while it still exists (Read/Explore/…); Delete often
+    # arrives after the file is gone — counting then yields +0/-0.
+    _warm_file_text_cache(session, settings, summary)
     event = {
         "type": "tool_call",
         "session_id": session.session_id,
@@ -521,6 +598,321 @@ def tool_call_event(
         if block:
             event["repo_write_blocked"] = block
     return event
+
+
+_MAX_EDIT_PREVIEW_LINES = 80
+_EDIT_SNAPSHOT_BYTES = 2_000_000
+_TITLE_PATH_PREFIXES = (
+    "Deleting ", "Deleted ", "Editing ", "Edited ",
+    "Writing ", "Wrote ", "Reading ", "Read ",
+)
+
+
+def _paths_from_summary(summary: dict) -> list[str]:
+    paths = list(summary.get("paths") or [])
+    if paths:
+        return paths
+    title = str(summary.get("title") or "")
+    for prefix in _TITLE_PATH_PREFIXES:
+        if title.startswith(prefix):
+            rest = title[len(prefix):].strip()
+            if rest and rest not in {"file", "code", "files"}:
+                summary["paths"] = [rest]
+                return [rest]
+    return []
+
+
+def _resolve_host_file(root: str, path: str):
+    from pathlib import Path
+
+    rel = str(path or "").replace("\\", "/").lstrip("./")
+    if not rel:
+        return None, ""
+    candidate = Path(rel)
+    abs_path = candidate if candidate.is_absolute() else (Path(root) / rel)
+    try:
+        abs_path = abs_path.resolve()
+        root_r = Path(root).resolve()
+        rel = str(abs_path.relative_to(root_r)).replace("\\", "/")
+    except (OSError, ValueError):
+        return None, rel
+    return abs_path, rel
+
+
+def _read_host_text(abs_path) -> str | None:
+    snap = _read_host_snapshot(abs_path)
+    return snap if isinstance(snap, str) else None
+
+
+def _read_host_snapshot(abs_path):
+    """Return UTF-8 str, raw bytes (binary), or None if missing/too large."""
+    if abs_path is None or not abs_path.is_file():
+        return None
+    try:
+        data = abs_path.read_bytes()
+    except OSError:
+        return None
+    if len(data) > _EDIT_SNAPSHOT_BYTES:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data
+
+
+def _apply_opaque_delete_counts(summary: dict, rel: str, size: int) -> None:
+    """Binary / unreadable delete: no line diff, count as 1 removed unit."""
+    # ponytail: binary has no lines; -1 marks the file so totals aren't +0/-0.
+    summary["status"] = "deleted"
+    summary["additions"] = 0
+    summary["deletions"] = 1
+    summary["diff"] = [{
+        "path": rel,
+        "removed": [f"(binary, {max(0, int(size))} bytes)"],
+        "added": [],
+    }]
+
+
+def _file_text_cache(session) -> dict:
+    cache = getattr(session, "_file_text_cache", None)
+    if cache is None:
+        session._file_text_cache = {}
+        cache = session._file_text_cache
+    return cache
+
+
+def _warm_file_text_cache(session, settings: dict, summary: dict) -> None:
+    """Remember file contents while still on disk (before Delete/Write)."""
+    root = (settings or {}).get("host_root")
+    paths = _paths_from_summary(summary)
+    if not root or not paths:
+        return
+    cache = _file_text_cache(session)
+    for raw in paths[:6]:
+        abs_path, rel = _resolve_host_file(str(root), raw)
+        snap = _read_host_snapshot(abs_path)
+        if snap is None:
+            continue
+        cache[rel] = snap
+        cache[raw] = snap
+        cache[str(raw).replace("\\", "/")] = snap
+        if abs_path is not None:
+            cache[str(abs_path)] = snap
+        base = rel.split("/")[-1] if rel else ""
+        if base:
+            cache[base] = snap
+
+
+def _cached_file_text(session, settings: dict, rel: str, raw: str):
+    cache = _file_text_cache(session)
+    base = (rel or "").split("/")[-1]
+    for key in (rel, raw, str(raw).replace("\\", "/"), base):
+        if key and key in cache:
+            return cache[key]
+    # Last resort for tracked files deleted before we could snapshot.
+    root = (settings or {}).get("host_root")
+    if not root or not rel:
+        return None
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{rel}"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or proc.stdout is None:
+        return None
+    if len(proc.stdout.encode("utf-8", errors="ignore")) > _EDIT_SNAPSHOT_BYTES:
+        return None
+    cache[rel] = proc.stdout
+    if base:
+        cache[base] = proc.stdout
+    return proc.stdout
+
+
+def _args_write_contents(args) -> str | None:
+    if not isinstance(args, dict):
+        return None
+    # Write-only keys — never new_string (StrReplace fragment ≠ whole file).
+    # Cursor SDK: fileText; compat: contents.
+    for key in ("fileText", "file_text", "contents", "content", "text"):
+        val = args.get(key)
+        if isinstance(val, str):
+            return val
+    return None
+
+
+def _apply_delete_counts(summary: dict, before, rel: str) -> None:
+    if isinstance(before, (bytes, bytearray)):
+        _apply_opaque_delete_counts(summary, rel, len(before))
+        return
+    lines = before.splitlines()
+    summary["status"] = "deleted"
+    summary["additions"] = 0
+    summary["deletions"] = len(lines)
+    summary["diff"] = [{
+        "path": rel,
+        "removed": lines[:_MAX_EDIT_PREVIEW_LINES],
+        "added": [],
+    }]
+
+
+def _apply_edit_counts(summary: dict, before: str | None, after: str, rel: str, *, is_delete: bool) -> None:
+    from backend.turn_changes import _diff_preview, _line_stats
+
+    if is_delete or after is None:
+        if before is not None:
+            _apply_delete_counts(summary, before, rel)
+        return
+    if before is None:
+        file_status = "created"
+    else:
+        file_status = "modified"
+    additions, deletions = _line_stats(before, after)
+    prev_add = int(summary.get("additions") or 0)
+    prev_del = int(summary.get("deletions") or 0)
+    summary["status"] = file_status
+    # Trust disk/hunk stats when we got a real diff; else keep args/SDK counts.
+    if additions or deletions:
+        summary["additions"] = additions
+        summary["deletions"] = deletions
+    else:
+        summary["additions"] = prev_add
+        summary["deletions"] = prev_del
+        if file_status == "created" and not prev_add and isinstance(after, str) and after:
+            summary["additions"] = len(after.splitlines())
+    preview = _diff_preview(before, after, rel)
+    if preview:
+        summary["diff"] = preview
+
+
+def _attach_file_change_preview(
+    session, settings: dict, summary: dict, *, args, result=None, call_id: str, status: str
+) -> None:
+    """Count +N/-M during the edit tool_call (running/completed), not at turn end."""
+    paths = _paths_from_summary(summary)
+    root = (settings or {}).get("host_root")
+    if not root or not paths:
+        return
+    edit_cache = getattr(session, "_edit_previews", None)
+    if edit_cache is None:
+        session._edit_previews = {}
+        edit_cache = session._edit_previews
+    abs_path, rel = _resolve_host_file(str(root), paths[0])
+    keys = [k for k in (call_id, rel, paths[0]) if k]
+    title = str(summary.get("title") or "")
+    is_delete = title.startswith(("Deleting ", "Deleted ")) or summary.get("status") == "deleted"
+    sdk_add, sdk_del = _result_line_counts(result)
+
+    def cached_before():
+        """Running snapshot (before may be None = file did not exist)."""
+        for key in keys:
+            hit = edit_cache.get(key)
+            if isinstance(hit, dict) and "before" in hit:
+                return hit["before"], True
+        return None, False
+
+    def feed_undo_tracker(before_text):
+        """Cursor pump: record first-write snap for turn undo (None = created)."""
+        tracker = getattr(session, "_active_tracker", None)
+        if tracker is None or not rel:
+            return
+        # Do not re-read disk here — completed writes already landed.
+        tracker.seed_before(rel, before_text)
+        if status == "completed":
+            tracker.mark_touched(rel)
+
+    if status == "running":
+        # First snap wins — later partial/running events often arrive after the write.
+        before, had_snap = cached_before()
+        if not had_snap:
+            before = _read_host_snapshot(abs_path)
+            if before is None:
+                before = _cached_file_text(session, settings, rel, paths[0])
+            snap = {"before": before, "rel": rel}
+            for key in keys:
+                edit_cache[key] = snap
+        feed_undo_tracker(before)
+        if is_delete:
+            if isinstance(before, str):
+                _apply_delete_counts(summary, before, rel)
+            elif isinstance(before, bytes):
+                _apply_opaque_delete_counts(summary, rel, len(before))
+            elif abs_path is not None and abs_path.is_file():
+                # Too large to snapshot — still count the delete.
+                try:
+                    size = abs_path.stat().st_size
+                except OSError:
+                    size = 0
+                _apply_opaque_delete_counts(summary, rel, size)
+            else:
+                _apply_opaque_delete_counts(summary, rel, 0)
+            return
+        after_args = _args_write_contents(args)
+        if after_args is not None and not isinstance(before, bytes):
+            _apply_edit_counts(summary, before, after_args, rel, is_delete=False)
+        elif before is None and int(summary.get("additions") or 0) > 0:
+            summary["status"] = "created"
+        return
+
+    # completed: never treat current disk as "before" (write already landed).
+    before, had_snap = cached_before()
+    if not had_snap:
+        before = _cached_file_text(session, settings, rel, paths[0])
+    after = _read_host_snapshot(abs_path)
+    if after is None and not is_delete:
+        after = _args_write_contents(args)
+    if after is None and not is_delete:
+        after = str(_result_value(result).get("fileContentAfterWrite") or "") or None
+
+    if before is None and after is None:
+        if is_delete:
+            _apply_opaque_delete_counts(summary, rel, 0)
+        elif sdk_add is not None:
+            summary["additions"] = sdk_add
+            summary["deletions"] = sdk_del if sdk_del is not None else 0
+            if summary.get("status") not in {"deleted", "created", "modified"}:
+                summary["status"] = "created" if (sdk_del or 0) == 0 and sdk_add > 0 else "modified"
+        # Still track: created with SDK counts only, or unknown — before stays None.
+        feed_undo_tracker(before)
+        for key in keys:
+            edit_cache.pop(key, None)
+        return
+    if after is None or is_delete:
+        if isinstance(before, str):
+            _apply_delete_counts(summary, before, rel)
+        elif isinstance(before, bytes):
+            _apply_opaque_delete_counts(summary, rel, len(before))
+        else:
+            _apply_opaque_delete_counts(summary, rel, 0)
+    else:
+        if isinstance(before, bytes) or isinstance(after, bytes):
+            from backend.turn_changes import _diff_preview, _line_stats
+
+            add, dele = _line_stats(before, after)
+            summary["status"] = "created" if before is None else "modified"
+            summary["additions"] = add
+            summary["deletions"] = dele
+            preview = _diff_preview(before, after, rel)
+            if preview:
+                summary["diff"] = preview
+        else:
+            _apply_edit_counts(summary, before, after or "", rel, is_delete=False)
+        # Disk identity (+0) after a late snap: fall back to SDK / args counts.
+        if not int(summary.get("additions") or 0) and not int(summary.get("deletions") or 0):
+            if sdk_add is not None:
+                summary["additions"] = sdk_add
+                summary["deletions"] = sdk_del if sdk_del is not None else 0
+                if before is None:
+                    summary["status"] = "created"
+
+    feed_undo_tracker(before)
+    for key in keys:
+        edit_cache.pop(key, None)
 
 
 def _session_event(session, type_: str, **extra) -> dict:
@@ -626,16 +1018,13 @@ async def sse_from_run_messages(run, session, settings: dict) -> AsyncIterator[d
             if text:
                 yield _session_event(session, "text", content=text, cumulative=True)
         elif msg_type == "thinking":
+            # Cumulative snapshot only. Do NOT emit completed=True here —
+            # the SDK can yield many thinking messages (even token-sized); sealing
+            # each one spawned a pile of Thought cards. Seal via thinking-completed
+            # delta, tool_call start, or turn end instead.
             text = getattr(message, "text", "") or ""
             if text:
                 yield _session_event(session, "thinking", content=text, cumulative=True)
-            yield _session_event(
-                session,
-                "thinking",
-                content="",
-                completed=True,
-                thinking_duration_ms=getattr(message, "thinking_duration_ms", None),
-            )
         elif msg_type == "status":
             yield {
                 "type": "status",

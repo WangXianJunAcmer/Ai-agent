@@ -177,6 +177,8 @@ def check_tool_display() -> None:
     assert du_sum["kind"] == "run", du_sum
     sudo_ls = tool_summary("shell", {"command": "sudo ls /tmp"}, None, "running")
     assert sudo_ls["kind"] == "explore", sudo_ls
+    lint_sum = tool_summary("ReadLints", {"paths": ["/tmp/a.py"]}, None, "running")
+    assert lint_sum["title"] == "Read lints" and lint_sum["detail"] == "" and lint_sum["paths"] == ["/tmp/a.py"], lint_sum
 
     running = tool_call_event(
         session, settings, call_id="c5", name="shell", status="running", args={"command": "ls"}, result=None
@@ -193,6 +195,168 @@ def check_tool_display() -> None:
         session, settings, call_id="c6", name="shell", status="error", args={}, result="boom"
     )
     assert failed["status"] == "completed", failed
+
+    with tempfile.TemporaryDirectory() as tmp:
+        doomed = Path(tmp) / "doomed.py"
+        doomed.write_text("a\nb\nc\n", encoding="utf-8")
+        del_settings = dict(settings, host_root=tmp)
+        del_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c7",
+            name="Delete",
+            status="running",
+            args={"path": "doomed.py"},
+            result=None,
+        )
+        assert del_run["summary"].get("status") == "deleted", del_run["summary"]
+        assert del_run["summary"].get("deletions") == 3, del_run["summary"]
+        assert del_run["summary"].get("diff"), del_run["summary"]
+        doomed.unlink()
+        del_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c7",
+            name="Delete",
+            status="completed",
+            args={"path": "doomed.py"},
+            result="ok",
+        )
+        assert del_done["summary"].get("deletions") == 3, del_done["summary"]
+
+        # Write overwrite: completed must use running snapshot, not post-write disk.
+        target = Path(tmp) / "rb.py"
+        target.write_text("a\nb\n", encoding="utf-8")
+        write_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c8",
+            name="Write",
+            status="running",
+            args={"path": "rb.py", "contents": "a\nb\nc\nd\n"},
+            result=None,
+        )
+        target.write_text("a\nb\nc\nd\n", encoding="utf-8")
+        write_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c8",
+            name="Write",
+            status="completed",
+            args={"path": "rb.py"},
+            result="ok",
+        )
+        assert write_done["summary"].get("additions") == 2, write_done["summary"]
+        assert write_done["summary"].get("deletions") == 0, write_done["summary"]
+        assert write_done["summary"].get("status") == "modified", write_done["summary"]
+
+        # StrReplace completed with empty args still counts via snapshot.
+        sr_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c9",
+            name="StrReplace",
+            status="running",
+            args={"path": "rb.py", "old_string": "c\nd\n", "new_string": "c\n"},
+            result=None,
+        )
+        target.write_text("a\nb\nc\n", encoding="utf-8")
+        sr_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c9",
+            name="StrReplace",
+            status="completed",
+            args={"path": "rb.py"},
+            result="ok",
+        )
+        assert sr_done["summary"].get("additions") == 0, sr_done["summary"]
+        assert sr_done["summary"].get("deletions") == 1, sr_done["summary"]
+
+        # New file: late running/partial after write must not poison before → +0.
+        fresh = Path(tmp) / "new_rb.py"
+        assert not fresh.exists()
+        new_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c10",
+            name="Write",
+            status="running",
+            args={"path": "new_rb.py", "contents": "x\ny\nz\n"},
+            result=None,
+        )
+        assert new_run["summary"].get("status") == "created", new_run["summary"]
+        assert new_run["summary"].get("additions") == 3, new_run["summary"]
+        fresh.write_text("x\ny\nz\n", encoding="utf-8")
+        # Simulate Cursor partial/running after the write landed.
+        late_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c10",
+            name="Write",
+            status="running",
+            args={"path": "new_rb.py", "contents": "x\ny\nz\n"},
+            result=None,
+        )
+        assert late_run["summary"].get("status") == "created", late_run["summary"]
+        assert late_run["summary"].get("additions") == 3, late_run["summary"]
+        new_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c10",
+            name="Write",
+            status="completed",
+            args={"path": "new_rb.py"},
+            result="ok",
+        )
+        assert new_done["summary"].get("status") == "created", new_done["summary"]
+        assert new_done["summary"].get("additions") == 3, new_done["summary"]
+        assert new_done["summary"].get("deletions") == 0, new_done["summary"]
+
+        # Flat Write payload must keep contents (not drop it when extracting args).
+        from backend.tool_display import tool_args_from_payload
+
+        flat = tool_args_from_payload({"path": "a.py", "contents": "one\ntwo\n"})
+        assert flat.get("contents") == "one\ntwo\n", flat
+
+        # Cursor SDK Write uses fileText + result.linesCreated (count at edit time).
+        cursor_run = tool_call_event(
+            session,
+            del_settings,
+            call_id="c11",
+            name="writeToolCall",
+            status="running",
+            args={"path": "sdk_new.cpp", "fileText": "a\nb\nc\nd\n"},
+            result=None,
+        )
+        assert cursor_run["summary"].get("status") == "created", cursor_run["summary"]
+        assert cursor_run["summary"].get("additions") == 4, cursor_run["summary"]
+        (Path(tmp) / "sdk_new.cpp").write_text("a\nb\nc\nd\n", encoding="utf-8")
+        cursor_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c11",
+            name="writeToolCall",
+            status="completed",
+            args={"path": "sdk_new.cpp"},
+            result={"status": "success", "value": {"path": "sdk_new.cpp", "linesCreated": 4, "fileSize": 8}},
+        )
+        assert cursor_done["summary"].get("status") == "created", cursor_done["summary"]
+        assert cursor_done["summary"].get("additions") == 4, cursor_done["summary"]
+        assert cursor_done["summary"].get("deletions") == 0, cursor_done["summary"]
+
+        # Cursor EditSuccess linesAdded/linesRemoved on completed.
+        edit_done = tool_call_event(
+            session,
+            del_settings,
+            call_id="c12",
+            name="editToolCall",
+            status="completed",
+            args={"path": "rb.py"},
+            result={"status": "success", "value": {"linesAdded": 2, "linesRemoved": 1}},
+        )
+        assert edit_done["summary"].get("additions") == 2, edit_done["summary"]
+        assert edit_done["summary"].get("deletions") == 1, edit_done["summary"]
 
     assert model_display_name("default") == "Auto"
     assert model_display_name("auto") == "Auto"
@@ -309,8 +473,14 @@ def check_safety() -> None:
     assert input_block_reason("我的api key是多少")
     assert not input_block_reason("帮我改一下 sessions.py")
     assert sensitive_tool_block_reason("Read", {"path": ".env"})
+    assert sensitive_tool_block_reason("Write", {"path": ".env"})
+    assert sensitive_tool_block_reason("StrReplace", {"path": ".env"})
     assert sensitive_tool_block_reason("Shell", {"command": "cat .env"})
     assert sensitive_tool_block_reason("AwaitShell", {"command": "cat .env"})
+    # Plan-mode effective flag must block mutating shell even when config allows writes.
+    assert repo_write_block_reason(
+        {"allow_repo_write": False}, "run_shell", {"command": "echo x > a.txt"}
+    )
     scrubbed = redact_secrets("key=crsr_abcdefghijklmnopqrstuvwxyz012345")
     assert "crsr_" not in scrubbed and "[REDACTED" in scrubbed
     assert scrub_reply("api_key: crsr_abcdefghijklmnopqrstuvwxyz012345") == OUTPUT_BLOCK_SECRET

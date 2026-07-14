@@ -85,8 +85,7 @@
     toggle.className = "ai-agent-queue-toggle";
     toggle.setAttribute("aria-expanded", queueCollapsed ? "false" : "true");
     toggle.innerHTML = '<span class="ai-agent-queue-chevron" aria-hidden="true"></span><span class="ai-agent-queue-count"></span>';
-    toggle.querySelector(".ai-agent-queue-count").textContent =
-      sendQueue.length + (sendQueue.length === 1 ? " Queued" : " Queued");
+    toggle.querySelector(".ai-agent-queue-count").textContent = sendQueue.length + " Queued";
     toggle.onclick = function () {
       queueCollapsed = !queueCollapsed;
       renderQueue();
@@ -251,8 +250,8 @@
     return out;
   }
 
-  async function handleFileSelection(files) {
-    var list = Array.from(files || []);
+  async function ingestSelectedFiles(fileList, targetArray) {
+    var list = Array.from(fileList || []);
     var skipped = [];
     for (var i = 0; i < list.length; i++) {
       var file = list[i];
@@ -263,7 +262,7 @@
       var data = await readFileAsBase64(file);
       var mime = guessImageMime(file.name, file.type || "");
       var isImage = mime.indexOf("image/") === 0;
-      pendingFiles.push({
+      targetArray.push({
         kind: isImage ? "image" : "file",
         name: file.name || (isImage ? "paste-image.png" : "paste-file"),
         mime_type: mime,
@@ -274,6 +273,10 @@
     if (skipped.length) {
       alert("以下文件超过 50MB 已跳过：\n" + skipped.join("\n"));
     }
+  }
+
+  async function handleFileSelection(files) {
+    await ingestSelectedFiles(files, pendingFiles);
     renderAttachmentPreview();
     fileInput.value = "";
   }
@@ -296,16 +299,6 @@
       else filesOnly.push(payload);
     });
     return { images: images, files: filesOnly };
-  }
-
-  function buildFilesPayload(files) {
-    return (files || []).map(function (item) {
-      return {
-        name: item.name,
-        mime_type: item.mime_type,
-        data: item.data,
-      };
-    });
   }
 
   function formatAgentError(raw) {
@@ -331,11 +324,11 @@
 
   function updateComposerButtons() {
     // ponytail: stop only when compose is empty — typing while streaming queues via send
-    var showStop = !!isRunning && !composeHasDraft();
+    var showStop = (!!isRunning || !!pendingFollow) && !composeHasDraft();
     sendBtn.classList.toggle("hidden", showStop);
     stopBtn.classList.toggle("visible", showStop);
-    sendBtn.title = isRunning && !showStop ? "加入队列" : "发送";
-    sendBtn.classList.toggle("is-queue", !!isRunning && !showStop);
+    sendBtn.title = (isRunning || pendingFollow) && !showStop ? "加入队列" : "发送";
+    sendBtn.classList.toggle("is-queue", !!(isRunning || pendingFollow) && !showStop);
   }
 
   function formatElapsed(ms) {
@@ -405,13 +398,12 @@
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
-    var think = deepseekThinkOpts();
     var item = {
       id: "q-" + (++queueSeq),
       text: text,
       model: modelField.value,
       mode: modeField.value,
-      thinking: think.thinking,
+      // thinking read at send time in runOne — queue may wait while user toggles.
       files: pendingFiles.slice(),
     };
     sendQueue.push(item);
@@ -445,12 +437,13 @@
       syncModelPickerUI();
     }
     notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false };
+    var state = { reply: "", finished: false, gen: sessionGeneration };
     flushChatHistory({ streaming: true });
 
     var controller = new AbortController();
     activeAbort = controller;
     try {
+      var think = deepseekThinkOpts();
       var res = await fetch(apiBase + "/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -461,7 +454,7 @@
           model: item.model,
           mode: item.mode || "agent",
           provider: provider,
-          thinking: item.thinking,
+          thinking: think.thinking,
           images: uploadPayload.images.length ? uploadPayload.images : null,
           files: uploadPayload.files.length ? uploadPayload.files : null,
         }),
@@ -476,26 +469,10 @@
         // 长工具/思考静默时浏览器或代理可能先掐断 SSE；后端 pump 仍可能写完 live_events。
         // 清空气泡后整段 /follow replay，避免半截 reply + sealedReplyLen 把正文封死。
         if (sessionId && threadDiv.contains(agentMsg) && !stopRequested) {
-          delete agentMsg.__runMeta;
-          var wl = agentMsg.querySelector(".ai-agent-worklog");
-          if (wl) wl.innerHTML = "";
-          Array.prototype.slice.call(
-            agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
-          ).forEach(function (el) { el.remove(); });
-          state.reply = "";
-          state.finished = false;
           try {
             var followCtrl = new AbortController();
             activeAbort = followCtrl;
-            var followRes = await fetch(apiBase + "/api/chat/follow", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal: followCtrl.signal,
-              body: JSON.stringify({ session_id: sessionId || null }),
-            });
-            if (followRes.ok && followRes.body) {
-              await consumeAgentSse(followRes, agentMsg, state, followCtrl.signal);
-            }
+            await fetchFollowReplay(agentMsg, state, followCtrl.signal);
           } catch (followErr) {
             if (followErr && followErr.name === "AbortError" && stopRequested) throw followErr;
           } finally {
@@ -529,25 +506,9 @@
         finalizeLiveCards(agentMsg);
         if (sessionId && !stopRequested && !state.finished) {
           try {
-            delete agentMsg.__runMeta;
-            var softWl = agentMsg.querySelector(".ai-agent-worklog");
-            if (softWl) softWl.innerHTML = "";
-            Array.prototype.slice.call(
-              agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
-            ).forEach(function (el) { el.remove(); });
-            state.reply = "";
-            state.finished = false;
             var softCtrl = new AbortController();
             activeAbort = softCtrl;
-            var softRes = await fetch(apiBase + "/api/chat/follow", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal: softCtrl.signal,
-              body: JSON.stringify({ session_id: sessionId || null }),
-            });
-            if (softRes.ok && softRes.body) {
-              await consumeAgentSse(softRes, agentMsg, state, softCtrl.signal);
-            }
+            await fetchFollowReplay(agentMsg, state, softCtrl.signal);
           } catch (softErr) {
             if (softErr && softErr.name === "AbortError" && stopRequested) {
               /* stop handled below via drainQueue */
@@ -582,6 +543,8 @@
   }
 
   function applyStreamPayload(agentMsg, payload, state) {
+    // New-chat bumps sessionGeneration — ignore late chunks from the aborted stream.
+    if (state && state.gen != null && state.gen !== sessionGeneration) return;
     if (payload.session_id) {
       sessionId = payload.session_id;
       localStorage.setItem(sessionStorageKey, sessionId);
@@ -610,7 +573,21 @@
           textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, textMeta.interimSkipLen);
           textMeta.interimSkipLen = 0;
         }
-        // Keep topbar on live tool (Running/Exploring), not a fake「回复中».
+        // Real prose mid-explore ⇒ seal Explored in place, then text BELOW it.
+        // (Never beginToolSegment+relocate — that parked Explored under the text.)
+        if (textMeta.exploreActive) {
+          var splitAt = Math.max(textMeta.sealedReplyLen, textMeta.exploreStartReplyLen || 0);
+          finalizeExplorePhase(agentMsg);
+          var exploreDone = agentMsg.querySelector("[data-card-key^='explore-done-']");
+          if (textMeta.activeTextEl && exploreDone &&
+              (textMeta.activeTextEl.compareDocumentPosition(exploreDone) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            if (textMeta.activeTextEl.parentNode) textMeta.activeTextEl.remove();
+            textMeta.activeTextEl = null;
+            textMeta.sealedReplyLen = splitAt;
+          } else if (!textMeta.activeTextEl) {
+            textMeta.sealedReplyLen = Math.max(textMeta.sealedReplyLen, splitAt);
+          }
+        }
         updateRunState(currentActivityTitle(agentMsg));
         streamTimelineText(agentMsg, state.reply, true);
         noteWorking(agentMsg, currentActivityTitle(agentMsg));
@@ -624,6 +601,8 @@
       } else {
         rememberActivity(agentMsg, "Planning next moves");
         updateRunState(currentActivityTitle(agentMsg));
+        // Don't steal Explored under mid-explore text.
+        if (getRunMeta(agentMsg).exploreActive) finalizeExplorePhase(agentMsg);
         beginToolSegment(agentMsg);
         notePlanning(agentMsg, payload.summary || payload.content || "");
       }
@@ -648,10 +627,9 @@
     } else if (payload.type === "thinking") {
       rememberActivity(agentMsg, "Thinking");
       updateRunState(currentActivityTitle(agentMsg));
-      // Don't seal mid-reply when Grok interleaves think↔text (orphans first chars).
-      // Soft-pause on completed: one Thought card per turn, keep appending after tools.
+      // Seal on completed so the next think burst opens BELOW tools (not resume above).
       if (payload.completed) {
-        softPauseThinking(agentMsg);
+        finalizeThoughtCard(agentMsg);
       } else {
         if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
           beginToolSegment(agentMsg);
@@ -665,16 +643,39 @@
       var toolRunning = payload.status === "running";
       var activityTitle = toolView.title || (toolRunning ? "Running" : "Ran");
       var isExplore = summary.kind === "explore";
-      rememberActivity(agentMsg, activityTitle);
-      updateRunState(activityTitle);
-      // Explore steps must accumulate — don't seal/split the burst on every Grep/Read.
-      if (!isExplore || !getRunMeta(agentMsg).exploreActive) beginToolSegment(agentMsg);
-      else if (getRunMeta(agentMsg).activeTextEl) beginToolSegment(agentMsg);
-      finalizePlanCard(agentMsg);
-      // Don't finalizeThoughtCard here — DeepSeek/Cursor both think↔tool many times;
-      // sealing each round creates a pile of "Thought briefly" cards.
-      softPauseThinking(agentMsg);
+      // Live only: past-tense titles (Ran / Edited…) belong on sealed cards.
+      // Putting them in the topbar between tools causes Running→Ran→Running flicker.
+      if (toolRunning) {
+        rememberActivity(agentMsg, activityTitle);
+        updateRunState(activityTitle);
+      }
+      // Seal Thought once per call_id on first running — not every partial-tool-call
+      // (that was splitting think into one card per token / partial).
+      var callId = String(payload.call_id || "");
+      var runMeta = getRunMeta(agentMsg);
+      if (toolRunning) {
+        if (!callId || callId !== runMeta.thoughtSealedForCall) {
+          finalizeThoughtCard(agentMsg);
+          finalizePlanCard(agentMsg);
+          runMeta.thoughtSealedForCall = callId || ("inflight-" + runMeta.nextIndex);
+        }
+      } else {
+        // completed: clear seal mark; orphan completed (no prior running) still seals.
+        if (callId && callId === runMeta.thoughtSealedForCall) {
+          runMeta.thoughtSealedForCall = "";
+        } else {
+          finalizeThoughtCard(agentMsg);
+          runMeta.thoughtSealedForCall = "";
+        }
+        finalizePlanCard(agentMsg);
+      }
       if (isExplore) {
+        // First explore: seal only the leading plan paragraph above; later paragraphs
+        // stay unsealed and paint under Explored (Cursor order).
+        if (!getRunMeta(agentMsg).exploreActive) {
+          beginToolSegment(agentMsg, { peelPlan: true });
+          getRunMeta(agentMsg).exploreStartReplyLen = getRunMeta(agentMsg).sealedReplyLen;
+        }
         getRunMeta(agentMsg).exploreActive = true;
         noteExploring(agentMsg, exploreStepLabel(payload, toolView), {
           callId: payload.call_id || "",
@@ -683,30 +684,21 @@
           paths: summary.paths || [],
         });
       } else {
-        finalizeExplorePhase(agentMsg);
-        var toolKey = payload.call_id ? ("tool-" + payload.call_id) : "";
-        if (!toolKey && !toolRunning) {
-          var liveTools = agentMsg.querySelectorAll(".ai-agent-card.is-live");
-          for (var li = liveTools.length - 1; li >= 0; li--) {
-            var lk = liveTools[li].getAttribute("data-card-key") || "";
-            if (
-              lk === "think-live" || lk === "plan-live" || lk === "explore-live" ||
-              lk === "status-live" || lk.indexOf("explore-step-") === 0
-            ) continue;
-            toolKey = lk;
-            break;
-          }
-        }
-        if (!toolKey) {
-          toolKey = "tool-" + (payload.name || "tool") + "-" + Date.now();
-        }
+        if (getRunMeta(agentMsg).exploreActive) finalizeExplorePhase(agentMsg);
+        // Flush conclusions that were peeled / arrived during explore — under Explored.
+        streamTimelineText(agentMsg, state.reply, true);
+        beginToolSegment(agentMsg);
+        var toolKey = resolveToolCardKey(agentMsg, payload, toolRunning, summary, toolView);
         upsertCard(agentMsg, toolKey, {
-          kind: summary.kind || "tool",
+          kind: toolView.kind || summary.kind || "tool",
           title: toolView.title,
           meta: "",
           detail: toolView.detail,
           paths: summary.paths || [],
           diff: summary.diff || [],
+          status: summary.status || "",
+          additions: summary.additions,
+          deletions: summary.deletions,
           live: toolRunning,
           forceCollapsed: !toolRunning,
         });
@@ -715,9 +707,13 @@
         noteWorking(agentMsg, activityTitle);
       } else if (!hasOtherLiveCard(agentMsg)) {
         rememberActivity(agentMsg, "Thinking");
+        updateRunState("Thinking");
         noteWorking(agentMsg, "Thinking");
       } else {
-        noteWorking(agentMsg, currentActivityTitle(agentMsg));
+        var keepTitle = currentActivityTitle(agentMsg);
+        rememberActivity(agentMsg, keepTitle);
+        updateRunState(keepTitle);
+        noteWorking(agentMsg, keepTitle);
       }
       scheduleSaveChatHistory();
     } else if (payload.type === "status") {
@@ -782,8 +778,16 @@
         }
       }
       if (!getRunMeta(agentMsg).turnChangesShown) {
-        var localChanges = collectLocalTurnChanges(agentMsg);
-        if (localChanges) renderTurnChanges(agentMsg, localChanges);
+        // Don't clobber a backend undoable panel if done races ahead of turn_changes
+        // handling in a buffered flush (data-turn-id means server tracked the turn).
+        var existingPanel = agentMsg.querySelector(".ai-agent-turn-changes");
+        var existingTurnId = existingPanel && existingPanel.getAttribute("data-turn-id");
+        if (existingTurnId) {
+          getRunMeta(agentMsg).turnChangesShown = true;
+        } else {
+          var localChanges = collectLocalTurnChanges(agentMsg);
+          if (localChanges) renderTurnChanges(agentMsg, localChanges);
+        }
       }
       scheduleSaveChatHistory();
     }
@@ -794,6 +798,20 @@
     var decoder = new TextDecoder();
     var buffer = "";
     var seen = 0;
+
+    function applyDataLine(raw) {
+      var line = String(raw || "").trim();
+      if (!line.startsWith("data:")) return;
+      var payload;
+      try {
+        payload = JSON.parse(line.slice(5).trim());
+      } catch (parseErr) {
+        return;
+      }
+      if (payload && payload.type === "heartbeat") return;
+      seen += 1;
+      applyStreamPayload(agentMsg, payload, state);
+    }
 
     while (true) {
       if (signal && signal.aborted) {
@@ -808,19 +826,11 @@
       buffer = parts.pop() || "";
 
       for (var i = 0; i < parts.length; i++) {
-        var line = parts[i].trim();
-        if (!line.startsWith("data:")) continue;
-        var payload;
-        try {
-          payload = JSON.parse(line.slice(5).trim());
-        } catch (parseErr) {
-          continue;
-        }
-        if (payload && payload.type === "heartbeat") continue;
-        seen += 1;
-        applyStreamPayload(agentMsg, payload, state);
+        applyDataLine(parts[i]);
       }
     }
+    // Final frame may arrive without trailing \n\n — don't drop the done event.
+    if (buffer.trim()) applyDataLine(buffer);
     if (!state.finished) {
       finalizeLiveCards(agentMsg);
       paintEnsuredReply(agentMsg, state.reply, true);
@@ -832,17 +842,47 @@
     if (!err || err.name === "AbortError") return false;
     var msg = String(err.message || err || "").toLowerCase();
     return (
-      msg.indexOf("network") >= 0
-      || msg.indexOf("failed to fetch") >= 0
+      msg.indexOf("failed to fetch") >= 0
+      || msg.indexOf("networkerror") >= 0
+      || msg.indexOf("network request failed") >= 0
       || msg.indexOf("load failed") >= 0
-      || msg.indexOf("fetch") >= 0
+      || msg.indexOf("econnreset") >= 0
+      || msg.indexOf("etimedout") >= 0
+      || msg.indexOf("timeout") >= 0
     );
+  }
+
+  function wipeAgentBubbleForReplay(agentMsg, state) {
+    finalizeThoughtCard(agentMsg);
+    finalizeLiveCards(agentMsg);
+    delete agentMsg.__runMeta;
+    var wl = agentMsg.querySelector(".ai-agent-worklog");
+    if (wl) wl.innerHTML = "";
+    Array.prototype.slice.call(
+      agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
+    ).forEach(function (el) { el.remove(); });
+    state.reply = "";
+    state.finished = false;
+  }
+
+  async function fetchFollowReplay(agentMsg, state, signal) {
+    wipeAgentBubbleForReplay(agentMsg, state);
+    var res = await fetch(apiBase + "/api/chat/follow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: signal,
+      body: JSON.stringify({ session_id: sessionId || null }),
+    });
+    if (res.ok && res.body) {
+      await consumeAgentSse(res, agentMsg, state, signal);
+    }
+    return res;
   }
 
   async function followIfNeeded() {
     // Mid-turn refresh → drop stale last agent bubble, replay live_events.
     // sessionId may be empty; backend find_running_session covers single-user mid-flight.
-    if (isRunning) return;
+    if (isRunning && !pendingFollow) return;
     // Stale streaming=true after a finished turn must not delete the last reply.
     if (sessionId) {
       try {
@@ -851,7 +891,18 @@
         );
         var st = stRes.ok ? await stRes.json() : null;
         if (!st || !st.running) {
+          pendingFollow = false;
+          isRunning = false;
+          stopRunElapsedTimer();
+          var agentsIdle = threadDiv.querySelectorAll(".ai-agent-msg.agent");
+          if (agentsIdle.length) {
+            var lastIdle = agentsIdle[agentsIdle.length - 1];
+            finalizeLiveCards(lastIdle);
+            paintEnsuredReply(lastIdle, "", true);
+          }
           flushChatHistory({ streaming: false });
+          updateRunState("就绪");
+          updateComposerButtons();
           return;
         }
       } catch (err) {
@@ -862,8 +913,9 @@
     if (agents.length) agents[agents.length - 1].remove();
     var agentMsg = appendMessage("Agent", "", "agent", true);
     notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false };
+    var state = { reply: "", finished: false, gen: sessionGeneration };
 
+    pendingFollow = false;
     isRunning = true;
     stopRequested = false;
     startRunElapsedTimer();
@@ -908,14 +960,7 @@
       } else if (isSoftNetworkError(err)) {
         // 空内容断线：静默重试一次
         try {
-          state.reply = "";
-          state.finished = false;
-          delete agentMsg.__runMeta;
-          var wl = agentMsg.querySelector(".ai-agent-worklog");
-          if (wl) wl.innerHTML = "";
-          Array.prototype.slice.call(agentMsg.querySelectorAll(".ai-agent-segment-text")).forEach(function (el) {
-            if (el.parentNode) el.remove();
-          });
+          wipeAgentBubbleForReplay(agentMsg, state);
           notePlanning(agentMsg, "");
           await connectOnce();
           if (!state.finished) paintFollowResult();
@@ -937,6 +982,7 @@
         streamStandaloneText(agentMsg, "无法继续接收上次回复: " + formatAgentError(detail), false);
       }
     } finally {
+      pendingFollow = false;
       isRunning = false;
       stopRequested = false;
       stopRunElapsedTimer();
@@ -948,7 +994,7 @@
   }
 
   async function drainQueue() {
-    if (isRunning) return;
+    if (isRunning || pendingFollow) return;
     isRunning = true;
     stopRequested = false;
     startRunElapsedTimer();
@@ -969,11 +1015,14 @@
   }
 
   function stopConversation() {
-    if (!isRunning && !sendQueue.length) return;
+    if (!isRunning && !pendingFollow && !sendQueue.length) return;
     stopRequested = true;
+    pendingFollow = false;
     if (activeAbort) activeAbort.abort();
     requestCancel();
-    updateRunState("就绪");
+    // Keep busy UI until drainQueue/follow finally clears isRunning.
+    updateRunState(isRunning ? "正在停止" : "就绪");
+    updateComposerButtons();
   }
 
   function requestCancel() {
@@ -1000,10 +1049,11 @@
   }
 
   function sendMessage() {
-    // Bottom composer is independent follow-up — never commits an inline edit.
+    // Bottom composer is independent follow-up — leave inline edit, don't commit it.
+    if (editingUserMsg) leaveEditMode();
     var item = enqueueCurrentCompose();
     if (!item) return;
-    if (isRunning) {
+    if (isRunning || pendingFollow) {
       renderQueue();
       updateRunState("处理中");
       return;
@@ -1085,11 +1135,13 @@
     }
   });
   newChatBtn.onclick = function () {
-    if (isRunning || sendQueue.length) {
+    if (isRunning || pendingFollow || sendQueue.length) {
       if (!confirm("当前有进行中的任务或排队消息，确认清空并开始新对话？")) return;
     }
     var cancelSid = sessionId;
+    sessionGeneration += 1;
     stopRequested = true;
+    pendingFollow = false;
     if (activeAbort) activeAbort.abort();
     if (cancelSid) {
       fetch(apiBase + "/api/chat/cancel", {
@@ -1134,6 +1186,8 @@
             sessionId = "";
             try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
             bootRestoredStreaming = false;
+            pendingFollow = false;
+            isRunning = false;
             serverBootId = boot;
             flushChatHistory({ streaming: false });
             updateRunState("就绪");
@@ -1227,4 +1281,3 @@
       console.log("Ai-agent staged edit self-check ok");
     }
   }
-})();

@@ -13,7 +13,7 @@ def _ensure_python() -> None:
 
 def _ensure_env(root: Path) -> None:
     if not (root / ".env").is_file():
-        raise SystemExit("Missing .env - copy .env.example and set CURSOR_API_KEY.")
+        raise SystemExit("Missing .env — copy .env.example and set the required API keys.")
 
 
 def main() -> None:

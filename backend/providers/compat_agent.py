@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +20,8 @@ from backend.tool_display import tool_call_event
 from backend.turn_changes import TurnChangeTracker, store_tracker
 
 _MAX_ROUNDS = 24
+# ponytail: message-count cap, not tokens; raise / summarize if long threads still 400.
+_MAX_HISTORY_MESSAGES = 40
 
 PROVIDER_DEFAULTS = {
     "openai": {
@@ -117,6 +120,24 @@ def strip_unused_reasoning(messages: list[dict[str, Any]]) -> None:
         msg.pop("reasoning_content", None)
 
 
+def trim_history(messages: list[dict[str, Any]], max_messages: int = _MAX_HISTORY_MESSAGES) -> None:
+    """Keep system + newest messages; never split assistant tool_calls from their tool replies."""
+    if len(messages) <= max_messages:
+        return
+    system = messages[0] if messages and messages[0].get("role") == "system" else None
+    rest = messages[1:] if system else list(messages)
+    keep_n = max_messages - (1 if system else 0)
+    if keep_n <= 0:
+        messages[:] = [system] if system else []
+        return
+    cut = max(0, len(rest) - keep_n)
+    # Skip leading orphan tool messages (their assistant was trimmed away).
+    while cut < len(rest) and rest[cut].get("role") == "tool":
+        cut += 1
+    kept = rest[cut:]
+    messages[:] = ([system] + kept) if system else kept
+
+
 def apply_deepseek_thinking(
     request: dict[str, Any],
     *,
@@ -184,6 +205,8 @@ async def stream_compat_turn(
     handle: CompatSessionAgent = session.agent
     model = session.model or default_model(handle.provider)
     allow_write = bool(settings.get("allow_repo_write", True)) and mode != "plan"
+    # Same effective flag for tool_call_event pre-checks (plan mode must block shell writes).
+    guard_settings = {**settings, "allow_repo_write": allow_write}
     tracker = TurnChangeTracker(Path(settings["host_root"]))
     tools, executors = make_tool_kit(settings, allow_write=allow_write, tracker=tracker)
     client = build_client(settings, handle.provider)
@@ -230,6 +253,7 @@ async def stream_compat_turn(
             finish_reason = None
             thinking_parts: list[str] = []
 
+            trim_history(handle.messages)
             request: dict[str, Any] = {
                 "model": model,
                 "messages": handle.messages,
@@ -328,7 +352,7 @@ async def stream_compat_turn(
 
                 ev = tool_call_event(
                     session,
-                    settings,
+                    guard_settings,
                     call_id=call_id,
                     name=name,
                     status="running",
@@ -348,12 +372,26 @@ async def stream_compat_turn(
                     result = ev["repo_write_blocked"]
                     blocked_turn = True
                 else:
-                    result = run_tool(executors, name, raw_args)
+                    # Snapshot before I/O even if the tool rejects kwargs — so undo
+                    # still works when the model used contents/fileText aliases.
+                    path_arg = ""
+                    if isinstance(args_obj, dict):
+                        path_arg = str(args_obj.get("path") or args_obj.get("file") or "").strip()
+                    if path_arg and name in {"write_file", "str_replace"}:
+                        tracker.snapshot_before(path_arg)
+                    result = await asyncio.to_thread(run_tool, executors, name, raw_args)
+                    if (
+                        path_arg
+                        and name in {"write_file", "str_replace"}
+                        and isinstance(result, str)
+                        and result.startswith(("wrote ", "updated "))
+                    ):
+                        tracker.mark_touched(path_arg)
 
                 emit(
                     tool_call_event(
                         session,
-                        settings,
+                        guard_settings,
                         call_id=call_id,
                         name=name,
                         status="completed",
@@ -428,4 +466,10 @@ if __name__ == "__main__":
     apply_deepseek_thinking(req2, thinking=False)
     assert "reasoning_effort" not in req2
     assert req2["extra_body"] == {"thinking": {"type": "disabled"}}
+    hist = [{"role": "system", "content": "s"}] + [
+        {"role": "user", "content": str(i)} for i in range(50)
+    ]
+    trim_history(hist, max_messages=5)
+    assert hist[0]["role"] == "system" and len(hist) == 5
+    assert hist[-1]["content"] == "49"
     print("ok")

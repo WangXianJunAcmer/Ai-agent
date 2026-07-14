@@ -98,6 +98,9 @@
         exploreSteps: [],
         exploreStepKeys: [],
         exploreActive: false,
+        exploreStartReplyLen: 0,
+        inflightToolKey: "",
+        thoughtSealedForCall: "",
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
@@ -105,6 +108,7 @@
         planningDetail: "",
         sealedReplyLen: 0,
         interimSkipLen: 0,
+        replyLenAtToolStart: 0,
         needNewWorklog: false,
         activeTextEl: null,
       };
@@ -157,9 +161,11 @@
   }
 
   // After assistant text, later tools open a new worklog *below* that text.
-  function beginToolSegment(msg) {
+  // options.peelPlan: on first explore, keep only the leading plan paragraph above
+  // tools; later paragraphs (conclusions) stay in the reply buffer and paint under Explored.
+  function beginToolSegment(msg, options) {
+    options = options || {};
     var meta = getRunMeta(msg);
-    // Tools often interrupt mid-status ("正在" … later "读取您上传的…") — never seal those.
     scrubInterimSegments(msg);
     if (meta.interimSkipLen) {
       meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.interimSkipLen);
@@ -168,7 +174,6 @@
     if (meta.activeTextEl) {
       var raw = (meta.activeTextEl.getAttribute("data-raw-text") || meta.activeTextEl.textContent || "").trim();
       if (isInterimReplyText(raw) || /^正在/.test(raw)) {
-        // Cache before remove — __replyEnd on a detached node is unreliable across browsers.
         var interimEnd = meta.activeTextEl.__replyEnd || meta.sealedReplyLen;
         if (meta.activeTextEl.parentNode) meta.activeTextEl.remove();
         meta.sealedReplyLen = Math.max(meta.sealedReplyLen, interimEnd);
@@ -176,15 +181,92 @@
       }
     }
     if (meta.activeTextEl) {
-      meta.sealedReplyLen = Math.max(meta.sealedReplyLen, meta.activeTextEl.__replyEnd || 0);
+      var replyStart = meta.activeTextEl.__replyStart || 0;
+      var sealChunk = meta.activeTextEl.getAttribute("data-raw-text") || "";
+      var sealEnd = meta.activeTextEl.__replyEnd || (replyStart + sealChunk.length);
+      if (options.peelPlan) {
+        // Peel on the original chunk so sealedReplyLen stays aligned with state.reply.
+        var peeled = peelLeadingPlanChunk(sealChunk);
+        sealChunk = collapseRewriteParagraphs(peeled.plan);
+        sealEnd = replyStart + peeled.planEnd;
+      } else {
+        sealChunk = collapseRewriteParagraphs(sealChunk);
+      }
+      if (sealChunk.trim()) {
+        meta.activeTextEl.__replyEnd = sealEnd;
+        meta.activeTextEl.setAttribute("data-raw-text", sealChunk);
+        meta.activeTextEl.innerHTML = renderMarkdown(sealChunk);
+        bindCodeBlockCopy(meta.activeTextEl);
+      } else if (meta.activeTextEl.parentNode) {
+        meta.activeTextEl.remove();
+      }
+      meta.sealedReplyLen = Math.max(meta.sealedReplyLen, sealEnd);
       meta.activeTextEl = null;
       meta.needNewWorklog = true;
-      // Keep Exploring + step rows across the text seal (ad-plex). finalizeExplorePhase
-      // only when leaving explore — otherwise each Grep/Read wiped prior steps.
+      meta.replyLenAtToolStart = meta.sealedReplyLen;
       removeCard(msg, "think-live");
       removeCard(msg, "plan-live");
       removeCard(msg, "status-live");
+    } else {
+      meta.replyLenAtToolStart = Math.max(meta.replyLenAtToolStart || 0, meta.sealedReplyLen || 0);
     }
+  }
+
+  // Keep the first paragraph above tools; defer the rest until after Explored.
+  function peelLeadingPlanChunk(chunk) {
+    var text = String(chunk || "");
+    var parts = text.split(/\n\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    if (parts.length <= 1) {
+      return { plan: text, planEnd: text.length };
+    }
+    var first = parts[0];
+    var idx = text.indexOf(first);
+    var planEnd = idx >= 0 ? idx + first.length : first.length;
+    while (planEnd < text.length && (text.charAt(planEnd) === "\n" || text.charAt(planEnd) === "\r")) {
+      planEnd += 1;
+    }
+    return { plan: text.slice(0, planEnd).replace(/\s+$/, ""), planEnd: planEnd };
+  }
+
+  function collapseRewriteParagraphs(text) {
+    var parts = String(text || "").split(/\n\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    if (parts.length < 2) return String(text || "");
+    var out = [];
+    parts.forEach(function (p) {
+      if (!out.length) {
+        out.push(p);
+        return;
+      }
+      var prev = out[out.length - 1];
+      var a = prev.replace(/\s+/g, "").slice(0, 20);
+      var b = p.replace(/\s+/g, "").slice(0, 20);
+      if (a && b && (a === b || prev.indexOf(p.slice(0, 12)) >= 0 || p.indexOf(prev.slice(0, 12)) >= 0)) {
+        out[out.length - 1] = p;
+      } else {
+        out.push(p);
+      }
+    });
+    return out.join("\n\n");
+  }
+
+  // Post-tool prose must not grow a text node that already has tool cards below it.
+  function hasToolCardsAfter(msg, el) {
+    if (!msg || !el) return false;
+    var cards = msg.querySelectorAll(".ai-agent-card");
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      var key = c.getAttribute("data-card-key") || "";
+      if (
+        key === "status-live" || key === "think-live" || key === "plan-live" ||
+        key.indexOf("think-done-") === 0
+      ) continue;
+      var toolish = /kind-(explore|edit|run|tool|verify)/.test(c.className)
+        || key.indexOf("tool-") === 0
+        || key.indexOf("explore-") === 0;
+      if (!toolish) continue;
+      if (el.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
+    }
+    return false;
   }
 
   // Move live Exploring + its step cards under the new worklog (below sealed text).
@@ -219,18 +301,42 @@
     var meta = getRunMeta(msg);
     finalizePlanCard(msg);
     finalizeThoughtCard(msg);
-    // Do NOT finalizeExplorePhase here: early plan text used to wipe Exploring /
-    // tool cards and leave a fake busy pulse while Shell/Grep still ran (ad-plex).
     finalizeStatusCard(msg);
+
+    fullReply = String(fullReply || "");
+    // Cursor: never continue a text node that already has tools below it.
+    if (meta.activeTextEl && hasToolCardsAfter(msg, meta.activeTextEl)) {
+      var keepUntil = (typeof meta.replyLenAtToolStart === "number" && meta.replyLenAtToolStart > 0)
+        ? meta.replyLenAtToolStart
+        : (meta.exploreStartReplyLen || meta.sealedReplyLen || 0);
+      var replyStart = meta.activeTextEl.__replyStart || 0;
+      var keepChunk = collapseRewriteParagraphs(fullReply.slice(replyStart, keepUntil));
+      if (keepChunk.trim()) {
+        meta.activeTextEl.__replyEnd = keepUntil;
+        meta.activeTextEl.setAttribute("data-raw-text", keepChunk);
+        if (renderAsMarkdown) {
+          meta.activeTextEl.innerHTML = renderMarkdown(keepChunk);
+          bindCodeBlockCopy(meta.activeTextEl);
+        } else {
+          meta.activeTextEl.textContent = keepChunk;
+        }
+      } else if (meta.activeTextEl.parentNode) {
+        meta.activeTextEl.remove();
+      }
+      meta.sealedReplyLen = Math.max(meta.sealedReplyLen, keepUntil);
+      meta.activeTextEl = null;
+    }
 
     var chunk = fullReply.slice(meta.sealedReplyLen);
     if (!chunk) {
       return meta.activeTextEl;
     }
+    chunk = collapseRewriteParagraphs(chunk);
     var main = msg.querySelector(".ai-agent-msg-main");
     if (!meta.activeTextEl) {
       meta.activeTextEl = document.createElement("div");
       meta.activeTextEl.className = "ai-agent-segment-text body";
+      meta.activeTextEl.__replyStart = meta.sealedReplyLen;
       main.appendChild(meta.activeTextEl);
     }
     meta.activeTextEl.__replyEnd = fullReply.length;
@@ -383,14 +489,6 @@
     }
   }
 
-  function clearSendQueue(revokeFiles) {
-    if (revokeFiles) {
-      sendQueue.forEach(function (item) { revokeFilePreviews(item.files); });
-    }
-    sendQueue = [];
-    renderQueue();
-  }
-
   function truncateThreadFrom(msg) {
     var node = msg;
     var doomed = [];
@@ -447,7 +545,9 @@
       files: files,
     };
 
-    if (isRunning) {
+    if (isRunning || pendingFollow) {
+      // Abort in-flight turn but don't set stopRequested — drainQueue must continue into the new item.
+      pendingFollow = false;
       if (activeAbort) activeAbort.abort();
       await requestCancel();
     }
@@ -456,6 +556,7 @@
     editingUserMsg = null;
     truncateThreadFrom(msg);
     stoppedAgentMsg = null;
+    sessionGeneration += 1;
     sessionId = "";
     try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
     renderQueue();
@@ -579,7 +680,7 @@
     var list = document.createElement("div");
     list.className = "ai-agent-model-list ai-agent-edit-model-list";
 
-    menu.appendChild(autoRow);
+    if (providerUi.showAuto) menu.appendChild(autoRow);
     menu.appendChild(list);
     wrap.appendChild(btn);
     wrap.appendChild(menu);
@@ -614,21 +715,8 @@
   }
 
   async function handleEditFileSelection(msg, files) {
-    var list = Array.from(files || []);
-    for (var i = 0; i < list.length; i++) {
-      var file = list[i];
-      var data = await readFileAsBase64(file);
-      var mime = guessImageMime(file.name, file.type || "");
-      var isImage = mime.indexOf("image/") === 0;
-      msg.__editFiles = msg.__editFiles || [];
-      msg.__editFiles.push({
-        kind: isImage ? "image" : "file",
-        name: file.name,
-        mime_type: mime,
-        data: data,
-        previewUrl: isImage ? URL.createObjectURL(file) : "",
-      });
-    }
+    msg.__editFiles = msg.__editFiles || [];
+    await ingestSelectedFiles(files, msg.__editFiles);
     renderEditAttachments(msg);
   }
 
@@ -805,6 +893,38 @@
     }).join("");
   }
 
+  function turnChangesHeaderTitle(files) {
+    var n = files.length;
+    var unit = n === 1 ? " file" : " files";
+    var deleted = 0, created = 0;
+    files.forEach(function (f) {
+      if (f.status === "deleted") deleted += 1;
+      else if (f.status === "created") created += 1;
+    });
+    // Codex-style: name the action when uniform; otherwise "Changed".
+    if (deleted === n) return "Deleted " + n + unit;
+    if (created === n) return "Added " + n + unit;
+    return "Changed " + n + unit;
+  }
+
+  function turnFileStatusLabel(status) {
+    if (status === "created") return "added";
+    if (status === "deleted") return "deleted";
+    return "modified";
+  }
+
+  function requestTurnUndo(turnId, path) {
+    var body = { session_id: sessionId, turn_id: turnId };
+    if (path) body.path = path;
+    return fetch(apiBase + "/api/chat/undo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      return res.json().then(function (data) { return { ok: res.ok, body: data }; });
+    });
+  }
+
   function renderTurnChanges(msg, payload) {
     if (!msg || !payload) return null;
     var files = payload.files || [];
@@ -812,10 +932,12 @@
     var main = msg.querySelector(".ai-agent-msg-main");
     if (!main) return null;
     var existing = main.querySelector(".ai-agent-turn-changes");
+    var wasOpen = !existing || existing.classList.contains("is-open");
     if (existing) existing.remove();
 
     var panel = document.createElement("div");
-    panel.className = "ai-agent-turn-changes is-open";
+    panel.className = "ai-agent-turn-changes" + (wasOpen ? " is-open" : "");
+    if (payload.undone) panel.classList.add("is-undone");
     panel.setAttribute("data-turn-id", payload.turn_id || "");
     var add = Number(payload.additions || 0);
     var del = Number(payload.deletions || 0);
@@ -824,7 +946,7 @@
     header.className = "ai-agent-turn-changes-header";
     header.innerHTML =
       '<span class="ai-agent-turn-changes-chevron" aria-hidden="true"></span>' +
-      '<span class="ai-agent-turn-changes-title">更改了 ' + files.length + " 个文件</span>" +
+      '<span class="ai-agent-turn-changes-title">' + turnChangesHeaderTitle(files) + "</span>" +
       '<span class="ai-agent-turn-changes-stats">' +
         '<span class="add">+' + add + "</span> · " +
         '<span class="del">-' + del + "</span>" +
@@ -835,34 +957,26 @@
       var undoBtn = document.createElement("button");
       undoBtn.type = "button";
       undoBtn.className = "ai-agent-turn-undo" + (payload.undone ? " is-done" : "");
-      undoBtn.textContent = payload.undone ? "已撤销" : "撤销更改";
+      undoBtn.textContent = payload.undone ? "已全部撤销" : "撤销全部";
       undoBtn.disabled = !!payload.undone;
       undoBtn.addEventListener("click", function (ev) {
         ev.stopPropagation();
         if (undoBtn.disabled || !sessionId) return;
         undoBtn.disabled = true;
         undoBtn.textContent = "撤销中…";
-        fetch(apiBase + "/api/chat/undo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId, turn_id: payload.turn_id }),
-        })
-          .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+        requestTurnUndo(payload.turn_id)
           .then(function (out) {
             if (!out.ok) {
               undoBtn.disabled = false;
-              undoBtn.textContent = "撤销更改";
+              undoBtn.textContent = "撤销全部";
               alert((out.body && out.body.detail) || "撤销失败");
               return;
             }
-            undoBtn.classList.add("is-done");
-            undoBtn.textContent = "已撤销";
-            panel.classList.add("is-undone");
-            scheduleSaveChatHistory();
+            renderTurnChanges(msg, out.body);
           })
           .catch(function () {
             undoBtn.disabled = false;
-            undoBtn.textContent = "撤销更改";
+            undoBtn.textContent = "撤销全部";
             alert("撤销失败：无法连接服务");
           });
       });
@@ -875,25 +989,103 @@
     body.className = "ai-agent-turn-changes-body";
     files.forEach(function (file) {
       var row = document.createElement("div");
-      row.className = "ai-agent-turn-file";
+      var fileUndone = !!file.undone || !!payload.undone;
+      var fileUndoable = !!payload.turn_id && !fileUndone && (file.undoable !== false);
+      row.className = "ai-agent-turn-file status-" + (file.status || "modified") +
+        (fileUndone ? " is-undone" : "");
       var status = file.status || "modified";
-      var statusLabel = status === "created" ? "新建" : status === "deleted" ? "删除" : "修改";
       var fa = Number(file.additions || 0);
       var fd = Number(file.deletions || 0);
-      row.innerHTML =
-        '<div class="ai-agent-turn-file-head">' +
-          '<div class="ai-agent-turn-file-path">' + escapeHtml(file.path || "") + "</div>" +
-          '<div class="ai-agent-turn-file-meta">' + statusLabel +
-            " · <span class=\"add\">+" + fa + "</span> / <span class=\"del\">-" + fd + "</span></div>" +
-        "</div>" +
-        makeDiffHtml(file.diff || []);
+      var head = document.createElement("div");
+      head.className = "ai-agent-turn-file-head";
+      head.innerHTML =
+        '<div class="ai-agent-turn-file-path">' + escapeHtml(file.path || "") + "</div>" +
+        '<div class="ai-agent-turn-file-meta">' +
+          '<span class="ai-agent-turn-file-status">' + turnFileStatusLabel(status) + "</span>" +
+          " · <span class=\"add\">+" + fa + "</span> / <span class=\"del\">-" + fd + "</span></div>" +
+        '<span class="ai-agent-turn-file-actions"></span>';
+      var fileActions = head.querySelector(".ai-agent-turn-file-actions");
+      if (payload.turn_id && (fileUndoable || fileUndone)) {
+        var fileUndoBtn = document.createElement("button");
+        fileUndoBtn.type = "button";
+        fileUndoBtn.className = "ai-agent-turn-undo ai-agent-turn-file-undo" +
+          (fileUndone ? " is-done" : "");
+        fileUndoBtn.textContent = fileUndone ? "已撤销" : "撤销";
+        fileUndoBtn.disabled = fileUndone;
+        fileUndoBtn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          if (fileUndoBtn.disabled || !sessionId || !file.path) return;
+          fileUndoBtn.disabled = true;
+          fileUndoBtn.textContent = "撤销中…";
+          requestTurnUndo(payload.turn_id, file.path)
+            .then(function (out) {
+              if (!out.ok) {
+                fileUndoBtn.disabled = false;
+                fileUndoBtn.textContent = "撤销";
+                alert((out.body && out.body.detail) || "撤销失败");
+                return;
+              }
+              renderTurnChanges(msg, out.body);
+            })
+            .catch(function () {
+              fileUndoBtn.disabled = false;
+              fileUndoBtn.textContent = "撤销";
+              alert("撤销失败：无法连接服务");
+            });
+        });
+        fileActions.appendChild(fileUndoBtn);
+      }
+      row.appendChild(head);
+      if (!fileUndone) {
+        var diffHtml = makeDiffHtml(file.diff || []);
+        if (diffHtml) {
+          var wrap = document.createElement("div");
+          wrap.innerHTML = diffHtml;
+          while (wrap.firstChild) row.appendChild(wrap.firstChild);
+        }
+      }
       body.appendChild(row);
     });
     panel.appendChild(header);
     panel.appendChild(body);
+    // Keep full payload (incl. diffs) for localStorage serialize across refresh.
+    panel.__turnPayload = {
+      turn_id: payload.turn_id || "",
+      files: files,
+      file_count: files.length,
+      additions: add,
+      deletions: del,
+      undoable: undoable,
+      undone: !!payload.undone,
+    };
     main.appendChild(panel);
     scheduleSaveChatHistory();
     return panel;
+  }
+
+  function editCardStatus(title, summaryStatus) {
+    if (summaryStatus === "created" || summaryStatus === "deleted" || summaryStatus === "modified") {
+      return summaryStatus;
+    }
+    var t = String(title || "");
+    if (/^(?:Wrote|Writing)\b/.test(t)) return "created";
+    if (/^(?:Deleted|Deleting)\b/.test(t)) return "deleted";
+    return "modified";
+  }
+
+  function preferEditStatus(next, prev) {
+    // Late completed(modified/+0) must not downgrade a known create/delete.
+    if (prev === "deleted" || next === "deleted") return "deleted";
+    if (prev === "created" || next === "created") return "created";
+    return next || prev || "";
+  }
+
+  function editCardMeta(merged, fallback) {
+    if (!merged || merged.kind !== "edit") return fallback || "";
+    var a = merged.additions;
+    var d = merged.deletions;
+    if (typeof a !== "number" && typeof d !== "number") return fallback || "";
+    return "+" + Number(a || 0) + " / -" + Number(d || 0);
   }
 
   function collectLocalTurnChanges(msg) {
@@ -904,23 +1096,32 @@
       var data = cards[i].__cardData || {};
       var paths = data.paths || [];
       if (!paths.length && data.title) {
-        var m = String(data.title).match(/^(?:Edited|Wrote|Editing|Writing)\s+(.+)$/);
+        var m = String(data.title).match(/^(?:Edited|Wrote|Editing|Writing|Deleted|Deleting)\s+(.+)$/);
         if (m) paths = [m[1]];
       }
       paths.forEach(function (p) {
         if (!p) return;
+        var status = editCardStatus(data.title, data.status);
         var entry = byPath[p] || {
           path: p,
-          status: /Wrote|Writing/.test(String(data.title || "")) ? "created" : "modified",
+          status: status,
           additions: 0,
           deletions: 0,
           diff: [],
         };
+        entry.status = preferEditStatus(status, entry.status);
         if (data.diff && data.diff.length) entry.diff = data.diff;
+        var fa = 0;
+        var fd = 0;
         (data.diff || []).forEach(function (d) {
-          entry.additions += (d.added || []).length;
-          entry.deletions += (d.removed || []).length;
+          fa += (d.added || []).length;
+          fd += (d.removed || []).length;
         });
+        if (typeof data.additions === "number") fa = Math.max(fa, data.additions);
+        if (typeof data.deletions === "number") fd = Math.max(fd, data.deletions);
+        // Sum per-edit deltas for the same path (two edits ≠ max of one).
+        entry.additions += fa;
+        entry.deletions += fd;
         byPath[p] = entry;
       });
     }
@@ -940,10 +1141,24 @@
     };
   }
 
-  function cardHasBody(merged) {
+  function detailEchoesPaths(detail, paths) {
+    if (!detail || !paths || !paths.length) return false;
+    var d = String(detail).trim();
+    if (!d) return false;
+    if (d === paths.join(", ") || d === paths.join("\n")) return true;
+    return paths.length === 1 && d === paths[0];
+  }
+
+  function cardHasBody(merged, renderPaths) {
+    if (!merged) return false;
+    // Path-edit titles: path is in the title — body is diff only (no path echo).
+    if (merged.kind === "edit" || isPathEditTitle(merged.title)) {
+      return !!(merged.diff && merged.diff.length);
+    }
+    var paths = renderPaths !== undefined ? renderPaths : merged.paths;
     return !!(
       (merged.detail && String(merged.detail).trim()) ||
-      (merged.paths && merged.paths.length) ||
+      (paths && paths.length) ||
       (merged.diff && merged.diff.length)
     );
   }
@@ -1005,23 +1220,11 @@
     return "Thought for " + seconds + "s";
   }
 
-  // Pause the live Thought card without sealing — next reasoning_content resumes it.
+  // Soft-pause used to keep one think-live card across tools — that put later
+  // Thought time into the card ABOVE Ran and looked like it covered Running.
+  // Seal instead; noteThinking opens a fresh think-live below tools.
   function softPauseThinking(msg) {
-    var meta = getRunMeta(msg);
-    if (!meta.thinkingStartedAt) return;
-    if (meta.thinkingTimer) {
-      clearInterval(meta.thinkingTimer);
-      meta.thinkingTimer = null;
-    }
-    meta.thinkingPaused = true;
-    upsertCard(msg, "think-live", {
-      kind: "think",
-      title: thinkingTitle(meta, true),
-      meta: "",
-      detail: meta.thinkingDetail || "",
-      paths: [],
-      live: false,
-    });
+    finalizeThoughtCard(msg);
   }
 
   // SDK may send cumulative snapshots or pure deltas; merge either shape.
@@ -1036,6 +1239,8 @@
   function refreshThinkingCard(msg) {
     var meta = getRunMeta(msg);
     if (!meta.thinkingStartedAt) return;
+    // Always append think-live under the latest worklog (below tools since last seal).
+    var worklog = ensureWorklog(msg);
     var card = upsertCard(msg, "think-live", {
       kind: "think",
       title: thinkingTitle(meta, false),
@@ -1043,10 +1248,15 @@
       detail: meta.thinkingDetail || "",
       paths: [],
       live: true,
+      worklog: worklog,
     });
     var body = card && card.querySelector(".ai-agent-card-body");
     if (body) body.scrollTop = body.scrollHeight;
     scrollToBottom(false);
+  }
+
+  function isPathEditTitle(title) {
+    return /^(?:Editing|Edited|Writing|Wrote|Deleting|Deleted)\b/.test(String(title || ""));
   }
 
   function buildToolPresentation(payload, summary) {
@@ -1055,6 +1265,7 @@
     var argsText = payload.args || "";
     var resultText = payload.result || "";
     var kind = (summary && summary.kind) ? String(summary.kind) : "";
+    if (isPathEditTitle(title)) kind = "edit";
     // Cursor: › Running / › Ran — command only in expanded detail.
     if (kind === "run") {
       title = payload.status === "running" ? "Running" : "Ran";
@@ -1075,11 +1286,19 @@
       } else {
         detail = cmd || resultText || detail;
       }
+    } else if (kind === "edit" || isPathEditTitle(title)) {
+      // Title already has the path — body is diff only (never path / args JSON).
+      detail = "";
     } else if (!detail || detail === payload.name) {
       if (payload.status === "completed" && resultText) detail = resultText;
       else if (argsText) detail = argsText;
     }
-    return { title: title || "Ran", detail: detail };
+    // Paths become pills in the card — drop plain/args text that only repeats them.
+    var pathList = (summary && summary.paths) || [];
+    if (pathList.length && detailEchoesPaths(detail, pathList)) detail = "";
+    // Running verify/read with empty summary.detail: args JSON is not useful body text.
+    if (pathList.length && kind === "verify" && payload.status === "running") detail = "";
+    return { title: title || "Ran", detail: detail, kind: kind };
   }
 
   function cardByKey(msg, key) {
@@ -1120,6 +1339,20 @@
       options.worklog.appendChild(card);
     }
     var previous = card.__cardData || {};
+    function preferCount(next, prev) {
+      // Never let a late completed(+0) wipe a good running snapshot.
+      if (typeof next === "number" && next > 0) return next;
+      if (typeof prev === "number" && prev > 0) return prev;
+      if (typeof next === "number") return next;
+      return prev;
+    }
+    var nextAdd = options.additions;
+    var nextDel = options.deletions;
+    var useCompletedPair =
+      !options.live &&
+      typeof nextAdd === "number" &&
+      typeof nextDel === "number" &&
+      (nextAdd > 0 || nextDel > 0);
     var merged = {
       kind: options.kind || previous.kind || "tool",
       title: options.title || previous.title || "",
@@ -1127,20 +1360,40 @@
       detail: options.detail !== undefined ? options.detail : (previous.detail || ""),
       paths: (options.paths && options.paths.length) ? options.paths : (previous.paths || []),
       diff: (options.diff && options.diff.length) ? options.diff : (previous.diff || []),
+      status: preferEditStatus(options.status, previous.status),
+      additions: useCompletedPair ? nextAdd : preferCount(nextAdd, previous.additions),
+      deletions: useCompletedPair ? nextDel : preferCount(nextDel, previous.deletions),
       live: options.live !== undefined ? !!options.live : !!previous.live,
     };
+    // Path once: title OR pill OR plain detail — never echo the same path twice.
+    var renderPaths = merged.paths;
+    if (merged.kind === "edit" || isPathEditTitle(merged.title)) {
+      merged.kind = "edit";
+      renderPaths = [];
+      merged.detail = "";
+    } else if (renderPaths.length) {
+      var titleText = String(merged.title || "");
+      var pathInTitle = renderPaths.some(function (p) { return p && titleText.indexOf(p) >= 0; });
+      if (pathInTitle) {
+        renderPaths = [];
+        if (detailEchoesPaths(merged.detail, merged.paths)) merged.detail = "";
+      } else if (detailEchoesPaths(merged.detail, renderPaths)) {
+        merged.detail = "";
+      }
+    }
     if (!merged.live && previous.live) card.__userExpanded = false;
     card.__cardData = merged;
     card.className = "ai-agent-card kind-" + merged.kind;
     card.classList.toggle("is-live", merged.live);
-    card.classList.toggle("has-body", cardHasBody(merged));
+    card.classList.toggle("has-body", cardHasBody(merged, renderPaths));
     card.classList.toggle("is-explore-step", key.indexOf("explore-step-") === 0);
     var header = card.querySelector(".ai-agent-card-header");
-    var expandable = cardHasBody(merged);
+    var expandable = cardHasBody(merged, renderPaths);
     header.setAttribute("tabindex", expandable ? "0" : "-1");
     header.setAttribute("role", expandable ? "button" : "presentation");
     card.querySelector(".ai-agent-card-title").textContent = merged.title;
-    card.querySelector(".ai-agent-card-meta").textContent = merged.meta;
+    // Edit cards: show +N/-M on the card itself (counted at edit time).
+    card.querySelector(".ai-agent-card-meta").textContent = editCardMeta(merged, merged.meta);
     var body = card.querySelector(".ai-agent-card-body");
     body.innerHTML = "";
     if (merged.detail) {
@@ -1148,7 +1401,13 @@
       detail.textContent = merged.detail;
       body.appendChild(detail);
     }
-    var extraHtml = makePathsHtml(merged.paths) + makeDiffHtml(merged.diff);
+    var showDiff = merged.diff || [];
+    if (merged.kind === "edit" && showDiff.length) {
+      showDiff = showDiff.map(function (d) {
+        return { path: "", removed: d.removed || [], added: d.added || [] };
+      });
+    }
+    var extraHtml = makePathsHtml(renderPaths) + makeDiffHtml(showDiff);
     if (extraHtml) {
       var extra = document.createElement("div");
       extra.innerHTML = extraHtml;
@@ -1215,6 +1474,8 @@
     if (!msg) return;
     var t = String(title || "").replace(/\s·\s*\d+s\s*$/, "").trim();
     if (!t || /^就绪/.test(t)) return;
+    // Don't sticky past-tense shell titles — topbar would flash Ran between tools.
+    if (t === "Ran" || t === "Run") return;
     getRunMeta(msg).lastActivityTitle = t;
   }
 
@@ -1225,7 +1486,14 @@
       return;
     }
     var label = String(title || currentActivityTitle(msg)).replace(/\s·\s*\d+s\s*$/, "").trim();
-    if (!label || /^就绪/.test(label)) label = "Thinking";
+    // Never mirror tool-card titles — that is the › Ran + Ran pulse flash.
+    if (
+      !label ||
+      /^就绪/.test(label) ||
+      /^(Ran|Running|Run|Edited|Editing|Wrote|Writing|Deleted|Deleting|Explored|Exploring|Fetched|Fetching|Searched|Searching|Read|Listed)\b/i.test(label)
+    ) {
+      label = "Thinking";
+    }
     rememberActivity(msg, label);
     upsertCard(msg, "status-live", {
       kind: "think",
@@ -1236,6 +1504,61 @@
       live: true,
       forceCollapsed: true,
     });
+  }
+
+  // Stable tool card keys — Date.now() created duplicate Ran/Edited cards when
+  // Cursor omitted call_id on partial/completed events.
+  function resolveToolCardKey(msg, payload, toolRunning, summary, toolView) {
+    var callId = String((payload && payload.call_id) || "").trim();
+    if (callId) return "tool-" + callId;
+
+    var meta = getRunMeta(msg);
+
+    function isToolKey(lk) {
+      return (
+        lk &&
+        lk.indexOf("tool-") === 0 &&
+        lk.indexOf("explore-") !== 0
+      );
+    }
+
+    // Reuse the live tool card so partial updates cannot spawn a twin.
+    var liveTools = msg.querySelectorAll(".ai-agent-card.is-live");
+    for (var li = liveTools.length - 1; li >= 0; li--) {
+      var lk = liveTools[li].getAttribute("data-card-key") || "";
+      if (
+        lk === "think-live" || lk === "plan-live" || lk === "explore-live" ||
+        lk === "status-live" || lk.indexOf("explore-step-") === 0
+      ) continue;
+      if (isToolKey(lk)) {
+        meta.inflightToolKey = lk;
+        return lk;
+      }
+    }
+
+    // No call_id: one in-flight slot per message (started→completed).
+    if (toolRunning) {
+      if (!meta.inflightToolKey) {
+        meta.inflightToolKey = "tool-inflight-" + (meta.nextIndex++);
+      }
+      return meta.inflightToolKey;
+    }
+    if (meta.inflightToolKey) {
+      var doneKey = meta.inflightToolKey;
+      meta.inflightToolKey = "";
+      return doneKey;
+    }
+
+    // Orphan completed (started lost): stable hash, never Date.now().
+    var name = String((payload && payload.name) || (summary && summary.kind) || "tool").trim() || "tool";
+    var hint = "";
+    if (summary && summary.paths && summary.paths[0]) hint = String(summary.paths[0]);
+    else if (toolView && toolView.detail) hint = String(toolView.detail).slice(0, 96);
+    else if (payload && payload.args) hint = String(payload.args).slice(0, 96);
+    var h = 0;
+    var s = name + "\0" + hint;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return "tool-" + name + "-" + (h >>> 0).toString(36);
   }
 
   function exploreSummaryTitle(steps) {
@@ -1256,7 +1579,7 @@
     return parts.length ? ("Explored " + parts.join(", ")) : "Explored";
   }
 
-  function appendExploredMarker(msg) {
+  function appendExploredMarker(msg, worklog) {
     var meta = getRunMeta(msg);
     var steps = (meta.exploreSteps || []).slice();
     meta.exploreSteps = [];
@@ -1272,19 +1595,33 @@
       paths: [],
       live: false,
       forceCollapsed: true,
+      worklog: worklog || undefined,
     });
   }
 
   // Cursor: Exploring (live) + per-step rows → Explored N files… (collapsed).
   function finalizeExplorePhase(msg) {
     var meta = getRunMeta(msg);
+    var live = cardByKey(msg, "explore-live");
+    // Pin Explored where Exploring lived — never open a new worklog under mid-explore text.
+    var home = (live && live.parentNode && live.parentNode.classList
+      && live.parentNode.classList.contains("ai-agent-worklog"))
+      ? live.parentNode
+      : null;
     var hadExplore = !!meta.exploreActive || !!(meta.exploreSteps || []).length;
+    var stepKeys = (meta.exploreStepKeys || []).slice();
     removeCard(msg, "explore-live");
-    (meta.exploreStepKeys || []).forEach(function (key) { removeCard(msg, key); });
+    stepKeys.forEach(function (key) { removeCard(msg, key); });
     meta.exploreStepKeys = [];
-    if (!hadExplore) return;
-    appendExploredMarker(msg);
+    if (!hadExplore) {
+      meta.exploreActive = false;
+      meta.exploreSteps = [];
+      return;
+    }
+    meta.needNewWorklog = false;
+    appendExploredMarker(msg, home);
     meta.exploreActive = false;
+    meta.exploreStartReplyLen = 0;
   }
 
   function noteExploring(msg, stepTitle, options) {
@@ -1306,7 +1643,13 @@
     rememberActivity(msg, step);
 
     // Register the step before writing Exploring meta so "N steps" is not short by one.
-    if (meta.exploreStepKeys.indexOf(stepKey) < 0) {
+    // Consecutive identical titles (Read same file twice) collapse into one row.
+    var lastStep = meta.exploreSteps.length ? meta.exploreSteps[meta.exploreSteps.length - 1] : "";
+    if (lastStep === step) {
+      stepKey = meta.exploreStepKeys[meta.exploreStepKeys.length - 1] || stepKey;
+      var lastIdx = meta.exploreStepKeys.indexOf(stepKey);
+      if (lastIdx >= 0) meta.exploreSteps[lastIdx] = step;
+    } else if (meta.exploreStepKeys.indexOf(stepKey) < 0) {
       var reused = "";
       if (!callId) {
         for (var i = meta.exploreStepKeys.length - 1; i >= 0; i--) {
@@ -1412,12 +1755,10 @@
     // Cursor: skip empty brief thoughts — no card clutter.
     if (!detail && elapsed <= 2000) {
       removeCard(msg, "think-live");
-      if (isRunning) noteWorking(msg, currentActivityTitle(msg));
       return;
     }
     if (!detail) {
       removeCard(msg, "think-live");
-      if (isRunning) noteWorking(msg, currentActivityTitle(msg));
       return;
     }
     var card = upsertCard(msg, "think-live", {
@@ -1433,7 +1774,6 @@
       meta.thinkSeq = (meta.thinkSeq || 0) + 1;
       card.setAttribute("data-card-key", "think-done-" + meta.thinkSeq);
     }
-    if (isRunning) noteWorking(msg);
   }
 
   function sealLiveToolTitle(title) {
@@ -1498,18 +1838,6 @@
       meta.thinkingStartedAt = Date.now();
       meta.thinkingDetail = "";
       meta.thinkingPaused = false;
-      rememberActivity(msg, "Thinking");
-      if (!meta.thinkingTimer) {
-        meta.thinkingTimer = setInterval(function () {
-          refreshThinkingCard(msg);
-        }, 1000);
-      }
-    } else if (meta.thinkingPaused) {
-      // Resume same card after tools; separate rounds with a blank line.
-      meta.thinkingPaused = false;
-      if (chunk.trim() && meta.thinkingDetail && !/\n\n$/.test(meta.thinkingDetail)) {
-        meta.thinkingDetail += "\n\n";
-      }
       rememberActivity(msg, "Thinking");
       if (!meta.thinkingTimer) {
         meta.thinkingTimer = setInterval(function () {

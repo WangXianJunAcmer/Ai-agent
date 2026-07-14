@@ -1,5 +1,4 @@
 /* ai-agent frontend/js/shell.js */
-(function () {
   var script = document.currentScript;
   var scriptUrl = "";
   try {
@@ -18,7 +17,6 @@
     cursor: {
       name: "Cursor",
       placeholder: "给 Cursor 发送消息",
-      planPlaceholder: "描述你想先规划的问题",
       emptyTitle: "今天想做点什么？",
       emptySub: "写代码、查问题、改文件，或直接描述你的目标",
       showAuto: true,
@@ -32,7 +30,6 @@
     openai: {
       name: "OpenAI",
       placeholder: "给 OpenAI 发送消息",
-      planPlaceholder: "描述你想先规划的问题",
       emptyTitle: "今天想做点什么？",
       emptySub: "用 OpenAI 写代码、查问题、改文件",
       showAuto: false,
@@ -46,7 +43,6 @@
     deepseek: {
       name: "DeepSeek",
       placeholder: "给 DeepSeek 发送消息",
-      planPlaceholder: "描述你想先规划的问题",
       emptyTitle: "今天想做点什么？",
       emptySub: "用 DeepSeek 写代码、查问题、改文件",
       showAuto: false,
@@ -431,12 +427,14 @@
     .ai-agent-turn-undo:hover { background: #f4f4f4; }
     .ai-agent-turn-undo:disabled { opacity: .5; cursor: default; }
     .ai-agent-turn-undo.is-done { color: #166534; border-color: #bbf7d0; background: #ecfdf5; }
+    .ai-agent-turn-file-undo { padding: 2px 8px; font-size: 11px; }
     .ai-agent-turn-changes-body { display: none; }
     .ai-agent-turn-changes.is-open .ai-agent-turn-changes-body { display: block; }
     .ai-agent-turn-file {
       border-top: 1px solid rgba(0,0,0,.06);
     }
     .ai-agent-turn-file:first-child { border-top: 0; }
+    .ai-agent-turn-file.is-undone { opacity: .55; }
     .ai-agent-turn-file-head {
       display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
       padding: 10px 12px 6px;
@@ -448,6 +446,11 @@
     .ai-agent-turn-file-meta {
       font: 12px/1.35 inherit; color: var(--ai-muted);
     }
+    .ai-agent-turn-file-actions { margin-left: auto; }
+    .ai-agent-turn-file-status { font-weight: 600; }
+    .ai-agent-turn-file.status-deleted .ai-agent-turn-file-status { color: #991b1b; }
+    .ai-agent-turn-file.status-created .ai-agent-turn-file-status { color: #166534; }
+    .ai-agent-turn-file.status-modified .ai-agent-turn-file-status { color: #a16207; }
     .ai-agent-turn-file .ai-agent-diff {
       margin: 0; border: 0; border-radius: 0; background: transparent;
     }
@@ -1455,6 +1458,8 @@
   var pendingFiles = [];
   var sendQueue = [];
   var isRunning = false;
+  var pendingFollow = false;
+  var sessionGeneration = 0;
   var runStartedAt = 0;
   var runElapsedTimer = null;
   var queueSeq = 0;
@@ -1510,5 +1515,11 @@
     console.warn("Ai-agent history restore failed", err);
   }
   updateEmptyState();
-  if (bootRestoredStreaming) updateRunState("继续接收");
-  else if (!threadDiv.querySelector(".ai-agent-msg")) updateRunState("就绪");
+  if (bootRestoredStreaming) {
+    // Block send until followIfNeeded finishes (or status says idle).
+    pendingFollow = true;
+    isRunning = true;
+    updateRunState("继续接收");
+  } else if (!threadDiv.querySelector(".ai-agent-msg")) {
+    updateRunState("就绪");
+  }

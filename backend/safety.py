@@ -5,7 +5,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from backend.repo_write_guard import SHELL_TOOL_NAMES, args_paths, cmd_from_args, normalize_tool_name
+from backend.repo_write_guard import (
+    SHELL_TOOL_NAMES,
+    WRITE_TOOL_NAMES,
+    args_paths,
+    cmd_from_args,
+    normalize_tool_name,
+)
 
 # ponytail: 启发式双向拦密；漏网靠已知密钥精确擦除。升级：SDK SandboxOptions / DLP。
 _SECRET_ASK_RE = re.compile(
@@ -200,8 +206,8 @@ def sensitive_tool_block_reason(name: str, args) -> str | None:
     if not _SAFETY_ENABLED:
         return None
     norm = normalize_tool_name(name)
-    # write: agent sometimes dumps secrets into a new file path like .env
-    if norm in _READ_TOOL_NAMES or norm == "write":
+    # write / strreplace / delete: agent sometimes dumps secrets into .env etc.
+    if norm in _READ_TOOL_NAMES or norm in WRITE_TOOL_NAMES or norm == "write":
         for path in args_paths(args):
             if is_sensitive_path(path):
                 return f"{SENSITIVE_READ_BLOCK} 拦截工具: 「{name}」（目标: {path}）"

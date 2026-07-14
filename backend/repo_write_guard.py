@@ -19,6 +19,7 @@ WRITE_TOOL_NAMES = {
 }
 SHELL_TOOL_NAMES = {
     "shell",
+    "runshell",  # OpenAI/DeepSeek compat tool
     "awaitshell",
     "bash",
     "terminal",
