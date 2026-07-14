@@ -228,7 +228,8 @@ def check_attachments() -> None:
         assert getattr(built2, "images", None) is not None, built2
         assert files2 == [], files2
 
-        huge = base64.b64encode(b"x" * (MAX_ATTACHMENT_BYTES + 1)).decode("ascii")
+        # Reject by base64 length without allocating a 50MB+ payload.
+        huge = "A" * (int(MAX_ATTACHMENT_BYTES * 1.4) + 65)
         assert decode_attachment_bytes(huge) is None
         skipped = materialize_files(
             root, [{"name": "big.bin", "mime_type": "application/octet-stream", "data": huge}]

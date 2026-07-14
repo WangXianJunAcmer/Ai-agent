@@ -222,6 +222,35 @@
     return chip;
   }
 
+  function filesFromClipboardData(data) {
+    // Clipboard screenshot / OS file paste → File list for handleFileSelection.
+    if (!data) return [];
+    var out = [];
+    var seen = new Set();
+    function pushFile(file) {
+      if (!file || seen.has(file)) return;
+      seen.add(file);
+      if (file.name) {
+        out.push(file);
+        return;
+      }
+      // Screenshots often arrive unnamed; invent a stable extension from MIME.
+      var mime = file.type || "application/octet-stream";
+      var ext = (mime.split("/")[1] || "bin").split(";")[0] || "bin";
+      if (ext === "jpeg") ext = "jpg";
+      out.push(new File([file], "paste-" + Date.now() + "-" + out.length + "." + ext, { type: mime }));
+    }
+    if (data.files && data.files.length) {
+      Array.prototype.forEach.call(data.files, pushFile);
+    }
+    var items = data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind !== "file") continue;
+      pushFile(items[i].getAsFile());
+    }
+    return out;
+  }
+
   async function handleFileSelection(files) {
     var list = Array.from(files || []);
     var skipped = [];
@@ -236,14 +265,14 @@
       var isImage = mime.indexOf("image/") === 0;
       pendingFiles.push({
         kind: isImage ? "image" : "file",
-        name: file.name,
+        name: file.name || (isImage ? "paste-image.png" : "paste-file"),
         mime_type: mime,
         data: data,
         previewUrl: isImage ? URL.createObjectURL(file) : "",
       });
     }
     if (skipped.length) {
-      alert("以下文件超过 10MB 已跳过：\n" + skipped.join("\n"));
+      alert("以下文件超过 50MB 已跳过：\n" + skipped.join("\n"));
     }
     renderAttachmentPreview();
     fileInput.value = "";
@@ -983,6 +1012,12 @@
   inputField.addEventListener("input", function () {
     autosizeInput();
     updateComposerButtons();
+  });
+  inputField.addEventListener("paste", function (e) {
+    var files = filesFromClipboardData(e.clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    handleFileSelection(files).then(updateComposerButtons);
   });
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) {

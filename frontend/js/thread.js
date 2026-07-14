@@ -676,6 +676,12 @@
     ta.rows = 1;
     ta.setAttribute("aria-label", "编辑消息");
     ta.addEventListener("input", function () { autosizeEditTextarea(ta); });
+    ta.addEventListener("paste", function (e) {
+      var files = filesFromClipboardData(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      handleEditFileSelection(msg, files);
+    });
     ta.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();

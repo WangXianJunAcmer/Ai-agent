@@ -14,7 +14,8 @@ from backend.repo_write_guard import UPLOAD_DIR, identity_prefix
 from backend.safety import policy_prefix
 
 # Per-file decoded size cap (images + non-images). Oversize → skipped.
-MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Matches Cursor's documented request/file hard limit (52_428_800 ≈ 50 MiB).
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 # Cap how many files we keep under .ai-agent-uploads (oldest mtime first).
 MAX_UPLOAD_FILES = 40
 # Also drop uploads older than this even if under the count cap.

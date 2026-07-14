@@ -1275,8 +1275,8 @@
   // Edit is staged until the bubble's own send; bottom composer stays independent.
   var editingUserMsg = null;
   var serverBootId = "";
-  // Match backend attachments.MAX_ATTACHMENT_BYTES
-  var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+  // Match backend attachments.MAX_ATTACHMENT_BYTES (Cursor hard limit ≈ 50MB).
+  var MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
   var HISTORY_KEY = "ai-agent-chat-history";
   var historySaveTimer = null;
   var modelOptions = [
