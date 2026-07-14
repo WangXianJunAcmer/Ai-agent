@@ -10,7 +10,55 @@
   var inferredApiBase = scriptUrl ? scriptUrl.origin : window.location.origin;
   var apiBase = (script && script.getAttribute("data-api-base")) || inferredApiBase;
   var defaultModel = (script && script.getAttribute("data-default-model")) || "composer-2.5";
-  var sessionId = localStorage.getItem("ai-agent-session-id") || "";
+  var provider = (script && script.getAttribute("data-provider")) || "cursor";
+  var sessionStorageKey = "ai-agent-session-id:" + provider;
+  var sessionId = localStorage.getItem(sessionStorageKey) || "";
+  // Brand / copy keyed by data-provider (Cursor · OpenAI · DeepSeek).
+  var PROVIDER_UI = {
+    cursor: {
+      name: "Cursor",
+      placeholder: "给 Cursor 发送消息",
+      planPlaceholder: "描述你想先规划的问题",
+      emptyTitle: "今天想做点什么？",
+      emptySub: "写代码、查问题、改文件，或直接描述你的目标",
+      showAuto: true,
+      markHtml:
+        '<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+        '<rect width="28" height="28" rx="8" fill="#0d0d0d"/>' +
+        '<path d="M8 7.5 L8 20.5 L12.2 16.8 L15.1 22.2 L17.6 20.9 L14.6 15.2 L20 15.2 Z" fill="#fff"/>' +
+        "</svg>",
+    },
+    openai: {
+      name: "OpenAI",
+      placeholder: "给 OpenAI 发送消息",
+      planPlaceholder: "描述你想先规划的问题",
+      emptyTitle: "今天想做点什么？",
+      emptySub: "用 OpenAI 写代码、查问题、改文件",
+      showAuto: false,
+      markHtml:
+        '<svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+        '<rect width="28" height="28" rx="8" fill="#0d0d0d"/>' +
+        '<g fill="#fff" transform="translate(4.5 4.5) scale(0.79)">' +
+        '<path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.911 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.182a5.985 5.985 0 0 0-3.526 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .511 4.91 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.989 5.989 0 0 0 3.519-2.9 6.056 6.056 0 0 0-.748-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.875-1.041l.142-.08 4.778-2.759a.795.795 0 0 0 .393-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.496 4.494zm-9.661-4.125a4.471 4.471 0 0 1-.535-3.014l.142.085 4.783 2.758a.771.771 0 0 0 .781 0l5.843-3.368v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.499 4.499 0 0 1-6.141-1.646zM2.341 7.896a4.485 4.485 0 0 1 2.365-1.973V11.6a.766.766 0 0 0 .388.676l5.814 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.0 14.012A4.504 4.504 0 0 1 2.341 7.872zm16.596 3.856L13.104 8.364 15.12 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.104v-5.677a.79.79 0 0 0-.408-.667zm2.011-3.023-.142-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.499 4.499 0 0 1 6.68 4.66zM8.307 12.863l-2.02-1.164a.08.08 0 0 1-.038-.057V6.074a4.499 4.499 0 0 1 7.376-3.454l-.142.081-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365a2.95 2.95 0 0 1 2.55 0l3.029 1.75v3.5l-3.029 1.75a2.95 2.95 0 0 1-2.55 0l-3.029-1.75v-3.5z"/>' +
+        "</g></svg>",
+    },
+    deepseek: {
+      name: "DeepSeek",
+      placeholder: "给 DeepSeek 发送消息",
+      planPlaceholder: "描述你想先规划的问题",
+      emptyTitle: "今天想做点什么？",
+      emptySub: "用 DeepSeek 写代码、查问题、改文件",
+      showAuto: false,
+      markHtml:
+        '<svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+        '<rect width="28" height="28" rx="8" fill="#4d6bfe"/>' +
+        '<path fill="#fff" transform="translate(2 2)" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 01-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 00-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 01-.465.137 9.597 9.597 0 00-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 001.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 011.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 01.415-.287.302.302 0 01.2.288.306.306 0 01-.31.307.303.303 0 01-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 01-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 01.016-.588c.07-.327-.008-.537-.239-.727-.187-.156-.426-.199-.688-.199a.559.559 0 01-.254-.078c-.11-.054-.2-.19-.114-.358.028-.054.16-.186.192-.21.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.391.451.462.576.685.914.176.265.336.537.445.848.067.195-.019.354-.25.452z"/>' +
+        "</svg>",
+    },
+  };
+  var providerUi = PROVIDER_UI[provider] || PROVIDER_UI.cursor;
+  // sidebar = embed host (floating trigger). fullscreen = home hub / dedicated Cursor UI.
+  var hubFullscreen = (script && script.getAttribute("data-layout")) === "fullscreen";
 
   var styles = `
     #ai-agent-backdrop {
@@ -20,11 +68,12 @@
     #ai-agent-backdrop.open { opacity: 1; pointer-events: auto; }
     #ai-agent-trigger {
       position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
-      background: linear-gradient(135deg, #10a37f, #1a7f64); color: #fff; border-radius: 50%;
+      padding: 0; border: none; background: transparent; border-radius: 14px;
       display: flex; align-items: center; justify-content: center; cursor: pointer;
-      box-shadow: 0 10px 28px rgba(16,163,127,.35); z-index: 2147483000;
-      font: 700 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; user-select: none;
+      box-shadow: 0 10px 28px rgba(0,0,0,.18); z-index: 2147483000;
+      overflow: hidden; user-select: none;
     }
+    #ai-agent-trigger svg { width: 56px; height: 56px; display: block; }
     #ai-agent-sidebar {
       --ai-bg: #ffffff;
       --ai-surface: #f7f7f8;
@@ -84,10 +133,11 @@
     #ai-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     #ai-agent-brand-mark {
       width: 28px; height: 28px; border-radius: 8px;
-      background: linear-gradient(135deg, #10a37f, #1a7f64);
-      color: #fff; display: grid; place-items: center;
-      font: 700 12px/1 -apple-system, sans-serif; flex: 0 0 auto;
+      overflow: hidden; flex: 0 0 auto;
+      background: transparent;
+      display: grid; place-items: center;
     }
+    #ai-agent-brand-mark svg { width: 28px; height: 28px; display: block; }
     #ai-agent-brand-text {
       display: flex; align-items: baseline; gap: 8px; min-width: 0;
     }
@@ -1110,14 +1160,14 @@
   var container = document.createElement("div");
   container.innerHTML = `
     <div id="ai-agent-backdrop"></div>
-    <div id="ai-agent-trigger" title="AI Agent">AI</div>
+    <div id="ai-agent-trigger" title="${providerUi.name}">${providerUi.markHtml}</div>
     <div id="ai-agent-sidebar">
       <div id="ai-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
       <div id="ai-agent-topbar">
         <div id="ai-agent-brand">
-          <div id="ai-agent-brand-mark">AI</div>
+          <div id="ai-agent-brand-mark">${providerUi.markHtml}</div>
           <div id="ai-agent-brand-text">
-            <strong>Ai-agent</strong>
+            <strong>${providerUi.name}</strong>
             <span id="ai-agent-run-state">就绪</span>
           </div>
         </div>
@@ -1147,8 +1197,8 @@
       <div id="ai-agent-scroll-wrap">
         <div id="ai-agent-messages">
           <div id="ai-agent-empty" aria-hidden="true">
-            <h1>今天想做点什么？</h1>
-            <p>写代码、查问题、改文件，或直接描述你的目标</p>
+            <h1>${providerUi.emptyTitle}</h1>
+            <p>${providerUi.emptySub}</p>
           </div>
           <div id="ai-agent-thread"></div>
         </div>
@@ -1159,7 +1209,7 @@
           <div id="ai-agent-queue"></div>
           <div id="ai-agent-compose-shell">
           <div id="ai-agent-attachments"></div>
-          <textarea id="ai-agent-input" rows="1" placeholder="给 Ai-agent 发送消息"></textarea>
+          <textarea id="ai-agent-input" rows="1" placeholder="${providerUi.placeholder}"></textarea>
           <div id="ai-agent-compose-toolbar">
             <div id="ai-agent-compose-left">
               <div id="ai-agent-mode-wrap">
@@ -1201,6 +1251,11 @@
   `;
   document.body.appendChild(container);
 
+  if (!providerUi.showAuto) {
+    var autoRowEl = document.getElementById("ai-agent-model-auto-row");
+    if (autoRowEl) autoRowEl.style.display = "none";
+  }
+
   var backdrop = document.getElementById("ai-agent-backdrop");
   var trigger = document.getElementById("ai-agent-trigger");
   var sidebar = document.getElementById("ai-agent-sidebar");
@@ -1239,6 +1294,19 @@
   // Restore saved layout immediately; no health or placeholder UI.
   (function openPanelImmediately() {
     try {
+      if (hubFullscreen) {
+        // Home Cursor entry: full-bleed chat, no floating trigger / sidebar chrome.
+        sidebar.style.transition = "none";
+        sidebar.classList.add("is-fullscreen", "open");
+        trigger.classList.add("is-hidden");
+        trigger.style.display = "none";
+        document.body.classList.add("ai-agent-page-locked");
+        if (fullscreenBtn) fullscreenBtn.style.display = "none";
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { sidebar.style.transition = ""; });
+        });
+        return;
+      }
       var savedWidth = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10);
       if (savedWidth >= MIN_SIDEBAR_WIDTH) {
         var maxW = Math.min(1200, Math.round(window.innerWidth * 0.92));

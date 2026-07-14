@@ -1,21 +1,29 @@
-# 宿主项目根目录。默认指向 Ai-agent 自身；嵌入其他项目时改成相对路径，如 "../ad-plex"。
+# Agent 工作区根目录（相对本仓库）。默认 "." = 本仓库自身；改其它代码目录如 "../my-app"。
 host_project_root: "."
 
 server:
   host: "0.0.0.0"
   port: 8765
-  # Agent writes files under cwd — never enable reload while serving chat SSE.
+  # Agent writes under the workspace — never enable reload while serving chat SSE.
   reload: false
 
 agent:
+  # cursor | openai | deepseek — see backend/providers/
+  provider: "cursor"
   model: "composer-2.5"
-  # local: 直接操作本机宿主项目；cloud: 在 Cursor 云端 VM 上跑（需配置 cloud 段）
+  # local: 本机工作区；cloud: Cursor 云端 VM（需配置 cloud）
   runtime: "local"
-  # false = 只读（拦截 Write/StrReplace/Delete 与写文件 Shell）
   allow_repo_write: true
-  # true = 双向密钥防护（索密拦截、输出脱敏、禁止读 .env）；false = 更高权限，自行承担风险
   safety_enabled: true
   cloud:
     repo_url: ""
     starting_ref: "main"
     auto_create_pr: false
+
+providers:
+  openai:
+    base_url: "https://api.openai.com/v1"
+    # openai SDK + local tools; models in providers/compat_agent.py
+  deepseek:
+    base_url: "https://api.deepseek.com"
+    # Same stack as openai; only base_url + DEEPSEEK_API_KEY differ

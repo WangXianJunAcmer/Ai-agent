@@ -1,131 +1,110 @@
 # Ai-agent
 
-可嵌入任意项目的 Cursor Ai-agent sidecar。clone 到宿主项目根目录后，启动本地服务并在网页里注入聊天侧边栏，Agent 会直接读写宿主项目代码。支持**文本 + 图片**多模态对话，并展示 thinking / tool_call 等 Agent 过程。
+本地浏览器里的 **Coding Agent 控制台**。首页可选择 Cursor / OpenAI / DeepSeek；支持文本与图片附件，以及 thinking、tool_call、planning 等过程展示。
+
+- **Cursor**：云端/SDK Agent（`cursor-sdk`）
+- **OpenAI / DeepSeek**：本机 **openai SDK**（兼容 HTTP）+ 本地工具循环（读/写/grep/shell）
 
 ## 环境要求
 
-- **Python 3.10+**（`cursor-sdk` 硬性要求）
-- Cursor API Key（[Integrations](https://cursor.com/dashboard/integrations)）
+- **Python 3.10+**（Cursor 路径需 `cursor-sdk`）
+- 对应厂商的 API Key（见 `.env.example`）
 
 ## 快速开始
 
 ```bash
-# 1. 放入宿主项目（示例：ad-plex）
-cd /path/to/your-project
 git clone <this-repo-url> Ai-agent
-
-# 2. 创建 conda 环境并安装依赖
 cd Ai-agent
+
 conda create -n ai-agent python=3.10 -y
 conda activate ai-agent
 pip install -r requirements.txt
 
-# 3. 配置
 cp .env.example .env
-# 编辑 .env，填入 CURSOR_API_KEY
+# 编辑 .env，填入所需 API Key（当前 Cursor 路径使用 CURSOR_API_KEY）
 
-# 4. 启动（run.sh 会优先用已激活的 conda 或 ai-agent 环境）
 ./run.sh
 ```
 
-自检（不依赖 API Key）：
+自检：
 
 ```bash
-conda activate ai-agent
 python -m backend.check
 ```
 
-确认服务正常：
-
-```bash
-curl http://127.0.0.1:8765/api/health
-```
-
-也可以直接用浏览器打开首页：
+浏览器：
 
 ```text
-http://127.0.0.1:8765/
+http://127.0.0.1:8765/          # 说明 + 入口
+http://127.0.0.1:8765/cursor    # Cursor
+http://127.0.0.1:8765/openai    # OpenAI（需 OPENAI_API_KEY）
+http://127.0.0.1:8765/deepseek  # DeepSeek（需 DEEPSEEK_API_KEY）
 ```
 
-首页即本 README 的部署说明，顶部可切换模型并打开聊天侧边栏联调。
+## 使用方式
 
-## 嵌入宿主项目前端
+1. 打开首页，点 **Cursor** / **OpenAI** / **DeepSeek**。
+2. 在对话页选模型、发消息；可粘贴或上传附件（单文件约 50MB 内）。
+3. 关闭对话页回到首页。
 
-在宿主项目任意 HTML 模板（如 `server/templates/base.html`）的 `</body>` 前加一行：
+Agent 默认工作区为本仓库（`host_project_root: "."`）。要操作其它目录，在 `config.yaml` 里改路径。
 
-```html
-<script src="http://<ai-agent-host>:8765/static/widget.js"></script>
-```
-
-如果宿主页面和 Ai-agent API 不在同一域名下，再显式传 `data-api-base`：
-
-```html
-<script
-  src="http://<ai-agent-host>:8765/static/widget.js"
-  data-api-base="http://<ai-agent-host>:8765"
-></script>
-```
-
-刷新页面后右下角出现 **AI** 按钮，点击展开侧边栏即可对话。侧边栏支持 📷 图片上传，可与文本一起发送给 Agent 分析。
-
-纯后端项目也可以不用 widget，直接调 API：
+## HTTP API
 
 ```bash
-curl -X POST http://<ai-agent-host>:8765/api/chat \
+curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"列出项目顶层目录结构"}'
+  -d '{"message":"列出工作区顶层目录"}'
 ```
 
-带图片的请求示例：
+| 路径 | 说明 |
+|------|------|
+| `GET /` | 说明页 + 入口 |
+| `GET /cursor` | Cursor 对话页 |
+| `GET /openai` | OpenAI Agent（兼容 API + 本地工具） |
+| `GET /deepseek` | DeepSeek Agent（同上） |
+| `GET /api/health` | 健康检查（含 `provider`、`keys` 布尔） |
+| `POST /api/chat` | 同步对话（可带 `provider`） |
+| `POST /api/chat/stream` | SSE 流式对话（可带 `provider`） |
+| `GET /static/widget.js` | 对话页前端脚本 |
 
-```bash
-curl -X POST http://<ai-agent-host>:8765/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "message": "这张截图里报错是什么意思？",
-    "model": "composer-2.5",
-    "images": [
-      {
-        "name": "screenshot.png",
-        "mime_type": "image/png",
-        "data": "<base64-encoded-image-data>"
-      }
-    ]
-  }'
-```
-
-## 配置说明
+## 配置
 
 `config.yaml`：
 
 | 字段 | 说明 |
 |------|------|
-| `host_project_root` | 宿主项目根目录，相对 Ai-agent 目录，按你的目录结构配置 |
-| `server.host` / `server.port` | 本地服务地址，默认 `127.0.0.1:8765` |
-| `agent.model` | Cursor 模型，默认 `composer-2.5` |
-| `agent.runtime` | `local`（本机改代码）或 `cloud`（云端 VM + GitHub） |
-| `agent.cloud.repo_url` | cloud 模式下的 GitHub 仓库 URL |
+| `host_project_root` | Agent **工作区**根目录（相对本仓库）。默认 `"."` |
+| `server.host` / `server.port` | 默认 `0.0.0.0:8765`（公网请改 `127.0.0.1`） |
+| `agent.provider` | `cursor` / `openai` / `deepseek` |
+| `agent.model` | 模型 id，如 `composer-2.5` |
+| `agent.runtime` | `local` 或 `cloud` |
+| `agent.allow_repo_write` | `false` 时只读 |
+| `agent.safety_enabled` | 密钥相关防护开关 |
 
-## API
+`.env`：
 
-- `GET /api/health` — 健康检查
-- `GET /` — 简易首页 / 使用说明
-- `POST /api/chat` — 同步对话 `{ "message": "...", "session_id": "可选", "model": "可选", "images": [{ "data": "...", "mime_type": "image/png", "name": "可选" }] }`
-- `POST /api/chat/stream` — SSE 流式对话（widget 使用；支持图片与过程事件：thinking / tool_call / status / task）
-- `GET /static/widget.js` — 可嵌入的前端组件（含图片上传与过程面板）
+| 变量 | 说明 |
+|------|------|
+| `CURSOR_API_KEY` | Cursor |
+| `OPENAI_API_KEY` | OpenAI |
+| `DEEPSEEK_API_KEY` | DeepSeek |
 
-## 安全提示
+## 安全
 
-- 默认 `config.yaml` 绑定 `0.0.0.0` 便于局域网联调；公网环境请改回 `127.0.0.1`
-- Agent 拥有读写宿主项目、执行命令的权限，仅用于本地开发
-- `CURSOR_API_KEY` 不要提交到 git
+- Agent 可读写工作区并执行命令，仅建议本机开发使用
+- 勿将 API Key 提交进 git
+- 公网暴露请收紧绑定地址并自行加鉴权
 
-## 目录结构
+## 目录
 
 ```
 Ai-agent/
-├── backend/          # FastAPI + Cursor SDK
-├── frontend/         # index.html + js/（拼成 /static/widget.js）
+├── backend/
+├── frontend/
+│   ├── index.html
+│   ├── cursor.html
+│   └── js/
 ├── config.yaml
 ├── .env.example
 ├── requirements.txt

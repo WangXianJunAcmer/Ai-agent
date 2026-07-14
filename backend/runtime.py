@@ -19,6 +19,8 @@ from cursor_sdk import (
 from cursor_sdk.errors import AgentBusyError
 
 from backend.attachments import build_message, prune_upload_dir, upload_meta
+from backend.providers import COMPAT_PROVIDERS, build_compat_handle, normalize_provider
+from backend.providers.compat_agent import stream_compat_turn
 from backend.safety import (
     OUTPUT_BLOCK_SECRET,
     input_block_reason,
@@ -54,19 +56,36 @@ class SessionManager:
         # Keep strong refs so request disconnect cannot GC / drop pumps.
         self._background_tasks: set[asyncio.Task] = set()
         set_safety_enabled(bool(settings.get("safety_enabled", True)))
-        set_known_secrets(str(settings.get("api_key") or ""))
+        set_known_secrets(
+            str(settings.get("cursor_api_key") or ""),
+            str(settings.get("openai_api_key") or ""),
+            str(settings.get("deepseek_api_key") or ""),
+            str(settings.get("api_key") or ""),
+        )
 
     async def start(self) -> None:
         if self._started:
             return
         set_safety_enabled(bool(self.settings.get("safety_enabled", True)))
-        set_known_secrets(str(self.settings.get("api_key") or ""))
+        set_known_secrets(
+            str(self.settings.get("cursor_api_key") or ""),
+            str(self.settings.get("openai_api_key") or ""),
+            str(self.settings.get("deepseek_api_key") or ""),
+            str(self.settings.get("api_key") or ""),
+        )
+        prune_upload_dir(str(self.settings["host_root"]))
+        # Cursor bridge is lazy — OpenAI/DeepSeek compat paths do not need it.
+        self._started = True
+
+    async def _ensure_cursor_bridge(self) -> None:
+        if self._client is not None:
+            return
         host_root = str(self.settings["host_root"])
-        prune_upload_dir(host_root)
+        if not (self.settings.get("cursor_api_key") or self.settings.get("api_key")):
+            raise RuntimeError("CURSOR_API_KEY is not set.")
         self._client = await self._stack.enter_async_context(
             await AsyncClient.launch_bridge(workspace=host_root)
         )
-        self._started = True
 
     async def stop(self) -> None:
         for session in list(self._sessions.values()):
@@ -101,53 +120,79 @@ class SessionManager:
                 continue
             await self._close_agent(session.agent)
 
-    async def get_or_create(self, session_id: str | None, model: str | dict | None = None) -> Session:
+    async def get_or_create(
+        self,
+        session_id: str | None,
+        model: str | dict | None = None,
+        provider: str | None = None,
+    ) -> Session:
         await self.start()
+        prov = normalize_provider(provider or self.settings.get("provider") or "cursor")
         if isinstance(model, dict):
-            selected_model = str(model.get("id") or self.settings["model"])
+            selected_model = str(model.get("id") or self._default_model(prov))
             model_selection = model
         else:
-            selected_model = model or self.settings["model"]
-            model_selection = model or self.settings["model"]
+            selected_model = model or self._default_model(prov)
+            model_selection = model or self._default_model(prov)
         key = model_key(model_selection)
 
         async with self._map_lock:
             await self._prune_idle_sessions()
             if session_id and session_id in self._sessions:
                 session = self._sessions[session_id]
-                if session.model_key == key:
+                if session.provider == prov and session.model_key == key:
                     self._touch(session)
                     return session
-                # Wait out in-flight turn before swapping the agent (avoids dual agents on one id).
-                async with session.lock:
-                    current = self._sessions.get(session_id)
-                    if current is not None and current.model_key == key:
-                        self._touch(current)
-                        return current
-                    if current is not None:
-                        await self._cancel_session_run(current, bump=False)
-                        await self._close_agent(current.agent)
-                        del self._sessions[session_id]
+                if session.provider == prov:
+                    # Wait out in-flight turn before swapping the agent (avoids dual agents on one id).
+                    async with session.lock:
+                        current = self._sessions.get(session_id)
+                        if current is not None and current.provider == prov and current.model_key == key:
+                            self._touch(current)
+                            return current
+                        if current is not None:
+                            await self._cancel_session_run(current, bump=False)
+                            await self._close_agent(current.agent)
+                            del self._sessions[session_id]
+                else:
+                    # Different provider on same id → mint a fresh session below.
+                    session_id = None
 
             sid = session_id or uuid.uuid4().hex
-            assert self._client is not None
-            # Manage close() ourselves — stacking every agent on AsyncExitStack leaks on model switch.
-            agent = await self._client.agents.create(**self._agent_options(model_selection))
+            if prov in COMPAT_PROVIDERS:
+                agent = build_compat_handle(self.settings, prov)
+            else:
+                await self._ensure_cursor_bridge()
+                assert self._client is not None
+                # Manage close() ourselves — stacking every agent on AsyncExitStack leaks on model switch.
+                agent = await self._client.agents.create(**self._agent_options(model_selection))
             session = Session(
                 session_id=sid,
                 agent=agent,
                 model=selected_model,
                 model_key=key,
                 model_selection=model_selection,
+                provider=prov,
                 last_active=time.time(),
             )
             existing = self._sessions.get(sid)
-            if existing is not None and existing.model_key == key:
+            if existing is not None and existing.provider == prov and existing.model_key == key:
                 await self._close_agent(agent)
                 self._touch(existing)
                 return existing
             self._sessions[sid] = session
             return session
+
+    def _default_model(self, provider: str) -> str:
+        if provider == "openai":
+            from backend.providers.openai import provider_default_model
+
+            return provider_default_model()
+        if provider == "deepseek":
+            from backend.providers.deepseek import provider_default_model
+
+            return provider_default_model()
+        return str(self.settings.get("model") or "composer-2.5")
 
     def _agent_options(self, model: str | dict):
         settings = self.settings
@@ -155,7 +200,7 @@ class SessionManager:
         label = model_id or settings["model"]
         opts: dict = {
             "model": model,
-            "api_key": settings["api_key"],
+            "api_key": self.settings.get("cursor_api_key") or self.settings.get("api_key"),
             "name": f"Ai-agent ({label})",
         }
         if settings["runtime"] == "cloud":
@@ -217,6 +262,9 @@ class SessionManager:
         """Close the busy agent and create a fresh one (keeps session_id)."""
         await self._cancel_session_run(session, bump=False)
         old = session.agent
+        if session.provider in COMPAT_PROVIDERS:
+            session.agent = build_compat_handle(self.settings, session.provider)
+            return
         assert self._client is not None
         selection = session.model_selection or session.model or self.settings["model"]
         session.agent = await self._client.agents.create(**self._agent_options(selection))
@@ -254,9 +302,34 @@ class SessionManager:
         model: str | dict | None = None,
         mode: str = "agent",
         attachments: list[dict] | None = None,
+        provider: str | None = None,
     ) -> dict:
-        session = await self.get_or_create(session_id, model)
+        session = await self.get_or_create(session_id, model, provider=provider)
         self._touch(session)
+        if session.provider in COMPAT_PROVIDERS:
+            # Collect streamed turn into a sync reply.
+            await self._launch_turn(session, message, mode, attachments)
+            reply_parts: list[str] = []
+            status = "finished"
+            async for event in self._follow_log(session, 0):
+                if event.get("type") == "text" and event.get("content"):
+                    reply_parts.append(str(event["content"]))
+                if event.get("type") == "done":
+                    status = str(event.get("status") or "finished")
+                if event.get("type") == "error" and event.get("content"):
+                    return {
+                        "session_id": session.session_id,
+                        "reply": "",
+                        "status": "error",
+                        "error": event["content"],
+                        "model": session.model,
+                    }
+            return {
+                "session_id": session.session_id,
+                "reply": scrub_reply("".join(reply_parts)),
+                "status": status,
+                "model": session.model,
+            }
         async with session.lock:
             run = None
             turn = session.turn
@@ -433,9 +506,62 @@ class SessionManager:
             })
             turn = session.turn
             # Detached from the HTTP request cancel scope so refresh cannot kill the run.
-            session.pump_task = self._spawn_pump(
-                self._pump_turn(session, message, mode, attachments, turn)
+            if session.provider in COMPAT_PROVIDERS:
+                session.pump_task = self._spawn_pump(
+                    self._pump_lc_turn(session, message, mode, attachments, turn)
+                )
+            else:
+                session.pump_task = self._spawn_pump(
+                    self._pump_turn(session, message, mode, attachments, turn)
+                )
+
+    async def _pump_lc_turn(
+        self,
+        session: Session,
+        message: str,
+        mode: str,
+        attachments: list[dict] | None,
+        turn: int,
+    ) -> None:
+        """OpenAI-compatible tool loop → live_events (OpenAI / DeepSeek)."""
+        try:
+            input_block = input_block_reason(message)
+            if input_block:
+                self._emit(session, {
+                    "type": "text",
+                    "session_id": session.session_id,
+                    "content": input_block,
+                    "model": session.model,
+                })
+                self._emit_done(session, "cancelled")
+                return
+
+            def emit(event: dict) -> None:
+                if session.turn != turn:
+                    return
+                self._emit(session, event)
+
+            status = await stream_compat_turn(
+                session,
+                self.settings,
+                message=message,
+                mode=mode,
+                attachments=attachments,
+                turn=turn,
+                emit=emit,
             )
+            if session.turn != turn:
+                self._emit_done(session, "cancelled")
+            else:
+                self._emit_done(session, status)
+        except asyncio.CancelledError:
+            self._emit_done(session, "cancelled")
+            raise
+        except Exception as err:
+            self._emit_error(session, str(err))
+            self._emit_done(session, "error")
+        finally:
+            session.live_done = True
 
     async def _pump_turn(
         self,
@@ -647,8 +773,9 @@ class SessionManager:
         model: str | dict | None = None,
         mode: str = "agent",
         attachments: list[dict] | None = None,
+        provider: str | None = None,
     ) -> AsyncIterator[dict]:
-        session = await self.get_or_create(session_id, model)
+        session = await self.get_or_create(session_id, model, provider=provider)
         self._touch(session)
         await self._launch_turn(session, message, mode, attachments)
         # Follow outside launch so refresh/follow can subscribe in parallel.

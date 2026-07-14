@@ -22,38 +22,40 @@
       color: var(--text);
     }
     .wrap { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
-    .toolbar {
-      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-      margin-bottom: 28px; padding: 12px 14px;
+    .entries {
+      display: grid; gap: 10px;
+      margin-bottom: 28px; padding: 14px;
       background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     }
-    .pill {
-      display: inline-flex; align-items: center;
-      padding: 5px 10px; border-radius: 999px;
-      background: #ecfdf5; color: #047857; font-size: 12px; font-weight: 600;
+    .entries-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
     }
-    .model-picker {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px;
-      background: #fff; color: var(--muted); font-size: 13px;
+    .entry {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px 14px; background: #fff; color: var(--text);
+      font: 600 15px/1.2 inherit; cursor: pointer; text-decoration: none;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease;
     }
-    .model-picker select {
-      border: 0; background: transparent; color: var(--text);
-      font: inherit; font-weight: 600; outline: none; cursor: pointer;
+    .entry:hover {
+      border-color: rgba(0,0,0,.18);
+      box-shadow: 0 8px 20px rgba(0,0,0,.05);
+      transform: translateY(-1px);
     }
-    .btn {
-      border: 0; border-radius: 999px; padding: 8px 14px;
-      background: #0d0d0d; color: #fff; font: 600 13px/1.2 inherit; cursor: pointer;
-      margin-left: auto;
+    .entry:focus-visible { outline: 2px solid #10a37f; outline-offset: 2px; }
+    .entry-mark {
+      flex: 0 0 28px; width: 28px; height: 28px;
+      display: grid; place-items: center;
     }
-    .btn:hover { background: #2a2a2a; }
+    .entry-mark svg { width: 28px; height: 28px; display: block; }
     h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.2; }
     .lead { margin: 0 0 28px; color: var(--muted); }
     h2 {
       margin: 32px 0 12px; font-size: 18px; line-height: 1.3;
       padding-top: 8px; border-top: 1px solid var(--line);
     }
-    h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
     p, li { color: var(--text); }
     p { margin: 0 0 12px; }
     ul, ol { margin: 0 0 12px; padding-left: 1.25em; }
@@ -79,185 +81,156 @@
     }
     th { background: #fafafa; font-weight: 600; }
     .muted { color: var(--muted); }
-    @media (max-width: 640px) {
+    @media (max-width: 560px) {
       .wrap { padding: 24px 16px 64px; }
       h1 { font-size: 26px; }
-      .btn { margin-left: 0; }
+      .entries-row { grid-template-columns: 1fr; }
     }
   </style>
-  <script>
-    window.__aiAgentModelOptions = __AI_AGENT_MODEL_CACHE__;
-  </script>
 </head>
 <body>
-  <script src="/static/widget.js?v=restore32"></script>
   <div class="wrap">
-    <div class="toolbar">
-      <span class="pill" id="health-status">本地</span>
-      <label class="model-picker">
-        <span>模型</span>
-        <select id="model-select">
-          __AI_AGENT_MODEL_OPTIONS__
-        </select>
-      </label>
-      <button class="btn" id="open-widget" type="button">打开聊天</button>
+    <div class="entries">
+      <div class="entries-row">
+        <a class="entry" href="/cursor" aria-label="Cursor">
+          <span class="entry-mark" aria-hidden="true">
+            <!-- Cursor-like mark (simplified) -->
+            <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="28" height="28" rx="8" fill="#0d0d0d"/>
+              <path d="M8 7.5 L8 20.5 L12.2 16.8 L15.1 22.2 L17.6 20.9 L14.6 15.2 L20 15.2 Z" fill="#fff"/>
+            </svg>
+          </span>
+          <span>Cursor</span>
+        </a>
+        <button type="button" class="entry" id="entry-openai" aria-label="OpenAI">
+          <span class="entry-mark" aria-hidden="true">
+            <svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+              <rect width="28" height="28" rx="8" fill="#0d0d0d"/>
+              <g fill="#fff" transform="translate(4.5 4.5) scale(0.79)">
+                <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.911 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.182a5.985 5.985 0 0 0-3.526 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .511 4.91 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.989 5.989 0 0 0 3.519-2.9 6.056 6.056 0 0 0-.748-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.875-1.041l.142-.08 4.778-2.759a.795.795 0 0 0 .393-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.496 4.494zm-9.661-4.125a4.471 4.471 0 0 1-.535-3.014l.142.085 4.783 2.758a.771.771 0 0 0 .781 0l5.843-3.368v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.499 4.499 0 0 1-6.141-1.646zM2.341 7.896a4.485 4.485 0 0 1 2.365-1.973V11.6a.766.766 0 0 0 .388.676l5.814 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.0 14.012A4.504 4.504 0 0 1 2.341 7.872zm16.596 3.856L13.104 8.364 15.12 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.104v-5.677a.79.79 0 0 0-.408-.667zm2.011-3.023-.142-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.499 4.499 0 0 1 6.68 4.66zM8.307 12.863l-2.02-1.164a.08.08 0 0 1-.038-.057V6.074a4.499 4.499 0 0 1 7.376-3.454l-.142.081-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365a2.95 2.95 0 0 1 2.55 0l3.029 1.75v3.5l-3.029 1.75a2.95 2.95 0 0 1-2.55 0l-3.029-1.75v-3.5z"/>
+              </g>
+            </svg>
+          </span>
+          <span>OpenAI</span>
+        </button>
+        <button type="button" class="entry" id="entry-deepseek" aria-label="DeepSeek">
+          <span class="entry-mark" aria-hidden="true">
+            <!-- DeepSeek whale mark -->
+            <svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+              <rect width="28" height="28" rx="8" fill="#4d6bfe"/>
+              <path fill="#fff" transform="translate(2 2) scale(1)" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 01-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 00-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 01-.465.137 9.597 9.597 0 00-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 001.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 011.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 01.415-.287.302.302 0 01.2.288.306.306 0 01-.31.307.303.303 0 01-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 01-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 01.016-.588c.07-.327-.008-.537-.239-.727-.187-.156-.426-.199-.688-.199a.559.559 0 01-.254-.078c-.11-.054-.2-.19-.114-.358.028-.054.16-.186.192-.21.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.391.451.462.576.685.914.176.265.336.537.445.848.067.195-.019.354-.25.452z"/>
+            </svg>
+          </span>
+          <span>DeepSeek</span>
+        </button>
+      </div>
     </div>
 
     <h1>Ai-agent</h1>
-    <p class="lead">可嵌入任意项目的 Cursor Agent sidecar。clone 到宿主项目根目录后启动本地服务，在网页注入聊天侧边栏，Agent 直接读写宿主项目代码。</p>
+    <p class="lead">本地浏览器里的 Coding Agent 控制台。Cursor 走云端 SDK；OpenAI / DeepSeek 走兼容 API + 本地工具。</p>
 
     <h2>环境要求</h2>
     <ul>
-      <li><strong>Python 3.10+</strong>（cursor-sdk 硬性要求）</li>
+      <li><strong>Python 3.10+</strong>（cursor-sdk 要求）</li>
       <li>Cursor API Key（<a href="https://cursor.com/dashboard/integrations" target="_blank" rel="noopener">Integrations</a>）</li>
     </ul>
 
     <h2>快速开始</h2>
-    <pre><code># 1. 放入宿主项目
-cd /path/to/your-project
-git clone &lt;this-repo-url&gt; Ai-agent
-
-# 2. 创建 conda 环境并安装依赖
+    <pre><code>git clone &lt;this-repo-url&gt; Ai-agent
 cd Ai-agent
+
 conda create -n ai-agent python=3.10 -y
 conda activate ai-agent
 pip install -r requirements.txt
 
-# 3. 配置
 cp .env.example .env
 # 编辑 .env，填入 CURSOR_API_KEY
 
-# 4. 启动
 ./run.sh</code></pre>
 
-    <p>自检（不依赖 API Key）：</p>
-    <pre><code>conda activate ai-agent
-python -m backend.check</code></pre>
+    <p>自检：</p>
+    <pre><code>python -m backend.check</code></pre>
 
-    <p>确认服务正常：</p>
-    <pre><code>curl http://127.0.0.1:8765/api/health</code></pre>
+    <p>浏览器：</p>
+    <pre><code>http://127.0.0.1:8765/       # 本页
+http://127.0.0.1:8765/cursor # Cursor</code></pre>
 
-    <p class="muted">本页即服务首页：<code>http://127.0.0.1:8765/</code></p>
+    <p class="muted">Agent 默认工作区是本仓库（<code>host_project_root: "."</code>）。要改其它目录，编辑 <code>config.yaml</code>。</p>
 
-    <h2>嵌入宿主项目前端</h2>
-    <p>在宿主 HTML 模板的 <code>&lt;/body&gt;</code> 前加一行：</p>
-    <pre><code>&lt;script src="http://&lt;ai-agent-host&gt;:8765/static/widget.js"&gt;&lt;/script&gt;</code></pre>
-
-    <p>跨域时显式传 <code>data-api-base</code>：</p>
-    <pre><code>&lt;script
-  src="http://&lt;ai-agent-host&gt;:8765/static/widget.js"
-  data-api-base="http://&lt;ai-agent-host&gt;:8765"
-&gt;&lt;/script&gt;</code></pre>
-
-    <p>刷新宿主页后右下角出现 AI 按钮，展开侧边栏即可对话（支持图片上传）。</p>
-
-    <p>纯后端也可直接调 API：</p>
-    <pre><code>curl -X POST http://&lt;ai-agent-host&gt;:8765/api/chat \
+    <h2>HTTP API</h2>
+    <pre><code>curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"列出项目顶层目录结构"}'</code></pre>
+  -d '{"message":"列出工作区顶层目录"}'</code></pre>
 
     <h2>配置说明</h2>
-    <p><code>config.yaml</code>：</p>
     <table>
       <thead>
         <tr><th>字段</th><th>说明</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>host_project_root</code></td><td>宿主项目根目录，相对 Ai-agent 目录</td></tr>
-        <tr><td><code>server.host</code> / <code>server.port</code></td><td>本地服务地址，默认 <code>127.0.0.1:8765</code></td></tr>
-        <tr><td><code>agent.model</code></td><td>Cursor 模型，默认 <code>composer-2.5</code></td></tr>
-        <tr><td><code>agent.runtime</code></td><td><code>local</code>（本机改代码）或 <code>cloud</code></td></tr>
-        <tr><td><code>agent.cloud.repo_url</code></td><td>cloud 模式下的 GitHub 仓库 URL</td></tr>
+        <tr><td><code>host_project_root</code></td><td>Agent 工作区根目录，相对本仓库；默认 <code>"."</code></td></tr>
+        <tr><td><code>server.host</code> / <code>server.port</code></td><td>服务地址，默认 <code>0.0.0.0:8765</code></td></tr>
+        <tr><td><code>agent.provider</code></td><td><code>cursor</code> / <code>openai</code> / <code>deepseek</code></td></tr>
+        <tr><td><code>agent.model</code></td><td>默认 <code>composer-2.5</code></td></tr>
+        <tr><td><code>agent.runtime</code></td><td><code>local</code> 或 <code>cloud</code></td></tr>
       </tbody>
     </table>
 
-    <h2>API</h2>
+    <h2>路由</h2>
     <ul>
+      <li><code>GET /</code> — 本页</li>
+      <li><code>GET /cursor</code> — Cursor 对话</li>
+      <li><code>GET /openai</code> — OpenAI Agent</li>
+      <li><code>GET /deepseek</code> — DeepSeek Agent</li>
       <li><code>GET /api/health</code> — 健康检查</li>
-      <li><code>GET /</code> — 本页（部署说明）</li>
-      <li><code>POST /api/chat</code> — 同步对话</li>
-      <li><code>POST /api/chat/stream</code> — SSE 流式对话（widget 使用）</li>
-      <li><code>GET /static/widget.js</code> — 可嵌入前端组件（由 <code>frontend/js/*.js</code> 拼接）</li>
+      <li><code>POST /api/chat</code> / <code>/api/chat/stream</code> — 对话（body 可带 <code>provider</code>）</li>
     </ul>
 
-    <h2>安全提示</h2>
+    <h2>安全</h2>
     <ul>
-      <li>默认绑定便于局域网联调；公网请改回 <code>127.0.0.1</code></li>
-      <li>Agent 可读写宿主项目并执行命令，仅用于本地开发</li>
-      <li><code>CURSOR_API_KEY</code> 不要提交到 git</li>
+      <li>Agent 可读写工作区并执行命令，仅建议本机使用</li>
+      <li>公网请改绑 <code>127.0.0.1</code>；勿提交 API Key</li>
     </ul>
 
-    <h2>目录结构</h2>
+    <h2>目录</h2>
     <pre><code>Ai-agent/
-├── backend/          # FastAPI + Cursor SDK
+├── backend/
 ├── frontend/
 │   ├── index.html
-│   └── js/           # 侧边栏源码，/static/widget.js 运行时拼接
+│   ├── cursor.html
+│   ├── openai.html
+│   ├── deepseek.html
+│   └── js/
 ├── config.yaml
 ├── .env.example
-├── requirements.txt
 ├── start.py
 └── run.sh</code></pre>
   </div>
 
   <script>
-    var modelSelect = document.getElementById("model-select");
-    var selectedModel = modelSelect.value || "composer-2.5";
+    (function () {
+      var KEY_ENV = { openai: "OPENAI_API_KEY", deepseek: "DEEPSEEK_API_KEY" };
+      var PATH = { openai: "/openai", deepseek: "/deepseek" };
 
-    function renderLandingModels(options) {
-      if (!Array.isArray(options) || !options.length) return;
-      var previous = selectedModel;
-      modelSelect.innerHTML = "";
-      options.forEach(function (model) {
-        if (!model || !model.id) return;
-        var option = document.createElement("option");
-        option.value = model.id;
-        option.textContent = model.display_name || model.label || model.id;
-        modelSelect.appendChild(option);
-      });
-      var values = Array.prototype.map.call(modelSelect.options, function (o) { return o.value; });
-      selectedModel = values.indexOf(previous) >= 0 ? previous : (values[0] || "composer-2.5");
-      modelSelect.value = selectedModel;
-      if (typeof window.__aiAgentSetModel === "function") {
-        window.__aiAgentSetModel(selectedModel);
+      function onEntry(id) {
+        fetch("/api/health")
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (health) {
+            var hasKey = !!(health && health.keys && health.keys[id]);
+            if (!hasKey) {
+              alert("未配置 " + KEY_ENV[id] + "。\n请在 .env 中填写后重启服务。");
+              return;
+            }
+            window.location.href = PATH[id];
+          })
+          .catch(function () {
+            alert("无法连接服务，请确认已启动 ./run.sh");
+          });
       }
-    }
 
-    window.addEventListener("ai-agent-models-updated", function (event) {
-      renderLandingModels(event.detail && event.detail.model_options);
-    });
-
-    function ensureWidget(thenOpen) {
-      if (document.getElementById("ai-agent-trigger")) {
-        if (thenOpen) {
-          var trigger = document.getElementById("ai-agent-trigger");
-          if (trigger) trigger.click();
-        }
-        return;
-      }
-      var script = document.createElement("script");
-      script.src = "/static/widget.js?v=restore32";
-      script.setAttribute("data-default-model", selectedModel);
-      if (thenOpen) {
-        script.onload = function () {
-          var trigger = document.getElementById("ai-agent-trigger");
-          if (trigger) trigger.click();
-        };
-      }
-      document.body.appendChild(script);
-    }
-
-    document.getElementById("open-widget").addEventListener("click", function () {
-      ensureWidget(true);
-    });
-
-    modelSelect.addEventListener("change", function (e) {
-      selectedModel = e.target.value;
-      if (typeof window.__aiAgentSetModel === "function") {
-        window.__aiAgentSetModel(selectedModel);
-      }
-    });
-    // ponytail: no boot /api/health — offline/key errors show on send.
+      document.getElementById("entry-openai").onclick = function () { onEntry("openai"); };
+      document.getElementById("entry-deepseek").onclick = function () { onEntry("deepseek"); };
+    })();
   </script>
 </body>
 </html>

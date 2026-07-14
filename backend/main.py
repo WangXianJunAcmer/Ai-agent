@@ -106,9 +106,14 @@ async def _sse_from_worker(factory: Callable[[], AsyncIterator[dict]]) -> AsyncI
         loop.call_soon_threadsafe(_cancel_follow)
 
 
-def _resolve_model(model_id: str | None) -> str | dict:
-    """Warm catalog once if empty, then expand id → SDK model selection."""
-    get_model_options(settings["api_key"])  # no-op when already cached
+def _resolve_model(model_id: str | None, *, provider: str = "cursor") -> str | dict:
+    """Warm catalog once if empty, then expand id → SDK model selection (Cursor only)."""
+    if provider in {"openai", "deepseek"}:
+        from backend.providers.compat_agent import default_model
+
+        mid = (model_id or "").strip() or default_model(provider)
+        return mid
+    get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
     return resolve_model_selection(model_id, settings.get("model", "composer-2.5"))
 
 
@@ -143,6 +148,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     model: str | None = None
     mode: str | None = None
+    # cursor | openai | deepseek — omitted → config.yaml agent.provider
+    provider: str | None = None
     images: list[AttachmentPayload] | None = None
     files: list[AttachmentPayload] | None = None
 
@@ -154,6 +161,12 @@ class ChatRequest(BaseModel):
 
     def resolved_mode(self) -> str:
         return self.mode if self.mode in {"agent", "plan"} else "agent"
+
+    def resolved_provider(self) -> str:
+        from backend.providers import normalize_provider
+
+        return normalize_provider(self.provider or settings.get("provider"))
+
 
 
 class CancelRequest(BaseModel):
@@ -190,11 +203,17 @@ def build_widget_js() -> str:
     return "\n".join(chunks)
 
 
-@app.get("/")
-async def index():
-    options = get_model_options(settings["api_key"])
+def _inject_page(name: str, *, provider: str = "cursor") -> Response:
+    """Serve an HTML page with model catalog placeholders filled."""
+    from backend.providers.compat_agent import default_model, model_options
+
+    if provider in {"openai", "deepseek"}:
+        options = model_options(provider)
+        selected = default_model(provider)
+    else:
+        options = get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
+        selected = str(settings.get("model", "composer-2.5"))
     cache_json = json.dumps(options, ensure_ascii=False).replace("<", "\\u003c")
-    selected = settings.get("model", "composer-2.5")
     option_html = "\n".join(
         (
             f'<option value="{html.escape(str(item["id"]), quote=True)}"'
@@ -203,10 +222,43 @@ async def index():
         )
         for item in options
     )
-    page = (frontend_dir / "index.html").read_text(encoding="utf-8")
+    page = (frontend_dir / name).read_text(encoding="utf-8")
     page = page.replace("__AI_AGENT_MODEL_CACHE__", cache_json)
     page = page.replace("__AI_AGENT_MODEL_OPTIONS__", option_html)
+    page = page.replace("__AI_AGENT_DEFAULT_MODEL__", html.escape(selected, quote=True))
+    page = page.replace("__AI_AGENT_PROVIDER__", html.escape(provider, quote=True))
     return Response(page, media_type="text/html; charset=utf-8")
+
+
+@app.get("/")
+async def index():
+    return _inject_page("index.html")
+
+
+@app.get("/cursor")
+async def cursor_page():
+    """Dedicated Cursor fullscreen chat (no floating sidebar trigger)."""
+    return _inject_page("cursor.html", provider="cursor")
+
+
+@app.get("/openai")
+async def openai_page():
+    if not settings.get("openai_api_key"):
+        raise HTTPException(
+            status_code=503,
+            detail="OPENAI_API_KEY is not set. Add it to .env and restart.",
+        )
+    return _inject_page("openai.html", provider="openai")
+
+
+@app.get("/deepseek")
+async def deepseek_page():
+    if not settings.get("deepseek_api_key"):
+        raise HTTPException(
+            status_code=503,
+            detail="DEEPSEEK_API_KEY is not set. Add it to .env and restart.",
+        )
+    return _inject_page("deepseek.html", provider="deepseek")
 
 
 @app.get("/favicon.ico")
@@ -216,28 +268,49 @@ async def favicon():
 
 @app.get("/api/health")
 async def health():
+    from backend.providers import describe_provider
+
     return {
         "ok": True,
         "boot_id": BOOT_ID,
         "host_root": str(settings["host_root"]),
+        **describe_provider(settings),
         "runtime": settings["runtime"],
         "model": settings["model"],
         "allow_repo_write": settings.get("allow_repo_write", True),
         "safety_enabled": settings.get("safety_enabled", True),
-        "model_options": get_model_options(settings["api_key"]),
+        # Booleans only — never echo secret values.
+        "keys": {
+            "cursor": bool(settings.get("cursor_api_key")),
+            "openai": bool(settings.get("openai_api_key")),
+            "deepseek": bool(settings.get("deepseek_api_key")),
+        },
+        "model_options": get_model_options(
+            settings.get("cursor_api_key") or settings.get("api_key") or ""
+        ),
     }
 
 
 @app.get("/api/models/refresh")
-async def refresh_models():
-    """Hit Cursor.models.list (off the event loop) and report whether the catalog changed."""
-    before = get_model_options(settings["api_key"])
+async def refresh_models(provider: str = "cursor"):
+    """Refresh model catalog. Cursor hits remote list; OpenAI/DeepSeek return static lists."""
+    from backend.providers import normalize_provider
+    from backend.providers.compat_agent import model_options
+
+    prov = normalize_provider(provider)
+    if prov in {"openai", "deepseek"}:
+        options = model_options(prov)
+        return {"changed": False, "model_options": options, "provider": prov}
+    before = get_model_options(settings.get("cursor_api_key") or settings.get("api_key") or "")
     after = await asyncio.to_thread(
-        get_model_options, settings["api_key"], refresh=True
+        get_model_options,
+        settings.get("cursor_api_key") or settings.get("api_key") or "",
+        refresh=True,
     )
     return {
         "changed": after != before,
         "model_options": after,
+        "provider": "cursor",
     }
 
 
@@ -254,19 +327,26 @@ def _attachment_dicts(items: list[AttachmentPayload] | None) -> list[dict] | Non
     ]
 
 
-def _parse_chat(req: ChatRequest) -> tuple[str, list[dict] | None, str | dict, str]:
+def _parse_chat(req: ChatRequest) -> tuple[str, list[dict] | None, str | dict, str, str]:
     prompt = req.prompt_text()
     attachments = _attachment_dicts(req.attachment_list())
     if not prompt and not attachments:
         raise HTTPException(status_code=422, detail="message/text or files/images is required")
-    return prompt, attachments, _resolve_model(req.model), req.resolved_mode()
+    provider = req.resolved_provider()
+    return (
+        prompt,
+        attachments,
+        _resolve_model(req.model, provider=provider),
+        req.resolved_mode(),
+        provider,
+    )
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    prompt, attachments, model, mode = _parse_chat(req)
+    prompt, attachments, model, mode, provider = _parse_chat(req)
     result = await _worker_await(
-        sessions.send(req.session_id, prompt, model, mode, attachments)
+        sessions.send(req.session_id, prompt, model, mode, attachments, provider=provider)
     )
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
@@ -302,11 +382,13 @@ async def chat_follow(req: FollowRequest):
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
-    prompt, attachments, model, mode = _parse_chat(req)
+    prompt, attachments, model, mode, provider = _parse_chat(req)
 
     async def event_gen():
         async for chunk in _sse_from_worker(
-            lambda: sessions.stream(req.session_id, prompt, model, mode, attachments)
+            lambda: sessions.stream(
+                req.session_id, prompt, model, mode, attachments, provider=provider
+            )
         ):
             yield chunk
 

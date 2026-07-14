@@ -362,9 +362,11 @@
       inputField.placeholder = "添加后续消息";
       return;
     }
+    var selected = modelField.value || defaultModel;
+    var target = selected === "auto" ? "自动选择的模型" : modelLabelFor(selected);
     inputField.placeholder = isPlan
-      ? "描述你想先规划的问题"
-      : "给 Ai-agent 发送消息";
+      ? "让 " + target + " 先规划这个问题"
+      : "给 " + target + " 发送消息";
   }
 
   function enqueueCurrentCompose() {
@@ -423,6 +425,7 @@
           session_id: sessionId || null,
           model: item.model,
           mode: item.mode || "agent",
+          provider: provider,
           images: uploadPayload.images.length ? uploadPayload.images : null,
           files: uploadPayload.files.length ? uploadPayload.files : null,
         }),
@@ -545,7 +548,7 @@
   function applyStreamPayload(agentMsg, payload, state) {
     if (payload.session_id) {
       sessionId = payload.session_id;
-      localStorage.setItem("ai-agent-session-id", sessionId);
+      localStorage.setItem(sessionStorageKey, sessionId);
       if (isRunning) flushChatHistory({ streaming: true });
     }
 
@@ -1046,7 +1049,7 @@
     clearPendingFiles(true);
     renderQueue();
     sessionId = "";
-    localStorage.removeItem("ai-agent-session-id");
+    localStorage.removeItem(sessionStorageKey);
     clearChatHistory();
     stoppedAgentMsg = null;
     leaveEditMode();
@@ -1072,7 +1075,7 @@
           var prev = serverBootId || "";
           if (prev && prev !== boot) {
             sessionId = "";
-            try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
+            try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
             bootRestoredStreaming = false;
             serverBootId = boot;
             flushChatHistory({ streaming: false });

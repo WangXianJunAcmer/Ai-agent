@@ -454,7 +454,7 @@
     truncateThreadFrom(msg);
     stoppedAgentMsg = null;
     sessionId = "";
-    try { localStorage.removeItem("ai-agent-session-id"); } catch (err) {}
+    try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
     renderQueue();
     updateEmptyState();
     scheduleSaveChatHistory();

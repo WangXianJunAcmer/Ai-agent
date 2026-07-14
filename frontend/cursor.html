@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ai-agent · Cursor</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #fff; }
+    .boot {
+      position: fixed; inset: 0; display: grid; place-items: center;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #6b6b6b;
+    }
+  </style>
+  <script>
+    window.__aiAgentModelOptions = __AI_AGENT_MODEL_CACHE__;
+  </script>
+</head>
+<body>
+  <div class="boot" id="boot">正在打开 Cursor…</div>
+  <script
+    src="/static/widget.js?v=brand2"
+    data-layout="fullscreen"
+    data-provider="cursor"
+    data-default-model="__AI_AGENT_DEFAULT_MODEL__"
+  ></script>
+  <script>
+    (function () {
+      var boot = document.getElementById("boot");
+      function hide() {
+        if (boot) boot.style.display = "none";
+      }
+      if (document.getElementById("ai-agent-sidebar")) hide();
+      else {
+        var n = 0;
+        var t = setInterval(function () {
+          n += 1;
+          if (document.getElementById("ai-agent-sidebar") || n > 40) {
+            clearInterval(t);
+            hide();
+          }
+        }, 50);
+      }
+    })();
+  </script>
+</body>
+</html>

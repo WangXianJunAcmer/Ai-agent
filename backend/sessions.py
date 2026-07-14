@@ -25,6 +25,8 @@ class Session:
     model: str
     model_key: str = ""
     model_selection: str | dict | None = None
+    # cursor | openai | deepseek — set at create; mismatch forces a new session.
+    provider: str = "cursor"
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_run: object | None = None
     # Bumped on cancel so a dying stream knows it was interrupted.

@@ -78,6 +78,7 @@ def check_config() -> None:
     host_root = (ROOT / cfg.get("host_project_root", "..")).resolve()
     assert host_root.is_dir(), f"host_project_root does not exist: {host_root}"
     from backend.main import _JS_PARTS, build_widget_js
+    from backend.providers import IMPLEMENTED, RESERVED, normalize_provider, require_implemented
 
     js_dir = ROOT / "frontend" / "js"
     for name in _JS_PARTS:
@@ -89,7 +90,11 @@ def check_config() -> None:
     assert "function safeMarkdownHref" in bundle, "widget bundle missing safeMarkdownHref"
     # Agent writes under cwd; reload parent watcher would kill mid-turn SSE.
     assert not bool((cfg.get("server") or {}).get("reload", False)), "server.reload must be false"
-    print(f"ok config host_root={host_root}")
+    provider = normalize_provider((cfg.get("agent") or {}).get("provider"))
+    require_implemented(provider)
+    assert provider in IMPLEMENTED
+    assert "openai" in RESERVED and "deepseek" in RESERVED
+    print(f"ok config host_root={host_root} provider={provider}")
 
 
 def check_tool_display() -> None:

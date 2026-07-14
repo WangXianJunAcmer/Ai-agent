@@ -203,7 +203,7 @@
     if (data.bootId) serverBootId = data.bootId;
     if (data.sessionId) {
       sessionId = data.sessionId;
-      try { localStorage.setItem("ai-agent-session-id", sessionId); } catch (err) {}
+      try { localStorage.setItem(sessionStorageKey, sessionId); } catch (err) {}
     }
     if (data.model) setSelectedModel(data.model, false);
     clearThreadMessages();
@@ -327,6 +327,7 @@
     }
     modelField.value = next;
     syncModelPickerUI();
+    updateModeUI();
     if (closeMenu !== false) closeModelMenu();
   }
 
@@ -358,7 +359,7 @@
       seen[model.id] = true;
       modelOptions.push(model);
     });
-    if (!seen.auto) modelOptions.unshift({ id: "auto", label: "Auto" });
+    if (providerUi.showAuto && !seen.auto) modelOptions.unshift({ id: "auto", label: "Auto" });
     var current = preferred || modelField.value || defaultModel;
     if (current !== "auto" && !seen[current]) {
       current = seen[lastManualModel] ? lastManualModel : ((function () {
@@ -387,7 +388,7 @@
   function refreshModelOptionsOnce() {
     if (modelCatalogFetched) return Promise.resolve();
     if (modelCatalogPromise) return modelCatalogPromise;
-    modelCatalogPromise = fetch(apiBase + "/api/models/refresh")
+    modelCatalogPromise = fetch(apiBase + "/api/models/refresh?provider=" + encodeURIComponent(provider))
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (refreshed) {
         modelCatalogFetched = true;
@@ -452,11 +453,12 @@
   }
 
   function setFullscreen(on) {
+    if (hubFullscreen) on = true; // hub Cursor UI stays full-bleed
     sidebar.classList.toggle("is-fullscreen", !!on);
     trigger.classList.toggle("is-hidden", !!on && sidebar.classList.contains("open"));
     fullscreenBtn.title = on ? "退出全屏" : "全屏";
     fullscreenBtn.setAttribute("aria-pressed", on ? "true" : "false");
-    localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, on ? "1" : "0");
+    if (!hubFullscreen) localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, on ? "1" : "0");
     syncBackdrop();
     syncPageScrollLock();
     updateEmptyState();
@@ -465,12 +467,19 @@
   function openSidebar() {
     sidebar.classList.add("open");
     if (isFullscreen()) trigger.classList.add("is-hidden");
-    try { localStorage.setItem(SIDEBAR_OPEN_KEY, "1"); } catch (err) {}
+    if (!hubFullscreen) {
+      try { localStorage.setItem(SIDEBAR_OPEN_KEY, "1"); } catch (err) {}
+    }
     syncBackdrop();
     syncPageScrollLock();
   }
 
   function closeSidebar() {
+    if (hubFullscreen) {
+      // Back to provider hub on the home page.
+      window.location.href = "/";
+      return;
+    }
     sidebar.classList.remove("open");
     backdrop.classList.remove("open");
     trigger.classList.remove("is-hidden");
