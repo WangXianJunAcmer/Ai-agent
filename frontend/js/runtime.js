@@ -395,17 +395,6 @@
       : "给 " + target + " 发送消息";
   }
 
-  function isGptFamilyModel() {
-    // Match backend tool_display.is_gpt_family — only these coalesce thinking.
-    var picked = String((modelField && modelField.value) || "").toLowerCase();
-    var resolved = String(typeof autoResolvedModel !== "undefined" ? autoResolvedModel : "").toLowerCase();
-    var id = (!picked || picked === "auto" || picked === "default") ? resolved : picked;
-    if (!id) id = resolved;
-    if (!id) return false;
-    if (id.indexOf("gpt") >= 0 || id.indexOf("chatgpt") >= 0) return true;
-    return /^o[1-9]/.test(id);
-  }
-
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
@@ -638,11 +627,11 @@
         paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
       });
     } else if (payload.type === "thinking") {
-      // Seal on completed for non-GPT. GPT (Cursor) fires completed per token —
-      // backend drops those; if one slips through, still don't seal here.
+      // Seal on completed (one burst → one Thought card). Probe showed GPT and
+      // Claude both get ~1 thinking-completed per burst; per-word spam was from
+      // sealing every thinking-message, which no longer emits completed.
       if (payload.completed) {
-        if (!isGptFamilyModel()) finalizeThoughtCard(agentMsg);
-        scheduleSaveChatHistory();
+        finalizeThoughtCard(agentMsg);
       } else {
         rememberActivity(agentMsg, "Thinking");
         updateRunState(currentActivityTitle(agentMsg));
@@ -650,8 +639,8 @@
           beginToolSegment(agentMsg);
         }
         noteThinking(agentMsg, payload.content || "");
-        scheduleSaveChatHistory();
       }
+      scheduleSaveChatHistory();
     } else if (payload.type === "tool_call") {
       var summary = payload.summary || {};
       var toolView = buildToolPresentation(payload, summary);
