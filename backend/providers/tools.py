@@ -36,7 +36,12 @@ def _safe_resolve(host_root: Path, path: str) -> Path | str:
         return str(err)
 
 
-def make_tool_kit(settings: dict, *, allow_write: bool) -> tuple[list[dict], dict[str, Callable[..., str]]]:
+def make_tool_kit(
+    settings: dict,
+    *,
+    allow_write: bool,
+    tracker=None,
+) -> tuple[list[dict], dict[str, Callable[..., str]]]:
     """Return (OpenAI tools schemas, name → executor)."""
     host_root = Path(settings["host_root"]).resolve()
 
@@ -44,6 +49,10 @@ def make_tool_kit(settings: dict, *, allow_write: bool) -> tuple[list[dict], dic
         return repo_write_block_reason(settings, name, args) or sensitive_tool_block_reason(
             name, args
         )
+
+    def _track(path: str) -> None:
+        if tracker is not None:
+            tracker.mark_touched(path)
 
     def read_file(path: str) -> str:
         blocked = _block("read", {"path": path})
@@ -134,8 +143,11 @@ def make_tool_kit(settings: dict, *, allow_write: bool) -> tuple[list[dict], dic
         target = _safe_resolve(host_root, path)
         if isinstance(target, str):
             return target
+        if tracker is not None:
+            tracker.snapshot_before(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        _track(path)
         return f"wrote {len(content)} chars to {path}"
 
     def str_replace(path: str, old_string: str, new_string: str) -> str:
@@ -149,10 +161,13 @@ def make_tool_kit(settings: dict, *, allow_write: bool) -> tuple[list[dict], dic
             return target
         if not target.is_file():
             return f"not a file: {path}"
+        if tracker is not None:
+            tracker.snapshot_before(path)
         text = target.read_text(encoding="utf-8")
         if old_string not in text:
             return "old_string not found"
         target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
+        _track(path)
         return f"updated {path}"
 
     def run_shell(command: str) -> str:

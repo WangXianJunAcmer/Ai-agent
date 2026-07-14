@@ -1,6 +1,6 @@
 # Ai-agent
 
-本地浏览器里的 **Coding Agent 控制台**。首页可选择 Cursor / OpenAI / DeepSeek；支持文本与图片附件，以及 thinking、tool_call、planning 等过程展示。
+本地浏览器里的 **Coding Agent 控制台**。首页可选择 Cursor / OpenAI / DeepSeek；支持文本与图片附件，以及 thinking、tool_call、summary 等过程展示。
 
 - **Cursor**：云端/SDK Agent（`cursor-sdk`）
 - **OpenAI / DeepSeek**：本机 **openai SDK**（兼容 HTTP）+ 本地工具循环（读/写/grep/shell）
@@ -21,7 +21,7 @@ conda activate ai-agent
 pip install -r requirements.txt
 
 cp .env.example .env
-# 编辑 .env，填入所需 API Key（当前 Cursor 路径使用 CURSOR_API_KEY）
+# 编辑 .env，按需填入 CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY
 
 ./run.sh
 ```
@@ -104,6 +104,8 @@ Ai-agent/
 ├── frontend/
 │   ├── index.html
 │   ├── cursor.html
+│   ├── openai.html
+│   ├── deepseek.html
 │   └── js/
 ├── config.yaml
 ├── .env.example

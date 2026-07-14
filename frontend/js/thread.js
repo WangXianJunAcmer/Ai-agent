@@ -101,6 +101,7 @@
         thinkingStartedAt: 0,
         thinkingDetail: "",
         thinkingTimer: null,
+        thinkingPaused: false,
         planningDetail: "",
         sealedReplyLen: 0,
         interimSkipLen: 0,
@@ -436,11 +437,13 @@
     var files = (msg.__editFiles || []).slice();
     if (!text && !files.length) return;
 
+    var think = deepseekThinkOpts();
     var item = {
       id: "q-" + (++queueSeq),
       text: text,
       model: msg.__editModel || modelField.value,
       mode: (modeSel && modeSel.value) || msg.__editMode || modeField.value,
+      thinking: think.thinking,
       files: files,
     };
 
@@ -784,16 +787,157 @@
   function makeDiffHtml(diffItems) {
     if (!diffItems || !diffItems.length) return "";
     return diffItems.map(function (item) {
-      var lines = ['<div class="ai-agent-diff">', '<div class="ai-agent-diff-path">' + escapeHtml(item.path || "changed file") + "</div>"];
+      var path = escapeHtml(item.path || "");
+      var lines = "";
       (item.removed || []).forEach(function (line) {
-        lines.push('<span class="ai-agent-diff-line removed">- ' + escapeHtml(line) + "</span>");
+        lines += '<span class="ai-agent-diff-line removed">- ' + escapeHtml(line) + "</span>";
       });
       (item.added || []).forEach(function (line) {
-        lines.push('<span class="ai-agent-diff-line added">+ ' + escapeHtml(line) + "</span>");
+        lines += '<span class="ai-agent-diff-line added">+ ' + escapeHtml(line) + "</span>";
       });
-      lines.push("</div>");
-      return lines.join("");
+      if (!lines) return "";
+      return (
+        '<div class="ai-agent-diff">' +
+          (path ? '<div class="ai-agent-diff-path">' + path + "</div>" : "") +
+          lines +
+        "</div>"
+      );
     }).join("");
+  }
+
+  function renderTurnChanges(msg, payload) {
+    if (!msg || !payload) return null;
+    var files = payload.files || [];
+    if (!files.length) return null;
+    var main = msg.querySelector(".ai-agent-msg-main");
+    if (!main) return null;
+    var existing = main.querySelector(".ai-agent-turn-changes");
+    if (existing) existing.remove();
+
+    var panel = document.createElement("div");
+    panel.className = "ai-agent-turn-changes is-open";
+    panel.setAttribute("data-turn-id", payload.turn_id || "");
+    var add = Number(payload.additions || 0);
+    var del = Number(payload.deletions || 0);
+    var undoable = !!payload.undoable && !payload.undone;
+    var header = document.createElement("div");
+    header.className = "ai-agent-turn-changes-header";
+    header.innerHTML =
+      '<span class="ai-agent-turn-changes-chevron" aria-hidden="true"></span>' +
+      '<span class="ai-agent-turn-changes-title">更改了 ' + files.length + " 个文件</span>" +
+      '<span class="ai-agent-turn-changes-stats">' +
+        '<span class="add">+' + add + "</span> · " +
+        '<span class="del">-' + del + "</span>" +
+      "</span>" +
+      '<span class="ai-agent-turn-changes-actions"></span>';
+    var actions = header.querySelector(".ai-agent-turn-changes-actions");
+    if (payload.turn_id && (undoable || payload.undone)) {
+      var undoBtn = document.createElement("button");
+      undoBtn.type = "button";
+      undoBtn.className = "ai-agent-turn-undo" + (payload.undone ? " is-done" : "");
+      undoBtn.textContent = payload.undone ? "已撤销" : "撤销更改";
+      undoBtn.disabled = !!payload.undone;
+      undoBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (undoBtn.disabled || !sessionId) return;
+        undoBtn.disabled = true;
+        undoBtn.textContent = "撤销中…";
+        fetch(apiBase + "/api/chat/undo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, turn_id: payload.turn_id }),
+        })
+          .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+          .then(function (out) {
+            if (!out.ok) {
+              undoBtn.disabled = false;
+              undoBtn.textContent = "撤销更改";
+              alert((out.body && out.body.detail) || "撤销失败");
+              return;
+            }
+            undoBtn.classList.add("is-done");
+            undoBtn.textContent = "已撤销";
+            panel.classList.add("is-undone");
+            scheduleSaveChatHistory();
+          })
+          .catch(function () {
+            undoBtn.disabled = false;
+            undoBtn.textContent = "撤销更改";
+            alert("撤销失败：无法连接服务");
+          });
+      });
+      actions.appendChild(undoBtn);
+    }
+    header.addEventListener("click", function () {
+      panel.classList.toggle("is-open");
+    });
+    var body = document.createElement("div");
+    body.className = "ai-agent-turn-changes-body";
+    files.forEach(function (file) {
+      var row = document.createElement("div");
+      row.className = "ai-agent-turn-file";
+      var status = file.status || "modified";
+      var statusLabel = status === "created" ? "新建" : status === "deleted" ? "删除" : "修改";
+      var fa = Number(file.additions || 0);
+      var fd = Number(file.deletions || 0);
+      row.innerHTML =
+        '<div class="ai-agent-turn-file-head">' +
+          '<div class="ai-agent-turn-file-path">' + escapeHtml(file.path || "") + "</div>" +
+          '<div class="ai-agent-turn-file-meta">' + statusLabel +
+            " · <span class=\"add\">+" + fa + "</span> / <span class=\"del\">-" + fd + "</span></div>" +
+        "</div>" +
+        makeDiffHtml(file.diff || []);
+      body.appendChild(row);
+    });
+    panel.appendChild(header);
+    panel.appendChild(body);
+    main.appendChild(panel);
+    scheduleSaveChatHistory();
+    return panel;
+  }
+
+  function collectLocalTurnChanges(msg) {
+    // Cursor path: aggregate edit cards into a summary (no undo).
+    var byPath = {};
+    var cards = msg.querySelectorAll(".ai-agent-card.kind-edit");
+    for (var i = 0; i < cards.length; i++) {
+      var data = cards[i].__cardData || {};
+      var paths = data.paths || [];
+      if (!paths.length && data.title) {
+        var m = String(data.title).match(/^(?:Edited|Wrote|Editing|Writing)\s+(.+)$/);
+        if (m) paths = [m[1]];
+      }
+      paths.forEach(function (p) {
+        if (!p) return;
+        var entry = byPath[p] || {
+          path: p,
+          status: /Wrote|Writing/.test(String(data.title || "")) ? "created" : "modified",
+          additions: 0,
+          deletions: 0,
+          diff: [],
+        };
+        if (data.diff && data.diff.length) entry.diff = data.diff;
+        (data.diff || []).forEach(function (d) {
+          entry.additions += (d.added || []).length;
+          entry.deletions += (d.removed || []).length;
+        });
+        byPath[p] = entry;
+      });
+    }
+    var files = Object.keys(byPath).sort().map(function (k) { return byPath[k]; });
+    if (!files.length) return null;
+    var add = 0;
+    var del = 0;
+    files.forEach(function (f) { add += f.additions; del += f.deletions; });
+    return {
+      turn_id: "",
+      files: files,
+      file_count: files.length,
+      additions: add,
+      deletions: del,
+      undoable: false,
+      undone: false,
+    };
   }
 
   function cardHasBody(merged) {
@@ -859,6 +1003,25 @@
     }
     if (seconds <= 2) return "Thought briefly";
     return "Thought for " + seconds + "s";
+  }
+
+  // Pause the live Thought card without sealing — next reasoning_content resumes it.
+  function softPauseThinking(msg) {
+    var meta = getRunMeta(msg);
+    if (!meta.thinkingStartedAt) return;
+    if (meta.thinkingTimer) {
+      clearInterval(meta.thinkingTimer);
+      meta.thinkingTimer = null;
+    }
+    meta.thinkingPaused = true;
+    upsertCard(msg, "think-live", {
+      kind: "think",
+      title: thinkingTitle(meta, true),
+      meta: "",
+      detail: meta.thinkingDetail || "",
+      paths: [],
+      live: false,
+    });
   }
 
   // SDK may send cumulative snapshots or pure deltas; merge either shape.
@@ -1245,6 +1408,7 @@
     var elapsed = Date.now() - startedAt;
     meta.thinkingStartedAt = 0;
     meta.thinkingDetail = "";
+    meta.thinkingPaused = false;
     // Cursor: skip empty brief thoughts — no card clutter.
     if (!detail && elapsed <= 2000) {
       removeCard(msg, "think-live");
@@ -1333,6 +1497,19 @@
     if (!meta.thinkingStartedAt) {
       meta.thinkingStartedAt = Date.now();
       meta.thinkingDetail = "";
+      meta.thinkingPaused = false;
+      rememberActivity(msg, "Thinking");
+      if (!meta.thinkingTimer) {
+        meta.thinkingTimer = setInterval(function () {
+          refreshThinkingCard(msg);
+        }, 1000);
+      }
+    } else if (meta.thinkingPaused) {
+      // Resume same card after tools; separate rounds with a blank line.
+      meta.thinkingPaused = false;
+      if (chunk.trim() && meta.thinkingDetail && !/\n\n$/.test(meta.thinkingDetail)) {
+        meta.thinkingDetail += "\n\n";
+      }
       rememberActivity(msg, "Thinking");
       if (!meta.thinkingTimer) {
         meta.thinkingTimer = setInterval(function () {

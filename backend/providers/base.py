@@ -1,7 +1,7 @@
 """Provider contract: map any backend into the widget SSE event shape.
 
 Widget / SessionManager consume dict events with type in:
-  status | text | thinking | planning | tool_call | upload | model_resolved | error | done
+  status | text | thinking | summary | tool_call | upload | model_resolved | error | done
 
 # OpenAI/DeepSeek: openai SDK (compatible base_url) + local tool loop → same SSE.
 """

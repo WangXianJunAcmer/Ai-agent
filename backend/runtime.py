@@ -258,6 +258,20 @@ class SessionManager:
         session = self._sessions[session_id]
         await self._cancel_session_run(session, bump=True)
 
+    async def undo_turn(self, session_id: str | None, turn_id: str | None) -> dict:
+        """Restore files from a prior compat-agent turn snapshot."""
+        from backend.turn_changes import get_tracker
+
+        if not session_id or not turn_id or session_id not in self._sessions:
+            return {"ok": False, "error": "session or turn not found"}
+        session = self._sessions[session_id]
+        if self._session_is_busy(session):
+            return {"ok": False, "error": "agent is still running"}
+        tracker = get_tracker(session, turn_id)
+        if tracker is None:
+            return {"ok": False, "error": "undo snapshot expired or unavailable"}
+        return tracker.undo()
+
     async def _recycle_agent(self, session: Session) -> None:
         """Close the busy agent and create a fresh one (keeps session_id)."""
         await self._cancel_session_run(session, bump=False)
@@ -303,12 +317,21 @@ class SessionManager:
         mode: str = "agent",
         attachments: list[dict] | None = None,
         provider: str | None = None,
+        thinking: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> dict:
         session = await self.get_or_create(session_id, model, provider=provider)
         self._touch(session)
         if session.provider in COMPAT_PROVIDERS:
             # Collect streamed turn into a sync reply.
-            await self._launch_turn(session, message, mode, attachments)
+            await self._launch_turn(
+                session,
+                message,
+                mode,
+                attachments,
+                thinking=thinking,
+                reasoning_effort=reasoning_effort,
+            )
             reply_parts: list[str] = []
             status = "finished"
             async for event in self._follow_log(session, 0):
@@ -489,6 +512,8 @@ class SessionManager:
         message: str,
         mode: str,
         attachments: list[dict] | None,
+        thinking: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         async with session.lock:
             if session.pump_task and not session.pump_task.done():
@@ -508,7 +533,15 @@ class SessionManager:
             # Detached from the HTTP request cancel scope so refresh cannot kill the run.
             if session.provider in COMPAT_PROVIDERS:
                 session.pump_task = self._spawn_pump(
-                    self._pump_lc_turn(session, message, mode, attachments, turn)
+                    self._pump_lc_turn(
+                        session,
+                        message,
+                        mode,
+                        attachments,
+                        turn,
+                        thinking=thinking,
+                        reasoning_effort=reasoning_effort,
+                    )
                 )
             else:
                 session.pump_task = self._spawn_pump(
@@ -522,6 +555,8 @@ class SessionManager:
         mode: str,
         attachments: list[dict] | None,
         turn: int,
+        thinking: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         """OpenAI-compatible tool loop → live_events (OpenAI / DeepSeek)."""
         try:
@@ -549,6 +584,8 @@ class SessionManager:
                 attachments=attachments,
                 turn=turn,
                 emit=emit,
+                thinking=thinking,
+                reasoning_effort=reasoning_effort,
             )
             if session.turn != turn:
                 self._emit_done(session, "cancelled")
@@ -666,7 +703,7 @@ class SessionManager:
                         except Exception:
                             pass
                         break
-                    if isinstance(event, dict) and event.get("type") in {"text", "thinking", "planning"}:
+                    if isinstance(event, dict) and event.get("type") in {"text", "thinking", "summary"}:
                         chunk = event.get("content") or ""
                         if not isinstance(chunk, str):
                             chunk = str(chunk) if chunk else ""
@@ -774,10 +811,19 @@ class SessionManager:
         mode: str = "agent",
         attachments: list[dict] | None = None,
         provider: str | None = None,
+        thinking: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> AsyncIterator[dict]:
         session = await self.get_or_create(session_id, model, provider=provider)
         self._touch(session)
-        await self._launch_turn(session, message, mode, attachments)
+        await self._launch_turn(
+            session,
+            message,
+            mode,
+            attachments,
+            thinking=thinking,
+            reasoning_effort=reasoning_effort,
+        )
         # Follow outside launch so refresh/follow can subscribe in parallel.
         try:
             async for event in self._follow_log(session, 0):

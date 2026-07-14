@@ -150,6 +150,9 @@ class ChatRequest(BaseModel):
     mode: str | None = None
     # cursor | openai | deepseek — omitted → config.yaml agent.provider
     provider: str | None = None
+    # DeepSeek thinking mode (ignored for other providers). Default enabled.
+    thinking: bool | None = None
+    reasoning_effort: str | None = None  # high | max (aliases mapped server-side)
     images: list[AttachmentPayload] | None = None
     files: list[AttachmentPayload] | None = None
 
@@ -167,10 +170,29 @@ class ChatRequest(BaseModel):
 
         return normalize_provider(self.provider or settings.get("provider"))
 
+    def deepseek_thinking(self) -> tuple[bool | None, str | None]:
+        """Return (thinking, effort) for DeepSeek; (None, None) otherwise.
+
+        effort is only set when the client explicitly sends reasoning_effort.
+        Otherwise omit it — API defaults high, auto-max for Agent/tool turns.
+        """
+        if self.resolved_provider() != "deepseek":
+            return None, None
+        from backend.providers.compat_agent import normalize_reasoning_effort
+
+        on = False if self.thinking is None else bool(self.thinking)
+        effort = normalize_reasoning_effort(self.reasoning_effort) if on else None
+        return on, effort
+
 
 
 class CancelRequest(BaseModel):
     session_id: str | None = None
+
+
+class UndoRequest(BaseModel):
+    session_id: str | None = None
+    turn_id: str | None = None
 
 
 class FollowRequest(BaseModel):
@@ -345,8 +367,18 @@ def _parse_chat(req: ChatRequest) -> tuple[str, list[dict] | None, str | dict, s
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     prompt, attachments, model, mode, provider = _parse_chat(req)
+    thinking, effort = req.deepseek_thinking()
     result = await _worker_await(
-        sessions.send(req.session_id, prompt, model, mode, attachments, provider=provider)
+        sessions.send(
+            req.session_id,
+            prompt,
+            model,
+            mode,
+            attachments,
+            provider=provider,
+            thinking=thinking,
+            reasoning_effort=effort,
+        )
     )
     if result.get("status") == "error" and "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])
@@ -357,6 +389,17 @@ async def chat(req: ChatRequest):
 async def cancel_chat(req: CancelRequest):
     await _worker_await(sessions.cancel(req.session_id))
     return {"ok": True}
+
+
+@app.post("/api/chat/undo")
+async def undo_chat(req: UndoRequest):
+    """Undo file changes from a tracked agent turn (OpenAI / DeepSeek)."""
+    if not req.session_id or not req.turn_id:
+        raise HTTPException(status_code=422, detail="session_id and turn_id are required")
+    result = await _worker_await(sessions.undo_turn(req.session_id, req.turn_id))
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "undo failed")
+    return result
 
 
 @app.get("/api/chat/status")
@@ -383,11 +426,19 @@ async def chat_follow(req: FollowRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     prompt, attachments, model, mode, provider = _parse_chat(req)
+    thinking, effort = req.deepseek_thinking()
 
     async def event_gen():
         async for chunk in _sse_from_worker(
             lambda: sessions.stream(
-                req.session_id, prompt, model, mode, attachments, provider=provider
+                req.session_id,
+                prompt,
+                model,
+                mode,
+                attachments,
+                provider=provider,
+                thinking=thinking,
+                reasoning_effort=effort,
             )
         ):
             yield chunk

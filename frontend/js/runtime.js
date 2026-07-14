@@ -338,6 +338,34 @@
     sendBtn.classList.toggle("is-queue", !!isRunning && !showStop);
   }
 
+  function formatElapsed(ms) {
+    var sec = Math.max(0, Math.floor(ms / 1000));
+    if (sec < 60) return sec + "s";
+    var min = Math.floor(sec / 60);
+    var rem = sec % 60;
+    return min + "m" + (rem < 10 ? "0" : "") + rem + "s";
+  }
+
+  function stopRunElapsedTimer() {
+    if (runElapsedTimer) {
+      clearInterval(runElapsedTimer);
+      runElapsedTimer = null;
+    }
+    runStartedAt = 0;
+  }
+
+  function startRunElapsedTimer() {
+    stopRunElapsedTimer();
+    runStartedAt = Date.now();
+    runElapsedTimer = setInterval(function () {
+      if (!isRunning) {
+        stopRunElapsedTimer();
+        return;
+      }
+      updateRunState();
+    }, 1000);
+  }
+
   function updateRunState(text) {
     var base;
     if (text) {
@@ -349,6 +377,11 @@
       base = sendQueue.length ? (core + " · 队列 " + sendQueue.length) : core;
     } else {
       base = sendQueue.length ? ("就绪 · 队列 " + sendQueue.length) : "就绪";
+    }
+    // Strip prior elapsed suffix then re-attach while running.
+    base = String(base || "").replace(/\s·\s*\d+m?\d*s\s*$/, "").trim();
+    if (isRunning && runStartedAt) {
+      base = base + " · " + formatElapsed(Date.now() - runStartedAt);
     }
     runState.textContent = base;
     runState.classList.toggle("is-busy", !!isRunning || /Thinking|Running|Explor|Planning|中/.test(String(base)));
@@ -372,11 +405,13 @@
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
+    var think = deepseekThinkOpts();
     var item = {
       id: "q-" + (++queueSeq),
       text: text,
       model: modelField.value,
       mode: modeField.value,
+      thinking: think.thinking,
       files: pendingFiles.slice(),
     };
     sendQueue.push(item);
@@ -426,6 +461,7 @@
           model: item.model,
           mode: item.mode || "agent",
           provider: provider,
+          thinking: item.thinking,
           images: uploadPayload.images.length ? uploadPayload.images : null,
           files: uploadPayload.files.length ? uploadPayload.files : null,
         }),
@@ -581,11 +617,16 @@
         scrollToBottom(false);
       }
       scheduleSaveChatHistory();
-    } else if (payload.type === "planning") {
-      rememberActivity(agentMsg, "Planning next moves");
-      updateRunState(currentActivityTitle(agentMsg));
-      beginToolSegment(agentMsg);
-      notePlanning(agentMsg, payload.content || "");
+    } else if (payload.type === "summary") {
+      // Official Cursor SDK: summary-started / summary / summary-completed.
+      if (payload.completed) {
+        finalizePlanCard(agentMsg);
+      } else {
+        rememberActivity(agentMsg, "Planning next moves");
+        updateRunState(currentActivityTitle(agentMsg));
+        beginToolSegment(agentMsg);
+        notePlanning(agentMsg, payload.summary || payload.content || "");
+      }
       scheduleSaveChatHistory();
     } else if (payload.type === "upload") {
       rememberActivity(agentMsg, "Uploaded attachments");
@@ -608,8 +649,9 @@
       rememberActivity(agentMsg, "Thinking");
       updateRunState(currentActivityTitle(agentMsg));
       // Don't seal mid-reply when Grok interleaves think↔text (orphans first chars).
+      // Soft-pause on completed: one Thought card per turn, keep appending after tools.
       if (payload.completed) {
-        finalizeThoughtCard(agentMsg);
+        softPauseThinking(agentMsg);
       } else {
         if (!getRunMeta(agentMsg).exploreActive && !getRunMeta(agentMsg).activeTextEl) {
           beginToolSegment(agentMsg);
@@ -629,7 +671,9 @@
       if (!isExplore || !getRunMeta(agentMsg).exploreActive) beginToolSegment(agentMsg);
       else if (getRunMeta(agentMsg).activeTextEl) beginToolSegment(agentMsg);
       finalizePlanCard(agentMsg);
-      if (!(isExplore && getRunMeta(agentMsg).exploreActive)) finalizeThoughtCard(agentMsg);
+      // Don't finalizeThoughtCard here — DeepSeek/Cursor both think↔tool many times;
+      // sealing each round creates a pile of "Thought briefly" cards.
+      softPauseThinking(agentMsg);
       if (isExplore) {
         getRunMeta(agentMsg).exploreActive = true;
         noteExploring(agentMsg, exploreStepLabel(payload, toolView), {
@@ -691,6 +735,10 @@
         detail: "",
         paths: [],
       });
+    } else if (payload.type === "turn_changes") {
+      renderTurnChanges(agentMsg, payload);
+      getRunMeta(agentMsg).turnChangesShown = true;
+      scheduleSaveChatHistory();
     } else if (payload.type === "error") {
       state.finished = true;
       finalizeLiveCards(agentMsg);
@@ -732,6 +780,10 @@
         if (doneStatus !== "finished" && doneStatus !== "cancelled") {
           streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
         }
+      }
+      if (!getRunMeta(agentMsg).turnChangesShown) {
+        var localChanges = collectLocalTurnChanges(agentMsg);
+        if (localChanges) renderTurnChanges(agentMsg, localChanges);
       }
       scheduleSaveChatHistory();
     }
@@ -814,6 +866,7 @@
 
     isRunning = true;
     stopRequested = false;
+    startRunElapsedTimer();
     updateRunState("继续接收");
     updateEmptyState();
     flushChatHistory({ streaming: true });
@@ -886,6 +939,7 @@
     } finally {
       isRunning = false;
       stopRequested = false;
+      stopRunElapsedTimer();
       flushChatHistory({ streaming: false });
       updateRunState("就绪");
       updateEmptyState();
@@ -897,6 +951,7 @@
     if (isRunning) return;
     isRunning = true;
     stopRequested = false;
+    startRunElapsedTimer();
     updateRunState("处理中");
     while (sendQueue.length) {
       if (stopRequested) break;
@@ -908,6 +963,7 @@
     }
     isRunning = false;
     stopRequested = false;
+    stopRunElapsedTimer();
     updateRunState("就绪");
     flushChatHistory({ streaming: false });
   }
@@ -1056,6 +1112,7 @@
     clearThreadMessages();
     isRunning = false;
     stopRequested = false;
+    stopRunElapsedTimer();
     updateEmptyState();
     updateRunState("就绪");
     // Abort is async — a late stream chunk must not leave empty greeting hidden.

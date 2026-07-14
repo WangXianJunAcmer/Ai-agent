@@ -94,10 +94,9 @@
       <div class="entries-row">
         <a class="entry" href="/cursor" aria-label="Cursor">
           <span class="entry-mark" aria-hidden="true">
-            <!-- Cursor-like mark (simplified) -->
             <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect width="28" height="28" rx="8" fill="#0d0d0d"/>
-              <path d="M8 7.5 L8 20.5 L12.2 16.8 L15.1 22.2 L17.6 20.9 L14.6 15.2 L20 15.2 Z" fill="#fff"/>
+              <path fill="#fff" transform="translate(2 2)" d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/>
             </svg>
           </span>
           <span>Cursor</span>
@@ -127,12 +126,12 @@
     </div>
 
     <h1>Ai-agent</h1>
-    <p class="lead">本地浏览器里的 Coding Agent 控制台。Cursor 走云端 SDK；OpenAI / DeepSeek 走兼容 API + 本地工具。</p>
+    <p class="lead">本地浏览器里的 Coding Agent 控制台。Cursor 走云端 SDK；OpenAI / DeepSeek 走兼容 API + 本地工具（读/写/grep/shell）。</p>
 
     <h2>环境要求</h2>
     <ul>
-      <li><strong>Python 3.10+</strong>（cursor-sdk 要求）</li>
-      <li>Cursor API Key（<a href="https://cursor.com/dashboard/integrations" target="_blank" rel="noopener">Integrations</a>）</li>
+      <li><strong>Python 3.10+</strong></li>
+      <li>至少一个厂商的 API Key（按你要用的入口填写，见 <code>.env.example</code>）</li>
     </ul>
 
     <h2>快速开始</h2>
@@ -144,7 +143,7 @@ conda activate ai-agent
 pip install -r requirements.txt
 
 cp .env.example .env
-# 编辑 .env，填入 CURSOR_API_KEY
+# 编辑 .env，按需填入 CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY
 
 ./run.sh</code></pre>
 
@@ -152,15 +151,17 @@ cp .env.example .env
     <pre><code>python -m backend.check</code></pre>
 
     <p>浏览器：</p>
-    <pre><code>http://127.0.0.1:8765/       # 本页
-http://127.0.0.1:8765/cursor # Cursor</code></pre>
+    <pre><code>http://127.0.0.1:8765/          # 本页（入口）
+http://127.0.0.1:8765/cursor    # Cursor
+http://127.0.0.1:8765/openai    # OpenAI
+http://127.0.0.1:8765/deepseek  # DeepSeek</code></pre>
 
     <p class="muted">Agent 默认工作区是本仓库（<code>host_project_root: "."</code>）。要改其它目录，编辑 <code>config.yaml</code>。</p>
 
     <h2>HTTP API</h2>
     <pre><code>curl -X POST http://127.0.0.1:8765/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"列出工作区顶层目录"}'</code></pre>
+  -d '{"message":"列出工作区顶层目录","provider":"deepseek"}'</code></pre>
 
     <h2>配置说明</h2>
     <table>
@@ -170,11 +171,13 @@ http://127.0.0.1:8765/cursor # Cursor</code></pre>
       <tbody>
         <tr><td><code>host_project_root</code></td><td>Agent 工作区根目录，相对本仓库；默认 <code>"."</code></td></tr>
         <tr><td><code>server.host</code> / <code>server.port</code></td><td>服务地址，默认 <code>0.0.0.0:8765</code></td></tr>
-        <tr><td><code>agent.provider</code></td><td><code>cursor</code> / <code>openai</code> / <code>deepseek</code></td></tr>
-        <tr><td><code>agent.model</code></td><td>默认 <code>composer-2.5</code></td></tr>
-        <tr><td><code>agent.runtime</code></td><td><code>local</code> 或 <code>cloud</code></td></tr>
+        <tr><td><code>agent.provider</code></td><td>默认入口：<code>cursor</code> / <code>openai</code> / <code>deepseek</code>（对话页也可在 body 里带 <code>provider</code>）</td></tr>
+        <tr><td><code>agent.model</code></td><td>Cursor 默认模型，如 <code>composer-2.5</code>；OpenAI / DeepSeek 有各自默认</td></tr>
+        <tr><td><code>agent.runtime</code></td><td>Cursor：<code>local</code> 或 <code>cloud</code></td></tr>
       </tbody>
     </table>
+
+    <p class="muted">环境变量：<code>CURSOR_API_KEY</code>、<code>OPENAI_API_KEY</code>、<code>DEEPSEEK_API_KEY</code>（用哪个入口就填哪个）。</p>
 
     <h2>路由</h2>
     <ul>
@@ -182,7 +185,7 @@ http://127.0.0.1:8765/cursor # Cursor</code></pre>
       <li><code>GET /cursor</code> — Cursor 对话</li>
       <li><code>GET /openai</code> — OpenAI Agent</li>
       <li><code>GET /deepseek</code> — DeepSeek Agent</li>
-      <li><code>GET /api/health</code> — 健康检查</li>
+      <li><code>GET /api/health</code> — 健康检查（含各 Key 是否已配置）</li>
       <li><code>POST /api/chat</code> / <code>/api/chat/stream</code> — 对话（body 可带 <code>provider</code>）</li>
     </ul>
 

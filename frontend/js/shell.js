@@ -25,7 +25,8 @@
       markHtml:
         '<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
         '<rect width="28" height="28" rx="8" fill="#0d0d0d"/>' +
-        '<path d="M8 7.5 L8 20.5 L12.2 16.8 L15.1 22.2 L17.6 20.9 L14.6 15.2 L20 15.2 Z" fill="#fff"/>' +
+        // Official Cursor cube mark (simple-icons / cursor.com brand), inset on dark tile.
+        '<path fill="#fff" transform="translate(2 2)" d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/>' +
         "</svg>",
     },
     openai: {
@@ -378,12 +379,79 @@
       font: 650 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     .ai-agent-diff-line {
-      display: block; padding: 4px 10px;
-      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      display: block; padding: 1px 12px;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       white-space: pre-wrap; word-break: break-word;
     }
-    .ai-agent-diff-line.added { background: #ecfdf5; color: #166534; }
-    .ai-agent-diff-line.removed { background: #fef2f2; color: #991b1b; }
+    .ai-agent-diff-line.added { background: rgba(22, 101, 52, .06); color: #166534; }
+    .ai-agent-diff-line.removed { background: rgba(153, 27, 27, .06); color: #991b1b; }
+    /* Codex-like turn change review */
+    .ai-agent-turn-changes {
+      margin: 12px 0 2px;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 10px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .ai-agent-turn-changes.is-undone { opacity: .72; }
+    .ai-agent-turn-changes-header {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px; cursor: pointer; user-select: none;
+      background: #fafafa;
+      border-bottom: 1px solid rgba(0,0,0,.06);
+    }
+    .ai-agent-turn-changes-header:hover { background: #f5f5f5; }
+    .ai-agent-turn-changes-chevron {
+      width: 0; height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #8e8e8e;
+      transition: transform .12s ease;
+      flex: 0 0 auto;
+    }
+    .ai-agent-turn-changes:not(.is-open) .ai-agent-turn-changes-chevron {
+      transform: rotate(-90deg);
+    }
+    .ai-agent-turn-changes-title {
+      font: 600 13px/1.3 inherit; color: var(--ai-text);
+    }
+    .ai-agent-turn-changes-stats {
+      font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--ai-muted);
+    }
+    .ai-agent-turn-changes-stats .add,
+    .ai-agent-turn-file-meta .add { color: #166534; font-weight: 600; }
+    .ai-agent-turn-changes-stats .del,
+    .ai-agent-turn-file-meta .del { color: #991b1b; font-weight: 600; }
+    .ai-agent-turn-changes-actions { margin-left: auto; display: flex; gap: 6px; }
+    .ai-agent-turn-undo {
+      border: 1px solid rgba(0,0,0,.1); background: #fff; color: var(--ai-text);
+      border-radius: 999px; padding: 3px 10px; font: 12px/1.2 inherit; cursor: pointer;
+    }
+    .ai-agent-turn-undo:hover { background: #f4f4f4; }
+    .ai-agent-turn-undo:disabled { opacity: .5; cursor: default; }
+    .ai-agent-turn-undo.is-done { color: #166534; border-color: #bbf7d0; background: #ecfdf5; }
+    .ai-agent-turn-changes-body { display: none; }
+    .ai-agent-turn-changes.is-open .ai-agent-turn-changes-body { display: block; }
+    .ai-agent-turn-file {
+      border-top: 1px solid rgba(0,0,0,.06);
+    }
+    .ai-agent-turn-file:first-child { border-top: 0; }
+    .ai-agent-turn-file-head {
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      padding: 10px 12px 6px;
+    }
+    .ai-agent-turn-file-path {
+      font: 600 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #111;
+    }
+    .ai-agent-turn-file-meta {
+      font: 12px/1.35 inherit; color: var(--ai-muted);
+    }
+    .ai-agent-turn-file .ai-agent-diff {
+      margin: 0; border: 0; border-radius: 0; background: transparent;
+    }
+    .ai-agent-turn-file .ai-agent-diff-path { display: none; }
     .ai-agent-msg { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
     .ai-agent-msg.user { justify-content: flex-end; }
     .ai-agent-msg.agent { justify-content: flex-start; }
@@ -952,6 +1020,36 @@
       position: relative;
       flex: 0 0 auto;
     }
+    #ai-agent-think-wrap {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+    #ai-agent-think-wrap.is-visible { display: inline-flex; }
+    .ai-agent-pill {
+      appearance: none;
+      border: 0;
+      background: #f4f4f4;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font: 12px/1.2 inherit;
+      color: var(--ai-muted);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .ai-agent-pill:hover { color: var(--ai-text); }
+    .ai-agent-pill.is-on {
+      color: var(--ai-text);
+      font-weight: 600;
+      background: #ebebeb;
+    }
+    .ai-agent-pill.is-select {
+      padding-right: 20px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+    }
     #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
     #ai-agent-attachments:empty { display: none; }
     .ai-agent-thumb { position: relative; width: 56px; height: 56px; }
@@ -990,15 +1088,7 @@
       display: flex; align-items: center; gap: 6px; min-width: 0;
     }
     #ai-agent-mode {
-      appearance: none;
-      border: 0;
-      background: #f4f4f4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") right 8px center no-repeat;
-      border-radius: 999px;
-      padding: 5px 20px 5px 10px;
       max-width: 82px;
-      font: 12px/1.2 inherit;
-      color: var(--ai-muted);
-      cursor: pointer;
     }
     #ai-agent-model-wrap {
       position: relative;
@@ -1138,7 +1228,6 @@
       font-weight: 600;
     }
     #ai-agent-model { display: none; }
-    #ai-agent-mode:hover { color: var(--ai-text); }
     #ai-agent-file-input { display: none; }
     #ai-agent-pick-file, #ai-agent-send {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
@@ -1213,14 +1302,19 @@
           <div id="ai-agent-compose-toolbar">
             <div id="ai-agent-compose-left">
               <div id="ai-agent-mode-wrap">
-                <select id="ai-agent-mode" title="模式">
+                <select id="ai-agent-mode" class="ai-agent-pill is-select" title="模式">
                   <option value="agent">Agent</option>
                   <option value="plan">Plan</option>
                 </select>
               </div>
+              <div id="ai-agent-think-wrap" title="DeepSeek 深度思考">
+                <button type="button" id="ai-agent-thinking" class="ai-agent-pill" aria-pressed="false">
+                  深度思考
+                </button>
+              </div>
               <div id="ai-agent-model-wrap">
                 <button id="ai-agent-model-btn" type="button" title="模型" aria-haspopup="listbox" aria-expanded="false">
-                  <span id="ai-agent-model-label">Composer 2.5</span>
+                  <span id="ai-agent-model-label"></span>
                   <span id="ai-agent-model-chevron" aria-hidden="true"></span>
                 </button>
                 <div id="ai-agent-model-menu" role="listbox" aria-label="选择模型">
@@ -1234,7 +1328,7 @@
                   </div>
                   <div id="ai-agent-model-list"></div>
                 </div>
-                <input id="ai-agent-model" type="hidden" value="composer-2.5" />
+                <input id="ai-agent-model" type="hidden" value="${defaultModel}" />
               </div>
             </div>
             <div id="ai-agent-compose-right">
@@ -1251,9 +1345,37 @@
   `;
   document.body.appendChild(container);
 
+  var modeField = document.getElementById("ai-agent-mode");
+  var thinkWrap = document.getElementById("ai-agent-think-wrap");
+  var thinkingField = document.getElementById("ai-agent-thinking");
+
   if (!providerUi.showAuto) {
     var autoRowEl = document.getElementById("ai-agent-model-auto-row");
     if (autoRowEl) autoRowEl.style.display = "none";
+  }
+  if (provider === "deepseek" && thinkWrap) {
+    thinkWrap.classList.add("is-visible");
+  }
+  function thinkingOn() {
+    return thinkingField ? thinkingField.getAttribute("aria-pressed") === "true" : false;
+  }
+  function syncThinkControls() {
+    if (!thinkingField) return;
+    var on = thinkingOn();
+    thinkingField.classList.toggle("is-on", on);
+    thinkingField.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  if (thinkingField) {
+    thinkingField.addEventListener("click", function () {
+      thinkingField.setAttribute("aria-pressed", thinkingOn() ? "false" : "true");
+      syncThinkControls();
+    });
+    syncThinkControls();
+  }
+  function deepseekThinkOpts() {
+    if (provider !== "deepseek") return {};
+    // effort: omit — backend defaults Agent turns to max when thinking is on.
+    return { thinking: thinkingOn() };
   }
 
   var backdrop = document.getElementById("ai-agent-backdrop");
@@ -1265,7 +1387,6 @@
   var sendBtn = document.getElementById("ai-agent-send");
   var composeShell = document.getElementById("ai-agent-compose-shell");
   var inputField = document.getElementById("ai-agent-input");
-  var modeField = document.getElementById("ai-agent-mode");
   var modelWrap = document.getElementById("ai-agent-model-wrap");
   var modelBtn = document.getElementById("ai-agent-model-btn");
   var modelLabel = document.getElementById("ai-agent-model-label");
@@ -1334,6 +1455,8 @@
   var pendingFiles = [];
   var sendQueue = [];
   var isRunning = false;
+  var runStartedAt = 0;
+  var runElapsedTimer = null;
   var queueSeq = 0;
   var activeAbort = null;
   var stopRequested = false;
@@ -1345,16 +1468,38 @@
   var serverBootId = "";
   // Match backend attachments.MAX_ATTACHMENT_BYTES (Cursor hard limit ≈ 50MB).
   var MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
-  var HISTORY_KEY = "ai-agent-chat-history";
+  var HISTORY_KEY = "ai-agent-chat-history:" + provider;
+  var MODEL_KEY = "ai-agent-selected-model:" + provider;
   var historySaveTimer = null;
-  var modelOptions = [
-    { id: "composer-2.5", label: "Composer 2.5" },
-    { id: "auto", label: "Auto" },
-  ];
-  var lastManualModel = defaultModel === "auto" ? "composer-2.5" : defaultModel;
+  var modelOptions = (function () {
+    if (provider === "deepseek") {
+      return [
+        { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+        { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+      ];
+    }
+    if (provider === "openai") {
+      return [
+        { id: "gpt-4o", label: "GPT-4o" },
+        { id: "gpt-4.1", label: "GPT-4.1" },
+        { id: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+        { id: "o4-mini", label: "o4-mini" },
+      ];
+    }
+    return [
+      { id: "composer-2.5", label: "Composer 2.5" },
+      { id: "auto", label: "Auto" },
+    ];
+  })();
+  var savedModel = "";
+  try { savedModel = (localStorage.getItem(MODEL_KEY) || "").trim(); } catch (err) {}
+  var bootModel = savedModel || defaultModel;
+  var lastManualModel = bootModel === "auto"
+    ? (provider === "deepseek" ? "deepseek-v4-flash" : provider === "openai" ? "gpt-4o" : "composer-2.5")
+    : bootModel;
   var autoResolvedModel = "";
   var autoResolvedLabel = "";
-  modelField.value = defaultModel;
+  modelField.value = bootModel;
 
   // Restore ASAP (functions are hoisted; don't wait for listener wiring).
   var bootRestoredStreaming = false;

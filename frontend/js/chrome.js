@@ -64,10 +64,45 @@
         title: data.title || (card.querySelector(".ai-agent-card-title") || {}).textContent || "",
         detail: data.detail || "",
         paths: data.paths || [],
+        diff: data.diff || [],
       };
     }).filter(function (card) {
       return card && (card.title || card.detail);
     });
+  }
+
+  function serializeTurnChanges(msg) {
+    var panel = msg.querySelector(".ai-agent-turn-changes");
+    if (!panel) return null;
+    var files = [];
+    Array.prototype.slice.call(panel.querySelectorAll(".ai-agent-turn-file")).forEach(function (row) {
+      var pathEl = row.querySelector(".ai-agent-turn-file-path");
+      var metaEl = row.querySelector(".ai-agent-turn-file-meta");
+      var meta = (metaEl && metaEl.textContent) || "";
+      var addMatch = meta.match(/\+(\d+)/);
+      var delMatch = meta.match(/-(\d+)/);
+      files.push({
+        path: (pathEl && pathEl.textContent) || "",
+        status: /新建/.test(meta) ? "created" : (/删除/.test(meta) ? "deleted" : "modified"),
+        additions: addMatch ? Number(addMatch[1]) : 0,
+        deletions: delMatch ? Number(delMatch[1]) : 0,
+        diff: [],
+      });
+    });
+    if (!files.length) return null;
+    var add = 0;
+    var del = 0;
+    files.forEach(function (f) { add += f.additions; del += f.deletions; });
+    return {
+      turn_id: panel.getAttribute("data-turn-id") || "",
+      files: files,
+      file_count: files.length,
+      additions: add,
+      deletions: del,
+      // Session undo map may still hold the snapshot after refresh.
+      undoable: !!(panel.getAttribute("data-turn-id") && !panel.classList.contains("is-undone")),
+      undone: panel.classList.contains("is-undone"),
+    };
   }
 
   function collectHistoryMessages() {
@@ -114,6 +149,7 @@
         })(),
         markdown: kind === "agent",
         worklog: kind === "agent" ? serializeWorklog(msg) : [],
+        turnChanges: kind === "agent" ? serializeTurnChanges(msg) : null,
         attachments: attachments,
       };
     });
@@ -217,6 +253,7 @@
       );
       if (item.kind === "agent" || (!item.kind && item.role !== "You")) {
         restoreWorklog(msg, item.worklog || []);
+        if (item.turnChanges) renderTurnChanges(msg, item.turnChanges);
       }
     });
     updateEmptyState();
@@ -316,16 +353,15 @@
 
   function setSelectedModel(id, closeMenu) {
     var next = (id || "").trim() || defaultModel;
-    var ids = knownModelIds();
-    if (next !== "auto" && modelOptions.length && ids.indexOf(next) < 0) {
-      next = ids.indexOf(lastManualModel) >= 0 ? lastManualModel : (ids[0] || defaultModel);
-    }
+    // Don't remap unknown ids before catalog loads — that used to force Composer
+    // over a restored DeepSeek/OpenAI pick. fillModelOptions validates later.
     if (next !== "auto") {
       lastManualModel = next;
       autoResolvedModel = "";
       autoResolvedLabel = "";
     }
     modelField.value = next;
+    try { localStorage.setItem(MODEL_KEY, next); } catch (err) {}
     syncModelPickerUI();
     updateModeUI();
     if (closeMenu !== false) closeModelMenu();

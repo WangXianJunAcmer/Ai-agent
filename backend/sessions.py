@@ -39,3 +39,5 @@ class Session:
     pump_task: asyncio.Task | None = None
     # Wall-clock for idle prune (updated on send/stream/follow).
     last_active: float = 0.0
+    # turn_id → TurnChangeTracker (compat providers; for undo).
+    undo_turns: dict = field(default_factory=dict)

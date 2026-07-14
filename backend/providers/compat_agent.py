@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 from openai import AsyncOpenAI
@@ -15,6 +16,7 @@ from backend.providers.tools import make_tool_kit, run_tool
 from backend.repo_write_guard import identity_prefix
 from backend.safety import policy_prefix
 from backend.tool_display import tool_call_event
+from backend.turn_changes import TurnChangeTracker, store_tracker
 
 _MAX_ROUNDS = 24
 
@@ -85,6 +87,52 @@ def _system_prompt(settings: dict, mode: str) -> str:
     )
 
 
+def normalize_reasoning_effort(raw: str | None) -> str | None:
+    """Map DeepSeek effort aliases → high|max. None → omit (API picks default).
+
+    Docs: normal requests default high; complex Agent (tools) auto max.
+    low/medium→high, xhigh→max. Don't invent a default here.
+    """
+    if raw is None or not str(raw).strip():
+        return None
+    effort = str(raw).strip().lower()
+    if effort in {"low", "medium"}:
+        return "high"
+    if effort == "xhigh":
+        return "max"
+    return effort if effort in {"high", "max"} else None
+
+
+def strip_unused_reasoning(messages: list[dict[str, Any]]) -> None:
+    """Drop reasoning_content on assistant turns without tool_calls.
+
+    DeepSeek: between user turns, reasoning without tools is ignored by the API
+    and must NOT be kept when tools *were* used (those must stay forever).
+    """
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+        if msg.get("tool_calls"):
+            continue
+        msg.pop("reasoning_content", None)
+
+
+def apply_deepseek_thinking(
+    request: dict[str, Any],
+    *,
+    thinking: bool = True,
+    reasoning_effort: str | None = None,
+) -> None:
+    """OpenAI SDK: thinking in extra_body. Omit effort unless caller set it."""
+    if thinking:
+        request["extra_body"] = {"thinking": {"type": "enabled"}}
+        effort = normalize_reasoning_effort(reasoning_effort)
+        if effort:
+            request["reasoning_effort"] = effort
+    else:
+        request["extra_body"] = {"thinking": {"type": "disabled"}}
+
+
 def build_user_prompt(
     message: str,
     attachments: list[dict] | None,
@@ -129,13 +177,20 @@ async def stream_compat_turn(
     attachments: list[dict] | None,
     turn: int,
     emit: Callable[[dict], None],
+    thinking: bool | None = None,
+    reasoning_effort: str | None = None,
 ) -> str:
     """One agent turn: stream tokens, run tools, emit widget SSE. Returns done status."""
     handle: CompatSessionAgent = session.agent
     model = session.model or default_model(handle.provider)
     allow_write = bool(settings.get("allow_repo_write", True)) and mode != "plan"
-    tools, executors = make_tool_kit(settings, allow_write=allow_write)
+    tracker = TurnChangeTracker(Path(settings["host_root"]))
+    tools, executors = make_tool_kit(settings, allow_write=allow_write, tracker=tracker)
     client = build_client(settings, handle.provider)
+    # DeepSeek default: thinking off. Others ignore.
+    use_thinking = False if thinking is None else bool(thinking)
+    if handle.provider != "deepseek":
+        use_thinking = False
 
     user_text, meta = build_user_prompt(message, attachments, settings, session)
     if meta.get("images") or meta.get("files"):
@@ -159,6 +214,8 @@ async def stream_compat_turn(
         # Refresh system prompt when mode/settings change (replace first system).
         handle.messages[0] = {"role": "system", "content": _system_prompt(settings, mode)}
 
+    # New user turn: drop prior reasoning that had no tools (API ignores it).
+    strip_unused_reasoning(handle.messages)
     handle.messages.append({"role": "user", "content": user_text})
     final_status = "finished"
 
@@ -180,10 +237,12 @@ async def stream_compat_turn(
                 "stream": True,
             }
             if handle.provider == "deepseek":
-                # V4 thinking mode supports tools. Keep reasoning_content in
-                # assistant messages below or the next tool round returns 400.
-                request["reasoning_effort"] = "max"
-                request["extra_body"] = {"thinking": {"type": "enabled"}}
+                # Keep reasoning_content on tool-call assistants or next round → 400.
+                apply_deepseek_thinking(
+                    request,
+                    thinking=use_thinking,
+                    reasoning_effort=reasoning_effort,
+                )
             stream = await client.chat.completions.create(
                 **request,
             )
@@ -205,7 +264,6 @@ async def stream_compat_turn(
                         "content": delta.content,
                         "model": session.model,
                     })
-                # DeepSeek reasoner may stream reasoning_content
                 reasoning = getattr(delta, "reasoning_content", None)
                 if reasoning:
                     thinking_parts.append(str(reasoning))
@@ -227,9 +285,14 @@ async def stream_compat_turn(
                             if tc.function.arguments:
                                 slot["arguments"] += tc.function.arguments
 
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": "".join(content_parts) or None}
+            assistant_msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": "".join(content_parts) or None,
+            }
             if thinking_parts:
                 assistant_msg["reasoning_content"] = "".join(thinking_parts)
+            # ponytail: no mid-round thinking.completed — UI soft-pauses on tool_call;
+            # Cursor SDK still sends thinking-completed for its own bursts.
             if tool_acc:
                 assistant_msg["tool_calls"] = [
                     {
@@ -324,4 +387,45 @@ async def stream_compat_turn(
         })
         final_status = "error"
 
+    # Emit workspace change summary for this turn (undoable when files changed).
+    summary = tracker.summary()
+    if summary.get("file_count"):
+        store_tracker(session, tracker)
+        emit({
+            **summary,
+            "session_id": session.session_id,
+            "model": session.model,
+        })
+
     return final_status
+
+
+if __name__ == "__main__":
+    assert normalize_reasoning_effort("low") == "high"
+    assert normalize_reasoning_effort("xhigh") == "max"
+    assert normalize_reasoning_effort(None) is None
+    assert normalize_reasoning_effort("") is None
+    msgs = [
+        {"role": "assistant", "content": "ok", "reasoning_content": "drop me"},
+        {
+            "role": "assistant",
+            "content": None,
+            "reasoning_content": "keep me",
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "x", "arguments": "{}"}}],
+        },
+    ]
+    strip_unused_reasoning(msgs)
+    assert "reasoning_content" not in msgs[0]
+    assert msgs[1]["reasoning_content"] == "keep me"
+    req: dict = {}
+    apply_deepseek_thinking(req, thinking=True)  # omit effort → API default
+    assert "reasoning_effort" not in req
+    assert req["extra_body"] == {"thinking": {"type": "enabled"}}
+    req_hi: dict = {}
+    apply_deepseek_thinking(req_hi, thinking=True, reasoning_effort="high")
+    assert req_hi["reasoning_effort"] == "high"
+    req2: dict = {}
+    apply_deepseek_thinking(req2, thinking=False)
+    assert "reasoning_effort" not in req2
+    assert req2["extra_body"] == {"thinking": {"type": "disabled"}}
+    print("ok")

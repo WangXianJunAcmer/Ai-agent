@@ -248,7 +248,7 @@ def sanitize_event(event: dict) -> dict:
     if not _SAFETY_ENABLED or not isinstance(event, dict):
         return event
     t = event.get("type")
-    if t in {"text", "thinking", "planning"}:
+    if t in {"text", "thinking", "summary"}:
         content = event.get("content")
         if isinstance(content, str) and text_has_secret(content):
             out = dict(event)

@@ -142,7 +142,13 @@ def check_tool_display() -> None:
         summary = "next: read auth"
 
     plan = sse_from_delta(_Sum(), session, settings)
-    assert plan and plan["type"] == "planning" and "read auth" in plan["content"], plan
+    assert plan and plan["type"] == "summary" and "read auth" in (plan.get("summary") or plan.get("content") or ""), plan
+
+    class _SumDone:
+        type = "summary-completed"
+
+    plan_done = sse_from_delta(_SumDone(), session, settings)
+    assert plan_done and plan_done.get("completed") is True, plan_done
 
     class _ThinkDone:
         type = "thinking-completed"

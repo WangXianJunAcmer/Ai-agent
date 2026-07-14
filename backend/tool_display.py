@@ -349,14 +349,25 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
             "paths": paths,
         }
     if lowered in {"applypatch", "editnotebook", "strreplace", "edit", "searchreplace"}:
+        # Prefer old/new string preview when no patch format.
+        diff = patch_preview
+        if not diff and isinstance(args, dict):
+            old_s = args.get("old_string")
+            new_s = args.get("new_string")
+            if isinstance(old_s, str) or isinstance(new_s, str):
+                diff = [{
+                    "path": paths[0] if paths else "",
+                    "removed": [old_s] if isinstance(old_s, str) and old_s else [],
+                    "added": [new_s] if isinstance(new_s, str) and new_s else [],
+                }]
         return {
             "kind": "edit",
             "title": ("Editing " if status == "running" else "Edited ") + (paths[0] if paths else "code"),
             "detail": detail,
             "paths": paths,
-            "diff": patch_preview,
+            "diff": diff,
         }
-    if lowered in {"write"}:
+    if lowered in {"write", "writefile"}:
         return {
             "kind": "edit",
             "title": ("Writing " if status == "running" else "Wrote ") + (paths[0] if paths else "file"),
@@ -539,15 +550,18 @@ def sse_from_delta(update, session, settings: dict) -> dict | None:
     """Map Cursor InteractionUpdate → widget SSE. Types must match cursor_sdk.types."""
     update_type = getattr(update, "type", None)
     if update_type == "summary-started":
-        return _session_event(session, "planning", content="")
-    # Official type is "summary" (SummaryUpdate.summary). Keep legacy alias.
-    if update_type in {"summary", "summary-update"}:
-        content = (
-            getattr(update, "summary", None)
-            or getattr(update, "text", None)
-            or ""
+        return _session_event(session, "summary", content="", summary="")
+    if update_type == "summary":
+        text = str(getattr(update, "summary", None) or "")
+        return _session_event(session, "summary", content=text, summary=text)
+    if update_type == "summary-completed":
+        return _session_event(
+            session,
+            "summary",
+            content="",
+            summary="",
+            completed=True,
         )
-        return _session_event(session, "planning", content=content)
     if update_type == "thinking-delta":
         return _session_event(session, "thinking", content=getattr(update, "text", "") or "")
     if update_type == "thinking-completed":
