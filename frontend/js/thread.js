@@ -228,6 +228,19 @@
     return { plan: text.slice(0, planEnd).replace(/\s+$/, ""), planEnd: planEnd };
   }
 
+  function isMarkdownTableParagraph(text) {
+    var lines = String(text || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+    if (lines.length < 2) return false;
+    var pipe = 0;
+    for (var i = 0; i < lines.length; i++) {
+      if (typeof isTableRowLine === "function" ? isTableRowLine(lines[i]) : (lines[i].indexOf("|") >= 0)) {
+        pipe += 1;
+      }
+    }
+    // Majority pipe rows → treat as a table block; never collapse/overwrite peers.
+    return pipe >= 2 && pipe >= Math.ceil(lines.length * 0.6);
+  }
+
   function collapseRewriteParagraphs(text) {
     var parts = String(text || "").split(/\n\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
     if (parts.length < 2) return String(text || "");
@@ -238,6 +251,11 @@
         return;
       }
       var prev = out[out.length - 1];
+      // Two tables often share the same header prefix ("| 指标 |…") — keep both.
+      if (isMarkdownTableParagraph(prev) || isMarkdownTableParagraph(p)) {
+        out.push(p);
+        return;
+      }
       var a = prev.replace(/\s+/g, "").slice(0, 20);
       var b = p.replace(/\s+/g, "").slice(0, 20);
       if (a && b && (a === b || prev.indexOf(p.slice(0, 12)) >= 0 || p.indexOf(prev.slice(0, 12)) >= 0)) {

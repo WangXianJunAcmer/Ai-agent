@@ -58,28 +58,37 @@
     return trimmed.split("|").map(function (cell) { return cell.trim(); });
   }
 
+  function normalizeSepCell(cell) {
+    return String(cell || "").replace(/\s+/g, "");
+  }
+
+  // GFM prefers ≥3 dashes; models often emit -- / :-- / ---: — accept ≥2.
   function isTableSeparatorCells(cells) {
     return cells.length > 0 && cells.every(function (cell) {
-      return /^:?-{3,}:?$/.test(cell);
+      return /^:?-{2,}:?$/.test(normalizeSepCell(cell));
     });
   }
 
-  function readTableBlock(lines, start) {
-    var rows = [];
-    var i = start;
-    while (i < lines.length) {
-      var trimmed = lines[i].trim();
-      if (!trimmed) {
-        i += 1;
-        continue;
-      }
-      if (!isTableRowLine(lines[i])) break;
-      rows.push(parseTableCells(lines[i]));
-      i += 1;
-    }
-    if (rows.length < 2 || !isTableSeparatorCells(rows[1])) return null;
-    var header = rows[0];
-    var bodyRows = rows.slice(2);
+  // Last-resort sep: any colon/dash alignment stub with at least one '-'.
+  function isLooseSeparatorCells(cells) {
+    return cells.length > 0 && cells.every(function (cell) {
+      var c = normalizeSepCell(cell);
+      return c.indexOf("-") >= 0 && /^:?-+:?$/.test(c);
+    });
+  }
+
+  function peekIsNewTableStart(lines, from) {
+    var j = from;
+    while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
+    if (j >= lines.length || !isTableRowLine(lines[j])) return false;
+    var k = j + 1;
+    while (k < lines.length && !String(lines[k] || "").trim()) k += 1;
+    if (k >= lines.length || !isTableRowLine(lines[k])) return false;
+    var cells = parseTableCells(lines[k]);
+    return isTableSeparatorCells(cells) || isLooseSeparatorCells(cells);
+  }
+
+  function renderTableHtml(header, bodyRows) {
     var parts = ['<div class="md-table-wrap"><table><thead><tr>'];
     header.forEach(function (cell) {
       parts.push("<th>" + formatInlineMarkdown(cell) + "</th>");
@@ -93,7 +102,57 @@
       parts.push("</tr>");
     });
     parts.push("</tbody></table></div>");
-    return { html: parts.join(""), next: i };
+    return parts.join("");
+  }
+
+  function readTableBlock(lines, start) {
+    var rows = [];
+    var rawLines = [];
+    var i = start;
+    while (i < lines.length) {
+      var trimmed = lines[i].trim();
+      if (!trimmed) {
+        // Blank line ends the table when the next pipe block is a new header+sep.
+        if (
+          rows.length >= 2 &&
+          (isTableSeparatorCells(rows[1]) || isLooseSeparatorCells(rows[1])) &&
+          peekIsNewTableStart(lines, i)
+        ) {
+          break;
+        }
+        var j = i + 1;
+        while (j < lines.length && !lines[j].trim()) j += 1;
+        if (j >= lines.length || !isTableRowLine(lines[j])) break;
+        i += 1;
+        continue;
+      }
+      if (!isTableRowLine(lines[i])) break;
+      rawLines.push(lines[i]);
+      rows.push(parseTableCells(lines[i]));
+      i += 1;
+    }
+    if (rows.length < 2) return null;
+
+    var header;
+    var bodyRows;
+    if (isTableSeparatorCells(rows[1]) || isLooseSeparatorCells(rows[1])) {
+      header = rows[0];
+      bodyRows = rows.slice(2);
+    } else {
+      // No recognizable sep → still keep content (don't drop into orphan header paragraphs).
+      header = rows[0];
+      bodyRows = rows.slice(1);
+    }
+
+    try {
+      return { html: renderTableHtml(header, bodyRows), next: i };
+    } catch (err) {
+      // ponytail: table build failed → escaped plain text, never lose the block
+      return {
+        html: '<pre class="md-table-fallback">' + escapeHtml(rawLines.join("\n")) + "</pre>",
+        next: i,
+      };
+    }
   }
 
   function normalizeCodeLang(lang) {

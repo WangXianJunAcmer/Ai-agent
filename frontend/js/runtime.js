@@ -1271,8 +1271,35 @@
     var cppOk = mdOut.indexOf("tok-pp") >= 0 || mdOut.indexOf("tok-type") >= 0;
     var citeOk = mdOut.indexOf("src/demo.cpp") >= 0 && mdOut.indexOf("143:161:src") < 0;
     var copyOk = mdOut.indexOf("ai-agent-codeblock-copy") >= 0 && mdOut.indexOf("ai-agent-codeblock-lang") >= 0;
-    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !citeOk || !copyOk) {
-      console.error("Ai-agent markdown self-check failed", mdOut);
+    // Short sep (-- / :--) must still parse; two same-header tables must both survive collapse.
+    var shortSepSample = [
+      "| 指标 | 数值 |",
+      "| -- | -- |",
+      "| 消费 | 1 |",
+      "",
+      "| 指标 | 数值 |",
+      "| :-- | :-- |",
+      "| 曝光 | 2 |",
+    ].join("\n");
+    var shortSepOut = renderMarkdown(shortSepSample);
+    var shortSepOk = (shortSepOut.match(/<table/g) || []).length >= 2
+      && shortSepOut.indexOf("消费") >= 0
+      && shortSepOut.indexOf("曝光") >= 0;
+    var twinKeep = collapseRewriteParagraphs(shortSepSample);
+    var twinOk = twinKeep.indexOf("| 消费 | 1 |") >= 0 && twinKeep.indexOf("| 曝光 | 2 |") >= 0;
+    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !citeOk || !copyOk || !shortSepOk || !twinOk) {
+      console.error("Ai-agent markdown self-check failed", {
+        table: mdOut.indexOf("<table") >= 0,
+        conclusion: mdOut.indexOf("<strong>结论</strong>") >= 0,
+        pyOk: pyOk,
+        cppOk: cppOk,
+        citeOk: citeOk,
+        copyOk: copyOk,
+        shortSepOk: shortSepOk,
+        twinOk: twinOk,
+        shortSepOut: shortSepOut,
+        twinKeep: twinKeep,
+      });
     } else {
       console.log("Ai-agent markdown self-check ok");
     }
