@@ -1287,6 +1287,14 @@
       && shortSepOut.indexOf("曝光") >= 0;
     var twinKeep = collapseRewriteParagraphs(shortSepSample);
     var twinOk = twinKeep.indexOf("| 消费 | 1 |") >= 0 && twinKeep.indexOf("| 曝光 | 2 |") >= 0;
+    // Mid-string path fragment must NOT wipe the full path paragraph.
+    var pathPrev = "/data1/wangxianjun/projects/ad-analyzer/scripts/run_daily.py";
+    var pathTail = "alyzer/scripts/helpers.py\n\n说明";
+    var pathKeep = collapseRewriteParagraphs(pathPrev + "\n\n" + pathTail);
+    var pathOk = pathKeep.indexOf(pathPrev) >= 0 && pathKeep.indexOf("alyzer/scripts/helpers.py") >= 0;
+    // True rewrite (shared prefix) should still collapse.
+    var rewriteKeep = collapseRewriteParagraphs("今天的广告数据如下\n\n今天的广告数据如下所示，详见下表。");
+    var rewriteOk = rewriteKeep.indexOf("详见下表") >= 0 && rewriteKeep.indexOf("今天的广告数据如下\n\n") < 0;
     var mathSample = [
       "场方程",
       "",
@@ -1316,7 +1324,7 @@
     var bqOk = (bqOut.match(/<blockquote>/g) || []).length === 1 && bqOut.indexOf("<br") >= 0;
     if (
       mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 ||
-      !pyOk || !cppOk || !citeOk || !copyOk || !shortSepOk || !twinOk || !mathOk ||
+      !pyOk || !cppOk || !citeOk || !copyOk || !shortSepOk || !twinOk || !pathOk || !rewriteOk || !mathOk ||
       !codeMathOk || !openFenceOk || !softBreakOk || !bqOk
     ) {
       console.error("Ai-agent markdown self-check failed", {
@@ -1328,6 +1336,8 @@
         copyOk: copyOk,
         shortSepOk: shortSepOk,
         twinOk: twinOk,
+        pathOk: pathOk,
+        rewriteOk: rewriteOk,
         mathOk: mathOk,
         codeMathOk: codeMathOk,
         openFenceOk: openFenceOk,

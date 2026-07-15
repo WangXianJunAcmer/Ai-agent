@@ -258,7 +258,13 @@
       }
       var a = prev.replace(/\s+/g, "").slice(0, 20);
       var b = p.replace(/\s+/g, "").slice(0, 20);
-      if (a && b && (a === b || prev.indexOf(p.slice(0, 12)) >= 0 || p.indexOf(prev.slice(0, 12)) >= 0)) {
+      // Only treat as rewrite when openings match as a *prefix* (=== 0).
+      // indexOf >= 0 matched mid-string (e.g. long path …alyzer/scrip…) and wiped the head.
+      var head = Math.min(12, p.length, prev.length);
+      if (
+        a && b && head >= 8 &&
+        (a === b || prev.indexOf(p.slice(0, head)) === 0 || p.indexOf(prev.slice(0, head)) === 0)
+      ) {
         out[out.length - 1] = p;
       } else {
         out.push(p);
