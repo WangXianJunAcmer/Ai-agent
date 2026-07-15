@@ -1287,7 +1287,38 @@
       && shortSepOut.indexOf("曝光") >= 0;
     var twinKeep = collapseRewriteParagraphs(shortSepSample);
     var twinOk = twinKeep.indexOf("| 消费 | 1 |") >= 0 && twinKeep.indexOf("| 曝光 | 2 |") >= 0;
-    if (mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 || !pyOk || !cppOk || !citeOk || !copyOk || !shortSepOk || !twinOk) {
+    var mathSample = [
+      "场方程",
+      "",
+      "\\[",
+      "G_{\\mu\\nu} + \\Lambda g_{\\mu\\nu} = \\frac{8\\pi G}{c^4} T_{\\mu\\nu}",
+      "\\]",
+      "",
+      "- 爱因斯坦张量：\\(G_{\\mu\\nu} = R_{\\mu\\nu} - \\frac{1}{2} R g_{\\mu\\nu}\\)",
+    ].join("\n");
+    var mathExtract = extractMath(mathSample.replace(/```[\s\S]*?```/g, ""));
+    var mathOut = renderMarkdown(mathSample);
+    var mathOk = mathExtract.slots.length >= 2
+      && mathOut.indexOf("\\[") < 0
+      && mathOut.indexOf("\\(") < 0
+      && (mathOut.indexOf("katex") >= 0 || mathOut.indexOf("ai-agent-math") >= 0 || mathOut.indexOf("%%MATH_") < 0);
+    // Inline code must keep `$x$`; unclosed fence still renders as codeblock; soft breaks merge.
+    var codeMathOut = renderMarkdown("用 `$E=mc^2$` 表示能量");
+    var codeMathOk = codeMathOut.indexOf("<code>") >= 0
+      && codeMathOut.indexOf("ai-agent-math") < 0
+      && codeMathOut.indexOf("$E=mc^2$") >= 0;
+    var openFenceOut = renderMarkdown("```python\ndef f():\n    return 1\n");
+    var openFenceOk = openFenceOut.indexOf("ai-agent-codeblock") >= 0 && openFenceOut.indexOf("def") >= 0;
+    var softBreakOut = renderMarkdown("第一行\n第二行\n\n第三段");
+    var softBreakOk = (softBreakOut.match(/<p>/g) || []).length === 2
+      && softBreakOut.indexOf("<br") >= 0;
+    var bqOut = renderMarkdown("> a\n> b");
+    var bqOk = (bqOut.match(/<blockquote>/g) || []).length === 1 && bqOut.indexOf("<br") >= 0;
+    if (
+      mdOut.indexOf("<table") < 0 || mdOut.indexOf("<strong>结论</strong>") < 0 ||
+      !pyOk || !cppOk || !citeOk || !copyOk || !shortSepOk || !twinOk || !mathOk ||
+      !codeMathOk || !openFenceOk || !softBreakOk || !bqOk
+    ) {
       console.error("Ai-agent markdown self-check failed", {
         table: mdOut.indexOf("<table") >= 0,
         conclusion: mdOut.indexOf("<strong>结论</strong>") >= 0,
@@ -1297,8 +1328,13 @@
         copyOk: copyOk,
         shortSepOk: shortSepOk,
         twinOk: twinOk,
-        shortSepOut: shortSepOut,
-        twinKeep: twinKeep,
+        mathOk: mathOk,
+        codeMathOk: codeMathOk,
+        openFenceOk: openFenceOk,
+        softBreakOk: softBreakOk,
+        bqOk: bqOk,
+        mathSlots: mathExtract.slots.length,
+        mathOut: mathOut.slice(0, 500),
       });
     } else {
       console.log("Ai-agent markdown self-check ok");

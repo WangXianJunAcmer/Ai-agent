@@ -796,6 +796,30 @@
     .ai-agent-msg .body hr {
       border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
     }
+    .ai-agent-msg .body .katex-display {
+      margin: 10px 0; overflow-x: auto; overflow-y: hidden;
+      padding: 2px 0;
+    }
+    .ai-agent-msg .body .ai-agent-math {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em; color: var(--ai-muted);
+      white-space: pre-wrap;
+    }
+    .ai-agent-msg .body .ai-agent-math.is-display {
+      display: block;
+      margin: 10px 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+    .ai-agent-msg .body .md-table-fallback {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f7f7f8;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
     .ai-agent-msg .body .md-table-wrap {
       overflow-x: auto;
       margin: 0 0 12px;

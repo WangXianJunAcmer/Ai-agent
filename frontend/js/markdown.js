@@ -8,6 +8,204 @@
       .replace(/'/g, "&#39;");
   }
 
+  var KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css";
+  var KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js";
+  var katexLoadState = "idle"; // idle | loading | ready | error
+  var katexWaiters = [];
+
+  function refreshMathMarkdownBodies() {
+    var nodes = document.querySelectorAll(
+      "#ai-agent-sidebar [data-raw-text], #ai-agent-thread [data-raw-text]"
+    );
+    Array.prototype.forEach.call(nodes, function (el) {
+      var raw = el.getAttribute("data-raw-text") || "";
+      if (
+        raw.indexOf("\\[") < 0 &&
+        raw.indexOf("\\(") < 0 &&
+        raw.indexOf("$$") < 0 &&
+        !/(^|[^\\])\$[^$\n]+\$/.test(raw)
+      ) {
+        return;
+      }
+      el.innerHTML = renderMarkdown(raw);
+      bindCodeBlockCopy(el);
+    });
+  }
+
+  function ensureKatex(done) {
+    if (typeof done !== "function") done = function () {};
+    if (window.katex) {
+      katexLoadState = "ready";
+      done(true);
+      return;
+    }
+    if (katexLoadState === "error") {
+      done(false);
+      return;
+    }
+    katexWaiters.push(done);
+    if (katexLoadState === "loading") return;
+    katexLoadState = "loading";
+
+    function finish(ok) {
+      katexLoadState = ok ? "ready" : "error";
+      var q = katexWaiters.slice();
+      katexWaiters = [];
+      q.forEach(function (fn) { try { fn(ok); } catch (err) {} });
+      if (ok) refreshMathMarkdownBodies();
+    }
+
+    if (!document.querySelector('link[data-ai-agent-katex="1"]')) {
+      var link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = KATEX_CSS;
+      link.setAttribute("data-ai-agent-katex", "1");
+      document.head.appendChild(link);
+    }
+    var existing = document.querySelector('script[data-ai-agent-katex="1"]');
+    if (existing) {
+      existing.addEventListener("load", function () { finish(!!window.katex); });
+      existing.addEventListener("error", function () { finish(false); });
+      return;
+    }
+    var script = document.createElement("script");
+    script.src = KATEX_JS;
+    script.async = true;
+    script.setAttribute("data-ai-agent-katex", "1");
+    script.onload = function () { finish(!!window.katex); };
+    script.onerror = function () { finish(false); };
+    document.head.appendChild(script);
+  }
+
+  function renderMathHtml(tex, displayMode) {
+    var source = String(tex || "").trim();
+    if (!source) return "";
+    if (window.katex && typeof window.katex.renderToString === "function") {
+      try {
+        return window.katex.renderToString(source, {
+          displayMode: !!displayMode,
+          throwOnError: false,
+          strict: "ignore",
+          trust: false,
+        });
+      } catch (err) {
+        /* fall through */
+      }
+    }
+    // Pending / failed: keep readable TeX until KaTeX loads (then refresh via data-raw-text).
+    // Don't put multi-line TeX in attributes — newlines break HTML.
+    var tag = displayMode ? "div" : "span";
+    return (
+      "<" + tag + ' class="ai-agent-math' + (displayMode ? " is-display" : "") + '">' +
+      escapeHtml(source) +
+      "</" + tag + ">"
+    );
+  }
+
+  function extractMath(text) {
+    var slots = [];
+    var out = String(text || "");
+    function stash(tex, display) {
+      slots.push({ tex: tex, display: !!display });
+      return "%%MATH_" + (slots.length - 1) + "%%";
+    }
+    // Display: $$...$$ then \[...\]
+    out = out.replace(/\$\$([\s\S]+?)\$\$/g, function (_, tex) {
+      return stash(tex, true);
+    });
+    out = out.replace(/\\\[([\s\S]+?)\\\]/g, function (_, tex) {
+      return stash(tex, true);
+    });
+    // Inline: \(...\) then $...$ (single line, avoid currency like $100)
+    out = out.replace(/\\\(([\s\S]+?)\\\)/g, function (_, tex) {
+      return stash(tex, false);
+    });
+    out = out.replace(/(^|[^\\$])\$([^$\n]+?)\$(?!\$)/g, function (_, lead, tex) {
+      var body = String(tex || "").trim();
+      // Skip likely currency: $100 / $1,234.56
+      if (!body || (/^\d/.test(body) && !/[a-zA-Z\\]/.test(body))) return lead + "$" + tex + "$";
+      return lead + stash(tex, false);
+    });
+    return { text: out, slots: slots };
+  }
+
+  function fillMathSlots(html, slots) {
+    return String(html || "").replace(/%%MATH_(\d+)%%/g, function (_, index) {
+      var slot = slots[Number(index)];
+      if (!slot) return "";
+      return renderMathHtml(slot.tex, slot.display);
+    });
+  }
+
+  // Protect `inline code` before math so `$x$` inside backticks is not stolen.
+  function protectInlineCode(text) {
+    var slots = [];
+    var out = String(text || "").replace(/`([^`\n]+)`/g, function (_, code) {
+      slots.push(code);
+      return "%%PROTECTCODE_" + (slots.length - 1) + "%%";
+    });
+    return { text: out, slots: slots };
+  }
+
+  function restoreProtectedInlineCode(text, slots) {
+    return String(text || "").replace(/%%PROTECTCODE_(\d+)%%/g, function (_, index) {
+      var code = slots[Number(index)];
+      if (code == null) return "";
+      return "`" + code + "`";
+    });
+  }
+
+  // Closed fences + trailing unclosed fence (common while streaming).
+  function extractCodeFences(text) {
+    var blocks = [];
+    var src = String(text || "");
+    var out = "";
+    var i = 0;
+    while (i < src.length) {
+      var start = src.indexOf("```", i);
+      if (start < 0) {
+        out += src.slice(i);
+        break;
+      }
+      out += src.slice(i, start);
+      var afterOpen = start + 3;
+      var nl = src.indexOf("\n", afterOpen);
+      var lang;
+      var bodyStart;
+      if (nl < 0) {
+        lang = src.slice(afterOpen).trim();
+        blocks.push(renderCodeBlock(lang, ""));
+        out += "%%CODEBLOCK_" + (blocks.length - 1) + "%%";
+        break;
+      }
+      lang = src.slice(afterOpen, nl);
+      bodyStart = nl + 1;
+      var end = src.indexOf("```", bodyStart);
+      if (end < 0) {
+        blocks.push(renderCodeBlock(lang, src.slice(bodyStart)));
+        out += "%%CODEBLOCK_" + (blocks.length - 1) + "%%";
+        break;
+      }
+      blocks.push(renderCodeBlock(lang, src.slice(bodyStart, end)));
+      out += "%%CODEBLOCK_" + (blocks.length - 1) + "%%";
+      i = end + 3;
+      if (src[i] === "\n") i += 1;
+    }
+    return { text: out, blocks: blocks };
+  }
+
+  function isPlainMarkdownLine(trimmed) {
+    if (!trimmed) return false;
+    if (/^%%(?:CODEBLOCK|MATH)_\d+%%$/.test(trimmed)) return false;
+    if (/^(---|\*\*\*|___)\s*$/.test(trimmed)) return false;
+    if (/^#{1,4}\s+/.test(trimmed)) return false;
+    if (/^>\s?/.test(trimmed)) return false;
+    if (/^[-*]\s+/.test(trimmed)) return false;
+    if (/^\d+\.\s+/.test(trimmed)) return false;
+    if (isTableRowLine(trimmed)) return false;
+    return true;
+  }
+
   function safeMarkdownHref(url) {
     var u = String(url || "").trim();
     // Only http(s) — blocks javascript:/data: and attribute breakout via escapeHtml.
@@ -447,12 +645,16 @@
   }
 
   function renderMarkdown(text) {
-    var normalized = text.replace(/\r\n/g, "\n");
-    var codeBlocks = [];
-    normalized = normalized.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, function (_, lang, code) {
-      codeBlocks.push(renderCodeBlock(lang, code));
-      return "%%CODEBLOCK_" + (codeBlocks.length - 1) + "%%";
-    });
+    ensureKatex();
+    var normalized = String(text || "").replace(/\r\n/g, "\n");
+    var fences = extractCodeFences(normalized);
+    normalized = fences.text;
+    var codeBlocks = fences.blocks;
+
+    // Don't let math steal `$...$` / `\(...\)` inside inline code.
+    var protectedCode = protectInlineCode(normalized);
+    var math = extractMath(protectedCode.text);
+    normalized = restoreProtectedInlineCode(math.text, protectedCode.slots);
 
     var lines = normalized.split("\n");
     var html = [];
@@ -476,6 +678,11 @@
         continue;
       }
       if (/^%%CODEBLOCK_\d+%%$/.test(trimmed)) {
+        closeList();
+        html.push(trimmed);
+        continue;
+      }
+      if (/^%%MATH_\d+%%$/.test(trimmed)) {
         closeList();
         html.push(trimmed);
         continue;
@@ -514,9 +721,17 @@
         html.push("<h1>" + formatInlineMarkdown(trimmed.replace(/^#\s+/, "")) + "</h1>");
         continue;
       }
-      if (/^>\s+/.test(trimmed)) {
+      if (/^>\s?/.test(trimmed)) {
         closeList();
-        html.push("<blockquote>" + formatInlineMarkdown(trimmed.replace(/^>\s+/, "")) + "</blockquote>");
+        var bqLines = [];
+        while (i < lines.length) {
+          var bqTrim = lines[i].trim();
+          if (!/^>\s?/.test(bqTrim)) break;
+          bqLines.push(bqTrim.replace(/^>\s?/, ""));
+          i += 1;
+        }
+        i -= 1;
+        html.push("<blockquote>" + formatInlineMarkdown(bqLines.join("\n")).replace(/\n/g, "<br />") + "</blockquote>");
         continue;
       }
       if (/^[-*]\s+\[[ xX]\]\s+/.test(trimmed)) {
@@ -556,13 +771,31 @@
         continue;
       }
 
+      // Merge consecutive plain lines into one paragraph (soft line breaks).
+      if (isPlainMarkdownLine(trimmed)) {
+        closeList();
+        var para = [trimmed];
+        while (i + 1 < lines.length) {
+          var nextTrim = lines[i + 1].trim();
+          if (!isPlainMarkdownLine(nextTrim)) break;
+          para.push(nextTrim);
+          i += 1;
+        }
+        html.push("<p>" + formatInlineMarkdown(para.join("\n")).replace(/\n/g, "<br />") + "</p>");
+        continue;
+      }
+
       closeList();
       html.push("<p>" + formatInlineMarkdown(trimmed) + "</p>");
     }
     closeList();
 
-    return html.join("\n").replace(/%%CODEBLOCK_(\d+)%%/g, function (_, index) {
+    var joined = html.join("\n").replace(/%%CODEBLOCK_(\d+)%%/g, function (_, index) {
       return codeBlocks[Number(index)] || "";
     });
+    return fillMathSlots(joined, math.slots);
   }
+
+  // Warm KaTeX early so the first math reply rarely shows raw TeX.
+  ensureKatex();
 
