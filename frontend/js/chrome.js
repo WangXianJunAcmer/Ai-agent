@@ -576,3 +576,164 @@
     applySidebarWidth(current, true);
   });
 
+  // Slash skills (`/name`) — project skills from /api/skills + Cursor setting_sources=project.
+  var skillCatalog = [];
+  var slashActive = -1;
+  var slashMatch = null;
+
+  function closeSlashMenu() {
+    if (!slashMenu) return;
+    slashMenu.classList.remove("is-open");
+    slashMenu.innerHTML = "";
+    slashActive = -1;
+    slashMatch = null;
+  }
+
+  function slashTokenAtCaret() {
+    var text = inputField.value || "";
+    var caret = typeof inputField.selectionStart === "number" ? inputField.selectionStart : text.length;
+    var before = text.slice(0, caret);
+    var m = before.match(/(^|[\s\n])\/([\w.-]*)$/);
+    if (!m) return null;
+    var query = m[2] || "";
+    var start = before.length - query.length - 1;
+    return { start: start, end: caret, query: query };
+  }
+
+  function filteredSkills(query) {
+    var q = (query || "").toLowerCase();
+    return skillCatalog.filter(function (s) {
+      if (!q) return true;
+      return (s.name || "").toLowerCase().indexOf(q) >= 0
+        || (s.description || "").toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 12);
+  }
+
+  function renderSlashMenu(items) {
+    if (!slashMenu) return;
+    slashMenu.innerHTML = "";
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.className = "ai-agent-slash-empty";
+      empty.textContent = skillCatalog.length ? "没有匹配的 skill" : "当前工作区未发现 skill";
+      slashMenu.appendChild(empty);
+      slashMenu.classList.add("is-open");
+      slashActive = -1;
+      return;
+    }
+    items.forEach(function (skill, idx) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-agent-slash-item" + (idx === slashActive ? " is-active" : "");
+      btn.setAttribute("role", "option");
+      btn.innerHTML = "<span class=\"name\"></span><span class=\"desc\"></span>";
+      btn.querySelector(".name").textContent = skill.name;
+      btn.querySelector(".desc").textContent = skill.description || "";
+      btn.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        applySlashSkill(skill);
+      });
+      slashMenu.appendChild(btn);
+    });
+    slashMenu.classList.add("is-open");
+  }
+
+  function applySlashSkill(skill) {
+    if (!slashMatch || !skill) return;
+    var text = inputField.value || "";
+    var insert = "/" + skill.name + " ";
+    var next = text.slice(0, slashMatch.start) + insert + text.slice(slashMatch.end);
+    inputField.value = next;
+    var caret = slashMatch.start + insert.length;
+    inputField.focus();
+    inputField.setSelectionRange(caret, caret);
+    closeSlashMenu();
+    if (typeof autosizeInput === "function") autosizeInput();
+    if (typeof updateComposerButtons === "function") updateComposerButtons();
+  }
+
+  function updateSlashMenu() {
+    if (!slashMenu || provider !== "cursor") {
+      closeSlashMenu();
+      return;
+    }
+    slashMatch = slashTokenAtCaret();
+    if (!slashMatch) {
+      closeSlashMenu();
+      return;
+    }
+    var items = filteredSkills(slashMatch.query);
+    if (slashActive >= items.length) slashActive = items.length ? 0 : -1;
+    if (slashActive < 0 && items.length) slashActive = 0;
+    renderSlashMenu(items);
+  }
+
+  function ensureSkillsLoaded() {
+    if (provider !== "cursor") return Promise.resolve([]);
+    if (skillCatalog.length) return Promise.resolve(skillCatalog);
+    return fetch(apiBase + "/api/skills")
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        skillCatalog = (data && data.skills) || [];
+        return skillCatalog;
+      })
+      .catch(function () {
+        skillCatalog = [];
+        return skillCatalog;
+      });
+  }
+
+  if (slashMenu && inputField && provider === "cursor") {
+    ensureSkillsLoaded();
+    inputField.addEventListener("input", function () {
+      ensureSkillsLoaded().then(updateSlashMenu);
+    });
+    inputField.addEventListener("click", updateSlashMenu);
+    inputField.addEventListener("keyup", function (e) {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+        updateSlashMenu();
+      }
+    });
+    inputField.addEventListener("keydown", function (e) {
+      if (!slashMenu.classList.contains("is-open")) return;
+      var items = filteredSkills(slashMatch && slashMatch.query);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeSlashMenu();
+        return;
+      }
+      if (!items.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        slashActive = (slashActive + 1) % items.length;
+        renderSlashMenu(items);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        slashActive = (slashActive - 1 + items.length) % items.length;
+        renderSlashMenu(items);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (slashActive >= 0 && slashActive < items.length) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          applySlashSkill(items[slashActive]);
+        }
+      }
+    }, true);
+    document.addEventListener("click", function (e) {
+      if (!slashMenu.classList.contains("is-open")) return;
+      if (slashMenu.contains(e.target) || e.target === inputField) return;
+      closeSlashMenu();
+    });
+  }
+
+  window.__aiAgentSlashMenuOpen = function () {
+    return !!(slashMenu && slashMenu.classList.contains("is-open"));
+  };
+

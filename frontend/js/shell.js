@@ -150,7 +150,7 @@
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     #ai-agent-new-chat, #ai-agent-fullscreen, #ai-agent-close {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
-      border-radius: 999px; padding: 7px 12px; font: 13px/1.2 inherit; cursor: pointer;
+      border-radius: 999px; padding: 7px 12px; font: 12px/1.2 inherit; cursor: pointer;
     }
     #ai-agent-new-chat:hover, #ai-agent-fullscreen:hover, #ai-agent-close:hover { background: var(--ai-surface); }
     #ai-agent-fullscreen, #ai-agent-close {
@@ -1007,6 +1007,7 @@
     }
     .ai-agent-queue-actions button.delete:hover { color: #b91c1c; }
     #ai-agent-compose-shell {
+      position: relative;
       border-radius: 16px;
       background: #fff;
       box-shadow: var(--ai-composer-shadow);
@@ -1084,6 +1085,40 @@
       padding: 2px 2px 0; font: inherit; line-height: 1.45; color: var(--ai-text);
     }
     #ai-agent-input::placeholder { color: #8e8e8e; }
+    #ai-agent-slash-menu {
+      display: none;
+      position: absolute;
+      left: 10px; right: 10px;
+      bottom: calc(100% + 6px);
+      z-index: 45;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--ai-border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,.12);
+      padding: 6px;
+    }
+    #ai-agent-slash-menu.is-open { display: block; }
+    .ai-agent-slash-item {
+      display: flex; flex-direction: column; gap: 2px;
+      width: 100%; border: 0; background: transparent; text-align: left;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer;
+      font: inherit; color: var(--ai-text);
+    }
+    .ai-agent-slash-item:hover,
+    .ai-agent-slash-item.is-active { background: #f4f4f4; }
+    .ai-agent-slash-item .name {
+      font: 600 13px/1.3 inherit;
+    }
+    .ai-agent-slash-item .name::before { content: "/"; color: var(--ai-muted); font-weight: 500; }
+    .ai-agent-slash-item .desc {
+      font: 12px/1.35 inherit; color: var(--ai-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ai-agent-slash-empty {
+      padding: 10px; font: 12px/1.4 inherit; color: var(--ai-muted);
+    }
     #ai-agent-compose-toolbar {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
@@ -1300,6 +1335,7 @@
         <div id="ai-agent-composer-wrap">
           <div id="ai-agent-queue"></div>
           <div id="ai-agent-compose-shell">
+          <div id="ai-agent-slash-menu" role="listbox" aria-label="Skills"></div>
           <div id="ai-agent-attachments"></div>
           <textarea id="ai-agent-input" rows="1" placeholder="${providerUi.placeholder}"></textarea>
           <div id="ai-agent-compose-toolbar">
@@ -1390,6 +1426,7 @@
   var sendBtn = document.getElementById("ai-agent-send");
   var composeShell = document.getElementById("ai-agent-compose-shell");
   var inputField = document.getElementById("ai-agent-input");
+  var slashMenu = document.getElementById("ai-agent-slash-menu");
   var modelWrap = document.getElementById("ai-agent-model-wrap");
   var modelBtn = document.getElementById("ai-agent-model-btn");
   var modelLabel = document.getElementById("ai-agent-model-label");

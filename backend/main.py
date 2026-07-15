@@ -340,6 +340,15 @@ async def refresh_models(provider: str = "cursor"):
     }
 
 
+@app.get("/api/skills")
+async def api_skills():
+    """Project skills under host_root (.cursor/.agents/.claude/.codex)."""
+    from backend.skills import list_project_skills
+
+    skills = await asyncio.to_thread(list_project_skills, settings["host_root"])
+    return {"skills": skills, "host_root": str(settings["host_root"])}
+
+
 def _attachment_dicts(items: list[AttachmentPayload] | None) -> list[dict] | None:
     if not items:
         return None

@@ -214,7 +214,11 @@ class SessionManager:
                 auto_create_pr=settings["cloud_auto_create_pr"],
             )
         else:
-            opts["local"] = LocalAgentOptions(cwd=str(settings["host_root"]))
+            # project → .cursor/.agents/.claude/.codex skills (+ mcp/rules) under host_root
+            opts["local"] = LocalAgentOptions(
+                cwd=str(settings["host_root"]),
+                setting_sources=["project"],
+            )
         return opts
 
     async def _close_agent(self, agent) -> None:

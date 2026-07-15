@@ -1133,6 +1133,11 @@
     handleFileSelection(files).then(updateComposerButtons);
   });
   inputField.addEventListener("keydown", function (e) {
+    if (typeof window.__aiAgentSlashMenuOpen === "function" && window.__aiAgentSlashMenuOpen()) {
+      if (e.key === "Enter" || e.key === "Tab" || e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Escape") {
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
