@@ -522,6 +522,8 @@ def friendly_error(message: str) -> str:
         return "上一条仍在执行，请稍等片刻后重试，或点击「新对话」。原始错误: " + msg
     if lower == "internal error" or "internal error" in lower:
         return "服务内部错误，常见于上一条被中断后 Agent 尚未释放。请再发一次或开新对话。原始错误: " + msg
+    if "bridge" in lower or "cursor-sdk-bridge" in lower:
+        return msg  # already wrapped with actionable hint in runtime
     return msg
 
 

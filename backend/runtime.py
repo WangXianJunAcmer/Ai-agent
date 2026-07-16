@@ -46,6 +46,43 @@ _TERMINAL_RUN_STATUSES = frozenset({"finished", "error", "cancelled", "expired"}
 _SESSION_IDLE_TTL_SEC = 3600
 
 
+def _bridge_launch_hint(err: BaseException, host_root: str) -> str:
+    """Explain lazy Cursor bridge failures (common on Windows first chat)."""
+    import sys
+
+    raw = getattr(err, "message", None) or str(err) or type(err).__name__
+    lower = raw.lower()
+    missing_bridge = any(
+        k in lower
+        for k in (
+            "unable to locate cursor-sdk-bridge",
+            "cursor-sdk-bridge",
+            "bundled bridge",
+            "bridge",
+            "winerror 2",
+            "the system cannot find the file",
+            "filenotfounderror",
+        )
+    )
+    if sys.platform == "win32" and missing_bridge:
+        return (
+            "Cursor 本地 bridge 启动失败（服务能起来，但第一次提问才会拉起 bridge）。"
+            "请在当前 conda 环境执行: "
+            "python -c \"from cursor_sdk._vendor import _bundled_launcher_path, resolve_bridge_path; "
+            "print(_bundled_launcher_path()); print(resolve_bridge_path())\" ；"
+            "若打印 None / 报错，请重新 pip install --force-reinstall cursor-sdk "
+            "（必须装 Windows 平台 wheel，需有 cursor-sdk-bridge.cmd）。"
+            f" workspace={host_root} 原始错误: {raw}"
+        )
+    if missing_bridge:
+        return (
+            "Cursor 本地 bridge 启动失败（第一次提问才会拉起）。"
+            "请检查 cursor-sdk 是否完整安装，或设置 CURSOR_SDK_BRIDGE_BIN。"
+            f" workspace={host_root} 原始错误: {raw}"
+        )
+    return f"Cursor bridge 启动失败 (workspace={host_root}): {raw}"
+
+
 class SessionManager:
     def __init__(self, settings: dict):
         self.settings = settings
@@ -79,9 +116,13 @@ class SessionManager:
 
         if not cursor_api_key(self.settings):
             raise RuntimeError("CURSOR_API_KEY is not set.")
-        self._client = await self._stack.enter_async_context(
-            await AsyncClient.launch_bridge(workspace=host_root)
-        )
+        try:
+            self._client = await self._stack.enter_async_context(
+                await AsyncClient.launch_bridge(workspace=host_root)
+            )
+        except Exception as err:
+            # Bridge is lazy (first chat). Surface a Windows-actionable hint.
+            raise RuntimeError(_bridge_launch_hint(err, host_root)) from err
 
     async def stop(self) -> None:
         for session in list(self._sessions.values()):
