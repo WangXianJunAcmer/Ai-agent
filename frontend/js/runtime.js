@@ -398,6 +398,7 @@
   function enqueueCurrentCompose() {
     var text = inputField.value.trim();
     if (!text && !pendingFiles.length) return null;
+    if (text) pushInputHistory(text);
     var item = {
       id: "q-" + (++queueSeq),
       text: text,
@@ -1122,7 +1123,70 @@
     inputField.style.height = "auto";
     inputField.style.height = Math.min(inputField.scrollHeight, 140) + "px";
   }
+
+  // Shell-like ↑/↓ through previously sent prompts (per provider, localStorage).
+  var INPUT_HISTORY_KEY = "ai-agent-input-history:" + provider;
+  var INPUT_HISTORY_MAX = 500;
+  var inputHistory = [];
+  var inputHistoryIndex = -1; // -1 = live draft; 0 = newest sent
+  var inputHistoryDraft = "";
+  (function loadInputHistory() {
+    try {
+      var raw = localStorage.getItem(INPUT_HISTORY_KEY) || "";
+      var arr = raw ? JSON.parse(raw) : [];
+      inputHistory = Array.isArray(arr)
+        ? arr.filter(function (s) { return typeof s === "string" && s.trim(); }).slice(0, INPUT_HISTORY_MAX)
+        : [];
+    } catch (err) {
+      inputHistory = [];
+    }
+  })();
+
+  function saveInputHistory() {
+    try {
+      localStorage.setItem(INPUT_HISTORY_KEY, JSON.stringify(inputHistory.slice(0, INPUT_HISTORY_MAX)));
+    } catch (err) {}
+  }
+
+  function pushInputHistory(text) {
+    var t = String(text || "").trim();
+    if (!t) return;
+    if (inputHistory[0] === t) {
+      inputHistoryIndex = -1;
+      inputHistoryDraft = "";
+      return;
+    }
+    inputHistory = [t].concat(inputHistory.filter(function (s) { return s !== t; })).slice(0, INPUT_HISTORY_MAX);
+    saveInputHistory();
+    inputHistoryIndex = -1;
+    inputHistoryDraft = "";
+  }
+
+  function caretAtFirstLine() {
+    var start = typeof inputField.selectionStart === "number" ? inputField.selectionStart : 0;
+    return (inputField.value || "").slice(0, start).indexOf("\n") < 0;
+  }
+
+  function caretAtLastLine() {
+    var start = typeof inputField.selectionStart === "number" ? inputField.selectionStart : 0;
+    return (inputField.value || "").slice(start).indexOf("\n") < 0;
+  }
+
+  function applyInputHistory(idx) {
+    inputHistoryIndex = idx;
+    inputField.value = idx < 0 ? inputHistoryDraft : (inputHistory[idx] || "");
+    autosizeInput();
+    updateComposerButtons();
+    var len = inputField.value.length;
+    inputField.setSelectionRange(len, len);
+  }
+
   inputField.addEventListener("input", function () {
+    if (inputHistoryIndex >= 0) {
+      // Edited a recalled entry → treat as new draft.
+      inputHistoryIndex = -1;
+      inputHistoryDraft = "";
+    }
     autosizeInput();
     updateComposerButtons();
   });
@@ -1137,6 +1201,26 @@
       if (e.key === "Enter" || e.key === "Tab" || e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Escape") {
         return;
       }
+    }
+    if (e.key === "ArrowUp") {
+      if (!inputHistory.length) return;
+      if (inputHistoryIndex < 0 && !caretAtFirstLine()) return;
+      e.preventDefault();
+      if (inputHistoryIndex < 0) {
+        inputHistoryDraft = inputField.value;
+        applyInputHistory(0);
+      } else if (inputHistoryIndex < inputHistory.length - 1) {
+        applyInputHistory(inputHistoryIndex + 1);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      if (inputHistoryIndex < 0) return;
+      if (!caretAtLastLine()) return;
+      e.preventDefault();
+      if (inputHistoryIndex <= 0) applyInputHistory(-1);
+      else applyInputHistory(inputHistoryIndex - 1);
+      return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
