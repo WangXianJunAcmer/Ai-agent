@@ -13,7 +13,8 @@ from passlib.hash import pbkdf2_sha256
 from backend.db import db_session
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_\u4e00-\u9fff]{2,32}$")
-TOKEN_COOKIE = "ai_agent_token"
+TOKEN_COOKIE = "coding_agent_token"
+LEGACY_TOKEN_COOKIE = "ai_agent_token"
 SESSION_DAYS = 7
 REMEMBER_DAYS = 30
 

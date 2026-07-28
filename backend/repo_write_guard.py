@@ -27,7 +27,7 @@ SHELL_TOOL_NAMES = {
     "runterminal",
     "exec",
 }
-UPLOAD_DIR = ".ai-agent-uploads"
+UPLOAD_DIR = ".coding-agent-uploads"
 REPO_WRITE_BLOCK_MSG = (
     "当前配置禁止修改仓库文件（agent.allow_repo_write=false）。"
     "只读查询/分析可以继续；若确需改代码，请在 config.yaml 将 allow_repo_write 设为 true 后重启服务。"

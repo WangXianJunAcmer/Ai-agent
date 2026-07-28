@@ -4,7 +4,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
-# Prefer: PYTHON=... > active conda > conda env ai-agent > python3.10+ on PATH
+# Prefer: PYTHON=... > active conda > conda env coding-agent > python3.10+ on PATH
 resolve_python() {
   if [[ -n "${PYTHON:-}" ]]; then
     printf '%s\n' "$PYTHON"
@@ -18,7 +18,7 @@ resolve_python() {
   fi
   local base cand
   for base in "${HOME}/miniconda3" "${HOME}/anaconda3" "${HOME}/mambaforge" "${HOME}/miniforge3"; do
-    cand="${base}/envs/ai-agent/bin/python"
+    cand="${base}/envs/coding-agent/bin/python"
     if [[ -x "$cand" ]]; then
       printf '%s\n' "$cand"
       return
@@ -33,7 +33,7 @@ resolve_python() {
     fi
   done
   echo "Need Python 3.10+. Example:" >&2
-  echo "  conda create -n ai-agent python=3.10 && conda activate ai-agent && pip install -r requirements.txt" >&2
+  echo "  conda create -n coding-agent python=3.10 && conda activate coding-agent && pip install -r requirements.txt" >&2
   exit 1
 }
 

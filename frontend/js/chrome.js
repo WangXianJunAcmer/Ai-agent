@@ -1,4 +1,4 @@
-/* ai-agent frontend/js/chrome.js */
+/* coding-agent frontend/js/chrome.js */
   function nearBottom(threshold) {
     var gap = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
     return gap <= (threshold || 80);
@@ -53,7 +53,7 @@
   }
 
   function serializeWorklog(msg) {
-    return Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-card")).map(function (card) {
+    return Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-card")).map(function (card) {
       var key = card.getAttribute("data-card-key") || "";
       if (key === "status-live" || key === "think-live" || key === "plan-live" || key === "explore-live") {
         return null;
@@ -61,7 +61,7 @@
       var data = card.__cardData || {};
       return {
         kind: data.kind || "tool",
-        title: data.title || (card.querySelector(".ai-agent-card-title") || {}).textContent || "",
+        title: data.title || (card.querySelector(".coding-agent-card-title") || {}).textContent || "",
         detail: data.detail || "",
         paths: data.paths || [],
         diff: data.diff || [],
@@ -72,7 +72,7 @@
   }
 
   function serializeTurnChanges(msg) {
-    var panel = msg.querySelector(".ai-agent-turn-changes");
+    var panel = msg.querySelector(".coding-agent-turn-changes");
     if (!panel) return null;
     // Prefer the live payload (keeps line-level diffs across refresh).
     if (panel.__turnPayload && panel.__turnPayload.files && panel.__turnPayload.files.length) {
@@ -88,13 +88,13 @@
       };
     }
     var files = [];
-    Array.prototype.slice.call(panel.querySelectorAll(".ai-agent-turn-file")).forEach(function (row) {
-      var pathEl = row.querySelector(".ai-agent-turn-file-path");
-      var metaEl = row.querySelector(".ai-agent-turn-file-meta");
+    Array.prototype.slice.call(panel.querySelectorAll(".coding-agent-turn-file")).forEach(function (row) {
+      var pathEl = row.querySelector(".coding-agent-turn-file-path");
+      var metaEl = row.querySelector(".coding-agent-turn-file-meta");
       var meta = (metaEl && metaEl.textContent) || "";
       var addMatch = meta.match(/\+(\d+)/);
       var delMatch = meta.match(/-(\d+)/);
-      var statusEl = row.querySelector(".ai-agent-turn-file-status");
+      var statusEl = row.querySelector(".coding-agent-turn-file-status");
       var statusText = ((statusEl && statusEl.textContent) || meta).toLowerCase();
       files.push({
         path: (pathEl && pathEl.textContent) || "",
@@ -133,7 +133,7 @@
   }
 
   function collectHistoryMessages() {
-    return Array.prototype.slice.call(threadDiv.querySelectorAll(".ai-agent-msg")).map(function (msg) {
+    return Array.prototype.slice.call(threadDiv.querySelectorAll(".coding-agent-msg")).map(function (msg) {
       var body = msg.querySelector(".body");
       var kind = "agent";
       if (msg.classList.contains("user")) kind = "user";
@@ -143,7 +143,7 @@
       if (msg.__attachments && msg.__attachments.length) {
         attachments = msg.__attachments.map(historyAttachmentMeta);
       } else {
-        Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
+        Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-msg-images img")).forEach(function (img) {
           attachments.push({
             kind: "image",
             name: img.alt || "image",
@@ -151,7 +151,7 @@
             has_data: false,
           });
         });
-        Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip")).forEach(function (chip) {
+        Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-file-chip")).forEach(function (chip) {
           var nameEl = chip.querySelector(".name");
           attachments.push({
             kind: "file",
@@ -166,8 +166,8 @@
         kind: kind,
         text: (function () {
           var parts = [];
-          Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-segment-text, .body")).forEach(function (el) {
-            if (el.classList.contains("ai-agent-worklog")) return;
+          Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-segment-text, .body")).forEach(function (el) {
+            if (el.classList.contains("coding-agent-worklog")) return;
             var t = el.getAttribute("data-raw-text") || el.textContent || "";
             if (t) parts.push(t);
           });
@@ -348,7 +348,7 @@
   }
 
   function clearThreadMessages() {
-    Array.prototype.slice.call(threadDiv.querySelectorAll(".ai-agent-msg")).forEach(function (node) {
+    Array.prototype.slice.call(threadDiv.querySelectorAll(".coding-agent-msg")).forEach(function (node) {
       node.remove();
     });
   }
@@ -390,7 +390,7 @@
       }
     });
     updateEmptyState();
-    if (threadDiv.querySelector(".ai-agent-msg")) {
+    if (threadDiv.querySelector(".coding-agent-msg")) {
       scrollToBottom(true);
       var wasStreaming = !!(data.streaming || data.pending);
       return {
@@ -479,7 +479,7 @@
     modelLabel.textContent = modelLabelFor(id);
     if (modelAutoResolved) modelAutoResolved.textContent = "";
     modelBtn.title = modelLabelFor(id);
-    Array.prototype.forEach.call(modelList.querySelectorAll(".ai-agent-model-option"), function (btn) {
+    Array.prototype.forEach.call(modelList.querySelectorAll(".coding-agent-model-option"), function (btn) {
       btn.classList.toggle("is-selected", !isAuto && btn.getAttribute("data-model-id") === id);
     });
   }
@@ -506,7 +506,7 @@
       if (!model.id || model.id === "auto") return;
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ai-agent-model-option";
+      btn.className = "coding-agent-model-option";
       btn.setAttribute("data-model-id", model.id);
       btn.setAttribute("role", "option");
       btn.textContent = model.label || model.id;
@@ -548,7 +548,7 @@
   var modelCatalogPromise = null;
 
   function loadModelOptions() {
-    var cached = window.__aiAgentModelOptions;
+    var cached = window.__caModelOptions;
     if (Array.isArray(cached) && cached.length > 0) {
       fillModelOptions(cached, modelField.value || defaultModel);
     }
@@ -562,10 +562,10 @@
       .then(function (refreshed) {
         modelCatalogFetched = true;
         if (!refreshed || !refreshed.model_options) return;
-        window.__aiAgentModelOptions = refreshed.model_options;
+        window.__caModelOptions = refreshed.model_options;
         fillModelOptions(refreshed.model_options, modelField.value || defaultModel);
         if (refreshed.changed) {
-          window.dispatchEvent(new CustomEvent("ai-agent-models-updated", {
+          window.dispatchEvent(new CustomEvent("coding-agent-models-updated", {
             detail: { model_options: refreshed.model_options },
           }));
         }
@@ -605,13 +605,13 @@
 
   function syncPageScrollLock() {
     document.body.classList.toggle(
-      "ai-agent-page-locked",
+      "coding-agent-page-locked",
       sidebar.classList.contains("open") && isFullscreen()
     );
   }
 
   function isLandingState() {
-    return !threadDiv.querySelector(".ai-agent-msg") && !sendQueue.length;
+    return !threadDiv.querySelector(".coding-agent-msg") && !sendQueue.length;
   }
 
   function updateEmptyState() {
@@ -701,11 +701,11 @@
   });
 
   // Left Repositories / history nav: drag resize + Ctrl+B toggle (Cursor-like).
-  var navEl = document.getElementById("ai-agent-nav");
-  var navResizeHandle = document.getElementById("ai-agent-nav-resize");
-  var navToggleBtn = document.getElementById("ai-agent-toggle-nav");
-  var NAV_WIDTH_KEY = "ai-agent-nav-width:" + provider;
-  var NAV_OPEN_KEY = "ai-agent-nav-open:" + provider;
+  var navEl = document.getElementById("coding-agent-nav");
+  var navResizeHandle = document.getElementById("coding-agent-nav-resize");
+  var navToggleBtn = document.getElementById("coding-agent-toggle-nav");
+  var NAV_WIDTH_KEY = "coding-agent-nav-width:" + provider;
+  var NAV_OPEN_KEY = "coding-agent-nav-open:" + provider;
   var MIN_NAV_WIDTH = 180;
   var MAX_NAV_WIDTH = 480;
 
@@ -730,7 +730,7 @@
       navToggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
       navToggleBtn.classList.toggle("is-on", !!on);
     }
-    var pinBrand = document.getElementById("ai-agent-nav-rail-brand");
+    var pinBrand = document.getElementById("coding-agent-nav-rail-brand");
     if (pinBrand) {
       // Same pinned node in both states; only the action/label changes.
       pinBrand.title = on ? providerUi.name : "展开边栏 (Ctrl+B)";
@@ -780,9 +780,9 @@
   if (navToggleBtn) navToggleBtn.onclick = function () { toggleNav(); };
   if (navResizeHandle) navResizeHandle.addEventListener("mousedown", startNavResize);
 
-  var navRailBrand = document.getElementById("ai-agent-nav-rail-brand");
-  var navRailNew = document.getElementById("ai-agent-nav-rail-new");
-  var navRailAvatar = document.getElementById("ai-agent-nav-rail-avatar");
+  var navRailBrand = document.getElementById("coding-agent-nav-rail-brand");
+  var navRailNew = document.getElementById("coding-agent-nav-rail-new");
+  var navRailAvatar = document.getElementById("coding-agent-nav-rail-avatar");
   if (navRailBrand) {
     navRailBrand.onclick = function () {
       if (!isNavOpen()) setNavOpen(true);
@@ -790,7 +790,7 @@
   }
   if (navRailNew) {
     navRailNew.onclick = function () {
-      var btn = document.getElementById("ai-agent-nav-new");
+      var btn = document.getElementById("coding-agent-nav-new");
       if (btn) btn.click();
       else setNavOpen(true);
     };
@@ -798,7 +798,7 @@
   if (navRailAvatar) {
     navRailAvatar.onclick = function () {
       setNavOpen(true);
-      var logout = document.getElementById("ai-agent-logout");
+      var logout = document.getElementById("coding-agent-logout");
       if (logout) logout.focus();
     };
   }
@@ -850,7 +850,7 @@
     slashMenu.innerHTML = "";
     if (!items.length) {
       var empty = document.createElement("div");
-      empty.className = "ai-agent-slash-empty";
+      empty.className = "coding-agent-slash-empty";
       empty.textContent = skillCatalog.length ? "没有匹配的 skill" : "当前工作区未发现 skill";
       slashMenu.appendChild(empty);
       slashMenu.classList.add("is-open");
@@ -860,7 +860,7 @@
     items.forEach(function (skill, idx) {
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ai-agent-slash-item" + (idx === slashActive ? " is-active" : "");
+      btn.className = "coding-agent-slash-item" + (idx === slashActive ? " is-active" : "");
       btn.setAttribute("role", "option");
       btn.innerHTML = "<span class=\"name\"></span><span class=\"desc\"></span>";
       btn.querySelector(".name").textContent = skill.name;
@@ -969,7 +969,7 @@
     });
   }
 
-  window.__aiAgentSlashMenuOpen = function () {
+  window.__caSlashMenuOpen = function () {
     return !!(slashMenu && slashMenu.classList.contains("is-open"));
   };
 

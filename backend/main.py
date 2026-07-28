@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.auth import (
+    LEGACY_TOKEN_COOKIE,
     REMEMBER_DAYS,
     TOKEN_COOKIE,
     create_user,
@@ -75,7 +76,7 @@ def _ensure_worker_loop() -> asyncio.AbstractEventLoop:
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        threading.Thread(target=_run, name="ai-agent-runtime", daemon=True).start()
+        threading.Thread(target=_run, name="coding-agent-runtime", daemon=True).start()
         _worker_loop = loop
         return loop
 
@@ -156,7 +157,7 @@ async def lifespan(_app: FastAPI):
     await _worker_await(sessions.stop())
 
 
-app = FastAPI(title="Ai-agent", lifespan=lifespan)
+app = FastAPI(title="Coding Agent", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -440,9 +441,9 @@ def _inject_page(name: str, *, provider: str = "cursor") -> Response:
         selected = str(settings.get("model", "auto"))
     cache_json = json.dumps(options, ensure_ascii=False).replace("<", "\\u003c")
     page = (frontend_dir / name).read_text(encoding="utf-8")
-    page = page.replace("__AI_AGENT_MODEL_CACHE__", cache_json)
-    page = page.replace("__AI_AGENT_DEFAULT_MODEL__", html.escape(selected, quote=True))
-    page = page.replace("__AI_AGENT_PROVIDER__", html.escape(provider, quote=True))
+    page = page.replace("__CODING_AGENT_MODEL_CACHE__", cache_json)
+    page = page.replace("__CODING_AGENT_DEFAULT_MODEL__", html.escape(selected, quote=True))
+    page = page.replace("__CODING_AGENT_PROVIDER__", html.escape(provider, quote=True))
     return Response(page, media_type="text/html; charset=utf-8")
 
 
@@ -458,10 +459,13 @@ def _set_auth_cookie(response: Response, token: str, *, remember: bool) -> None:
     if remember:
         kwargs["max_age"] = int(REMEMBER_DAYS) * 24 * 3600
     response.set_cookie(**kwargs)
+    # Drop pre-rename cookie so old sessions don't linger.
+    response.delete_cookie(key=LEGACY_TOKEN_COOKIE, path="/")
 
 
 def _clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(key=TOKEN_COOKIE, path="/")
+    response.delete_cookie(key=LEGACY_TOKEN_COOKIE, path="/")
 
 
 @app.get("/login")

@@ -10,10 +10,22 @@ from pathlib import Path
 from passlib.hash import pbkdf2_sha256
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "data" / "ai_agent.db"
+DEFAULT_DB = ROOT / "data" / "coding_agent.db"
+_LEGACY_DB = ROOT / "data" / "ai_agent.db"
 
 ADMIN_USERNAME = "Admin"
 ADMIN_PASSWORD = "123456"
+
+
+def _migrate_legacy_db_file() -> None:
+    """One-shot rename from Ai-agent era filename."""
+    if DEFAULT_DB.exists() or not _LEGACY_DB.exists():
+        return
+    try:
+        DEFAULT_DB.parent.mkdir(parents=True, exist_ok=True)
+        _LEGACY_DB.rename(DEFAULT_DB)
+    except OSError:
+        pass
 
 
 def database_path() -> Path:
@@ -24,6 +36,7 @@ def database_path() -> Path:
         if not path.is_absolute():
             path = (ROOT / path).resolve()
         return path
+    _migrate_legacy_db_file()
     return DEFAULT_DB
 
 

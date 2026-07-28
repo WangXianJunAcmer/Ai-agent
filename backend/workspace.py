@@ -37,7 +37,7 @@ _SKIP_DIRS = {
     "venv",
     "node_modules",
     "__pycache__",
-    ".ai-agent-uploads",
+    ".coding-agent-uploads",
     ".cursor",
     "dist",
     "build",
@@ -54,7 +54,7 @@ def home_workspace() -> Path:
 
 
 def default_workspace(settings: dict) -> Path:
-    """UI / agent default root is Home (user profile), not the Ai-agent repo."""
+    """UI / agent default root is Home (user profile), not the Coding Agent repo."""
     return home_workspace()
 
 

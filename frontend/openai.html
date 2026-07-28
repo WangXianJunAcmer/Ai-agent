@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ai-agent · OpenAI</title>
+  <title>Coding Agent · OpenAI</title>
   <style>
     html, body { margin: 0; height: 100%; background: #fff; }
     .boot {
@@ -13,7 +13,7 @@
     }
   </style>
   <script>
-    window.__aiAgentModelOptions = __AI_AGENT_MODEL_CACHE__;
+    window.__caModelOptions = __CODING_AGENT_MODEL_CACHE__;
   </script>
 </head>
 <body>
@@ -22,7 +22,7 @@
     src="/static/widget.js?v=norepo1"
     data-layout="fullscreen"
     data-provider="openai"
-    data-default-model="__AI_AGENT_DEFAULT_MODEL__"
+    data-default-model="__CODING_AGENT_DEFAULT_MODEL__"
   ></script>
   <script>
     (function () {
@@ -30,12 +30,12 @@
       function hide() {
         if (boot) boot.style.display = "none";
       }
-      if (document.getElementById("ai-agent-sidebar")) hide();
+      if (document.getElementById("coding-agent-sidebar")) hide();
       else {
         var n = 0;
         var t = setInterval(function () {
           n += 1;
-          if (document.getElementById("ai-agent-sidebar") || n > 40) {
+          if (document.getElementById("coding-agent-sidebar") || n > 40) {
             clearInterval(t);
             hide();
           }

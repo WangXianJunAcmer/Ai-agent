@@ -26,7 +26,7 @@ _SKIP = {
     "venv",
     "node_modules",
     "__pycache__",
-    ".ai-agent-uploads",
+    ".coding-agent-uploads",
     ".cursor",
     "dist",
     "build",

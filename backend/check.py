@@ -1,4 +1,4 @@
-"""One runnable self-check for Ai-agent (config + tool display + attachments + errors)."""
+"""One runnable self-check for Coding Agent (config + tool display + attachments + errors)."""
 
 from __future__ import annotations
 
@@ -384,7 +384,7 @@ def check_context_error() -> None:
 
 
 def check_attachments() -> None:
-    root = Path(tempfile.mkdtemp(prefix="ai-agent-attach-"))
+    root = Path(tempfile.mkdtemp(prefix="coding-agent-attach-"))
     try:
         settings = {**_SETTINGS, "host_root": str(root)}
         payload = base64.b64encode(b"hello-file").decode("ascii")
@@ -417,7 +417,7 @@ def check_attachments() -> None:
         )
         assert skipped == [], skipped
 
-        upload = root / ".ai-agent-uploads"
+        upload = root / ".coding-agent-uploads"
         upload.mkdir(parents=True, exist_ok=True)
         old = upload / "old.txt"
         old.write_text("old", encoding="utf-8")

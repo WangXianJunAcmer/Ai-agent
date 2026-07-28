@@ -1,10 +1,10 @@
-/* ai-agent frontend/js/thread.js */
+/* coding-agent frontend/js/thread.js */
   function setMessageBody(msg, text, renderAsMarkdown) {
-    var body = msg.querySelector(".ai-agent-segment-text.body, .body");
+    var body = msg.querySelector(".coding-agent-segment-text.body, .body");
     if (!body) {
-      var main = msg.querySelector(".ai-agent-msg-main");
+      var main = msg.querySelector(".coding-agent-msg-main");
       body = document.createElement("div");
-      body.className = msg.classList.contains("agent") ? "ai-agent-segment-text body" : "body";
+      body.className = msg.classList.contains("agent") ? "coding-agent-segment-text body" : "body";
       main.appendChild(body);
     }
     if (!text) {
@@ -29,20 +29,20 @@
   function appendMessage(role, text, className, renderAsMarkdown, attachments) {
     var kind = className || role.toLowerCase();
     var msg = document.createElement("div");
-    msg.className = "ai-agent-msg " + kind;
+    msg.className = "coding-agent-msg " + kind;
     var avatarLabel = kind === "agent" ? "AI" : (kind === "user" ? "你" : "!");
     msg.innerHTML =
-      '<div class="ai-agent-avatar">' + avatarLabel + '</div>' +
-      '<div class="ai-agent-msg-main"></div>';
-    var main = msg.querySelector(".ai-agent-msg-main");
+      '<div class="coding-agent-avatar">' + avatarLabel + '</div>' +
+      '<div class="coding-agent-msg-main"></div>';
+    var main = msg.querySelector(".coding-agent-msg-main");
     if (kind === "agent") {
       var worklog = document.createElement("div");
-      worklog.className = "ai-agent-worklog";
+      worklog.className = "coding-agent-worklog";
       main.appendChild(worklog);
     }
     if (text) {
       var body = document.createElement("div");
-      body.className = kind === "agent" ? "ai-agent-segment-text body" : "body";
+      body.className = kind === "agent" ? "coding-agent-segment-text body" : "body";
       main.appendChild(body);
       setMessageBody(msg, text, !!renderAsMarkdown);
     } else if (kind !== "agent") {
@@ -60,7 +60,7 @@
     });
     if (images.length) {
       var gallery = document.createElement("div");
-      gallery.className = "ai-agent-msg-images";
+      gallery.className = "coding-agent-msg-images";
       images.forEach(function (item) {
         var img = document.createElement("img");
         img.src = item.previewUrl
@@ -72,7 +72,7 @@
     }
     if (files.length) {
       var fileRow = document.createElement("div");
-      fileRow.className = "ai-agent-msg-files";
+      fileRow.className = "coding-agent-msg-files";
       files.forEach(function (item) {
         appendFileChip(fileRow, item.name || "file", item.mime_type || "");
       });
@@ -117,19 +117,19 @@
   }
 
   function ensureWorklog(msg) {
-    var main = msg.querySelector(".ai-agent-msg-main");
+    var main = msg.querySelector(".coding-agent-msg-main");
     var meta = getRunMeta(msg);
     if (meta.needNewWorklog) {
       meta.needNewWorklog = false;
       var fresh = document.createElement("div");
-      fresh.className = "ai-agent-worklog";
+      fresh.className = "coding-agent-worklog";
       main.appendChild(fresh);
       return fresh;
     }
-    var logs = main.querySelectorAll(".ai-agent-worklog");
+    var logs = main.querySelectorAll(".coding-agent-worklog");
     if (logs.length) return logs[logs.length - 1];
     var worklog = document.createElement("div");
-    worklog.className = "ai-agent-worklog";
+    worklog.className = "coding-agent-worklog";
     main.appendChild(worklog);
     return worklog;
   }
@@ -151,7 +151,7 @@
 
   function scrubInterimSegments(msg) {
     // Drop status fragments already painted ("正在" / "读取您上传的文档内容。").
-    Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-segment-text")).forEach(function (el) {
+    Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-segment-text")).forEach(function (el) {
       var raw = (el.getAttribute("data-raw-text") || el.textContent || "").trim();
       if (!isInterimReplyText(raw) && !/^正在/.test(raw)) return;
       if (el.parentNode) el.remove();
@@ -276,7 +276,7 @@
   // Post-tool prose must not grow a text node that already has tool cards below it.
   function hasToolCardsAfter(msg, el) {
     if (!msg || !el) return false;
-    var cards = msg.querySelectorAll(".ai-agent-card");
+    var cards = msg.querySelectorAll(".coding-agent-card");
     for (var i = 0; i < cards.length; i++) {
       var c = cards[i];
       var key = c.getAttribute("data-card-key") || "";
@@ -356,10 +356,10 @@
       return meta.activeTextEl;
     }
     chunk = collapseRewriteParagraphs(chunk);
-    var main = msg.querySelector(".ai-agent-msg-main");
+    var main = msg.querySelector(".coding-agent-msg-main");
     if (!meta.activeTextEl) {
       meta.activeTextEl = document.createElement("div");
-      meta.activeTextEl.className = "ai-agent-segment-text body";
+      meta.activeTextEl.className = "coding-agent-segment-text body";
       meta.activeTextEl.__replyStart = meta.sealedReplyLen;
       main.appendChild(meta.activeTextEl);
     }
@@ -382,7 +382,7 @@
     var full = String(reply || "");
     if (!full.trim() || isInterimReplyText(full)) return null;
     var meta = getRunMeta(msg);
-    var hasBody = !!msg.querySelector(".ai-agent-segment-text");
+    var hasBody = !!msg.querySelector(".coding-agent-segment-text");
     var visible = full.slice(meta.sealedReplyLen || 0).trim();
     if (!visible || isInterimReplyText(visible)) {
       if (hasBody) return meta.activeTextEl;
@@ -463,16 +463,16 @@
   }
 
   function bindUserMessageEdit(msg) {
-    if (!msg || !msg.classList.contains("user") || msg.querySelector(".ai-agent-user-actions")) return;
-    var main = msg.querySelector(".ai-agent-msg-main");
+    if (!msg || !msg.classList.contains("user") || msg.querySelector(".coding-agent-user-actions")) return;
+    var main = msg.querySelector(".coding-agent-msg-main");
     if (!main) return;
 
     var actions = document.createElement("div");
-    actions.className = "ai-agent-user-actions";
+    actions.className = "coding-agent-user-actions";
 
     var copyBtn = document.createElement("button");
     copyBtn.type = "button";
-    copyBtn.className = "ai-agent-user-action";
+    copyBtn.className = "coding-agent-user-action";
     copyBtn.title = "复制消息";
     copyBtn.setAttribute("aria-label", "复制消息");
     copyBtn.innerHTML = queueIcon("copy");
@@ -484,7 +484,7 @@
 
     var editBtn = document.createElement("button");
     editBtn.type = "button";
-    editBtn.className = "ai-agent-user-action is-edit";
+    editBtn.className = "coding-agent-user-action is-edit";
     editBtn.title = "编辑消息";
     editBtn.setAttribute("aria-label", "编辑消息");
     editBtn.innerHTML = queueIcon("edit");
@@ -532,7 +532,7 @@
   function leaveEditMode() {
     if (!editingUserMsg) return;
     var msg = editingUserMsg;
-    var shell = msg.querySelector(".ai-agent-edit-shell");
+    var shell = msg.querySelector(".coding-agent-edit-shell");
     var body = msg.querySelector(".body");
     var original = msg.__editOriginal != null ? msg.__editOriginal : "";
     if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
@@ -553,8 +553,8 @@
   async function commitInlineEdit() {
     if (!editingUserMsg || !threadDiv.contains(editingUserMsg)) return;
     var msg = editingUserMsg;
-    var ta = msg.querySelector(".ai-agent-edit-textarea");
-    var modeSel = msg.querySelector(".ai-agent-edit-mode");
+    var ta = msg.querySelector(".coding-agent-edit-textarea");
+    var modeSel = msg.querySelector(".coding-agent-edit-mode");
     var text = ta ? String(ta.value || "").trim() : "";
     var files = (msg.__editFiles || []).slice();
     if (!text && !files.length) return;
@@ -591,10 +591,10 @@
   }
 
   function closeEditModelMenu(msg) {
-    var wrap = msg && msg.querySelector(".ai-agent-edit-model-wrap");
+    var wrap = msg && msg.querySelector(".coding-agent-edit-model-wrap");
     if (!wrap) return;
     wrap.classList.remove("is-open");
-    var btn = wrap.querySelector(".ai-agent-model-btn");
+    var btn = wrap.querySelector(".coding-agent-model-btn");
     if (btn) {
       btn.classList.remove("is-open");
       btn.setAttribute("aria-expanded", "false");
@@ -603,18 +603,18 @@
 
   function syncEditModelPicker(msg) {
     if (!msg) return;
-    var wrap = msg.querySelector(".ai-agent-edit-model-wrap");
+    var wrap = msg.querySelector(".coding-agent-edit-model-wrap");
     if (!wrap) return;
     var id = msg.__editModel || defaultModel;
     var isAuto = id === "auto";
     wrap.classList.toggle("is-auto", isAuto);
-    var label = wrap.querySelector(".ai-agent-model-label");
-    var btn = wrap.querySelector(".ai-agent-model-btn");
-    var autoBtn = wrap.querySelector(".ai-agent-model-auto");
+    var label = wrap.querySelector(".coding-agent-model-label");
+    var btn = wrap.querySelector(".coding-agent-model-btn");
+    var autoBtn = wrap.querySelector(".coding-agent-model-auto");
     if (label) label.textContent = modelLabelFor(id);
     if (btn) btn.title = modelLabelFor(id);
     if (autoBtn) autoBtn.setAttribute("aria-checked", isAuto ? "true" : "false");
-    Array.prototype.forEach.call(wrap.querySelectorAll(".ai-agent-model-option"), function (opt) {
+    Array.prototype.forEach.call(wrap.querySelectorAll(".coding-agent-model-option"), function (opt) {
       opt.classList.toggle("is-selected", !isAuto && opt.getAttribute("data-model-id") === id);
     });
   }
@@ -633,14 +633,14 @@
 
   function renderEditModelList(msg) {
     if (!msg) return;
-    var list = msg.querySelector(".ai-agent-edit-model-list");
+    var list = msg.querySelector(".coding-agent-edit-model-list");
     if (!list) return;
     list.innerHTML = "";
     modelOptions.forEach(function (model) {
       if (!model.id || model.id === "auto") return;
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ai-agent-model-option";
+      btn.className = "coding-agent-model-option";
       btn.setAttribute("data-model-id", model.id);
       btn.setAttribute("role", "option");
       btn.textContent = model.label || model.id;
@@ -656,15 +656,15 @@
 
   function buildEditModelPicker(msg) {
     var wrap = document.createElement("div");
-    wrap.className = "ai-agent-edit-model-wrap is-auto";
+    wrap.className = "coding-agent-edit-model-wrap is-auto";
 
     var btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "ai-agent-model-btn";
+    btn.className = "coding-agent-model-btn";
     btn.title = "模型";
     btn.setAttribute("aria-haspopup", "listbox");
     btn.setAttribute("aria-expanded", "false");
-    btn.innerHTML = '<span class="ai-agent-model-label"></span><span class="ai-agent-model-chevron" aria-hidden="true"></span>';
+    btn.innerHTML = '<span class="coding-agent-model-label"></span><span class="coding-agent-model-chevron" aria-hidden="true"></span>';
     btn.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -680,20 +680,20 @@
     };
 
     var menu = document.createElement("div");
-    menu.className = "ai-agent-model-menu";
+    menu.className = "coding-agent-model-menu";
     menu.setAttribute("role", "listbox");
     menu.setAttribute("aria-label", "选择模型");
     menu.addEventListener("click", function (e) { e.stopPropagation(); });
 
     var autoRow = document.createElement("div");
-    autoRow.className = "ai-agent-model-auto-row";
+    autoRow.className = "coding-agent-model-auto-row";
     autoRow.innerHTML =
-      '<div class="ai-agent-model-auto-copy">' +
+      '<div class="coding-agent-model-auto-copy">' +
       "<strong>Auto</strong>" +
       "<span>自动选择适合当前任务的模型</span>" +
       "</div>" +
-      '<button class="ai-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>';
-    var autoBtn = autoRow.querySelector(".ai-agent-model-auto");
+      '<button class="coding-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>';
+    var autoBtn = autoRow.querySelector(".coding-agent-model-auto");
     autoBtn.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -702,7 +702,7 @@
     };
 
     var list = document.createElement("div");
-    list.className = "ai-agent-model-list ai-agent-edit-model-list";
+    list.className = "coding-agent-model-list coding-agent-edit-model-list";
 
     if (providerUi.showAuto) menu.appendChild(autoRow);
     menu.appendChild(list);
@@ -713,19 +713,19 @@
 
   function renderEditAttachments(msg) {
     if (!msg) return;
-    var box = msg.querySelector(".ai-agent-edit-attachments");
+    var box = msg.querySelector(".coding-agent-edit-attachments");
     if (!box) return;
     box.innerHTML = "";
     (msg.__editFiles || []).forEach(function (item) {
       var wrap = document.createElement("div");
       if (item.kind === "image") {
-        wrap.className = "ai-agent-thumb";
+        wrap.className = "coding-agent-thumb";
         wrap.innerHTML = '<img alt="" /><button type="button" title="移除">×</button>';
         wrap.querySelector("img").src = item.previewUrl || ("data:" + item.mime_type + ";base64," + item.data);
       } else {
-        wrap.className = "ai-agent-thumb file";
-        wrap.innerHTML = '<span class="ai-agent-file-icon" aria-hidden="true"></span><div class="meta"><span class="name"></span><span class="kind"></span></div><button type="button" title="移除">×</button>';
-        fillFileVisual(wrap.querySelector(".ai-agent-file-icon"), wrap.querySelector(".name"), wrap.querySelector(".kind"), item.name, item.mime_type);
+        wrap.className = "coding-agent-thumb file";
+        wrap.innerHTML = '<span class="coding-agent-file-icon" aria-hidden="true"></span><div class="meta"><span class="name"></span><span class="kind"></span></div><button type="button" title="移除">×</button>';
+        fillFileVisual(wrap.querySelector(".coding-agent-file-icon"), wrap.querySelector(".name"), wrap.querySelector(".kind"), item.name, item.mime_type);
       }
       wrap.querySelector("button").onclick = function (e) {
         e.preventDefault();
@@ -746,7 +746,7 @@
 
   function editUserMessage(msg) {
     if (!msg || !msg.classList.contains("user") || !threadDiv.contains(msg)) return;
-    var main = msg.querySelector(".ai-agent-msg-main");
+    var main = msg.querySelector(".coding-agent-msg-main");
     if (!main) return;
     var body = msg.querySelector(".body");
     var text = body
@@ -756,7 +756,7 @@
 
     // Re-click same bubble: keep staging, just refocus. Bottom composer stays alone.
     if (editingUserMsg === msg) {
-      var existing = msg.querySelector(".ai-agent-edit-textarea");
+      var existing = msg.querySelector(".coding-agent-edit-textarea");
       if (existing) existing.focus();
       return;
     }
@@ -773,20 +773,20 @@
     if (!body) {
       body = document.createElement("div");
       body.className = "body";
-      var actions = msg.querySelector(".ai-agent-user-actions");
+      var actions = msg.querySelector(".coding-agent-user-actions");
       if (actions) main.insertBefore(body, actions);
       else main.appendChild(body);
     }
     body.style.display = "none";
 
     var shell = document.createElement("div");
-    shell.className = "ai-agent-edit-shell" + (msg.__editMode === "plan" ? " mode-plan" : "");
+    shell.className = "coding-agent-edit-shell" + (msg.__editMode === "plan" ? " mode-plan" : "");
 
     var attachBox = document.createElement("div");
-    attachBox.className = "ai-agent-edit-attachments";
+    attachBox.className = "coding-agent-edit-attachments";
 
     var ta = document.createElement("textarea");
-    ta.className = "ai-agent-edit-textarea";
+    ta.className = "coding-agent-edit-textarea";
     ta.value = text;
     ta.rows = 1;
     ta.setAttribute("aria-label", "编辑消息");
@@ -805,13 +805,13 @@
     });
 
     var toolbar = document.createElement("div");
-    toolbar.className = "ai-agent-edit-toolbar";
+    toolbar.className = "coding-agent-edit-toolbar";
 
     var left = document.createElement("div");
-    left.className = "ai-agent-edit-toolbar-left";
+    left.className = "coding-agent-edit-toolbar-left";
 
     var modeSel = document.createElement("select");
-    modeSel.className = "ai-agent-edit-mode";
+    modeSel.className = "coding-agent-edit-mode";
     modeSel.title = "模式";
     modeSel.innerHTML = '<option value="agent">Agent</option><option value="plan">Plan</option>';
     modeSel.value = msg.__editMode === "plan" ? "plan" : "agent";
@@ -826,11 +826,11 @@
     left.appendChild(modelPicker);
 
     var right = document.createElement("div");
-    right.className = "ai-agent-edit-toolbar-right";
+    right.className = "coding-agent-edit-toolbar-right";
 
     var fileInputEdit = document.createElement("input");
     fileInputEdit.type = "file";
-    fileInputEdit.className = "ai-agent-edit-file-input";
+    fileInputEdit.className = "coding-agent-edit-file-input";
     fileInputEdit.multiple = true;
     fileInputEdit.addEventListener("change", function () {
       handleEditFileSelection(msg, fileInputEdit.files).then(function () {
@@ -840,7 +840,7 @@
 
     var pickEdit = document.createElement("button");
     pickEdit.type = "button";
-    pickEdit.className = "ai-agent-edit-pick";
+    pickEdit.className = "coding-agent-edit-pick";
     pickEdit.title = "添加文件";
     pickEdit.textContent = "📎";
     pickEdit.onclick = function (e) {
@@ -851,7 +851,7 @@
 
     var sendEdit = document.createElement("button");
     sendEdit.type = "button";
-    sendEdit.className = "ai-agent-edit-send";
+    sendEdit.className = "coding-agent-edit-send";
     sendEdit.title = "发送修改";
     sendEdit.setAttribute("aria-label", "发送修改");
     sendEdit.innerHTML = queueIcon("send");
@@ -871,7 +871,7 @@
     shell.appendChild(ta);
     shell.appendChild(toolbar);
 
-    var actionsEl = msg.querySelector(".ai-agent-user-actions");
+    var actionsEl = msg.querySelector(".coding-agent-user-actions");
     if (actionsEl) main.insertBefore(shell, actionsEl);
     else main.appendChild(shell);
 
@@ -891,8 +891,8 @@
 
   function makePathsHtml(paths) {
     if (!paths || !paths.length) return "";
-    return '<div class="ai-agent-paths">' + paths.map(function (path) {
-      return '<span class="ai-agent-path">' + escapeHtml(path) + "</span>";
+    return '<div class="coding-agent-paths">' + paths.map(function (path) {
+      return '<span class="coding-agent-path">' + escapeHtml(path) + "</span>";
     }).join("") + "</div>";
   }
 
@@ -902,15 +902,15 @@
       var path = escapeHtml(item.path || "");
       var lines = "";
       (item.removed || []).forEach(function (line) {
-        lines += '<span class="ai-agent-diff-line removed">- ' + escapeHtml(line) + "</span>";
+        lines += '<span class="coding-agent-diff-line removed">- ' + escapeHtml(line) + "</span>";
       });
       (item.added || []).forEach(function (line) {
-        lines += '<span class="ai-agent-diff-line added">+ ' + escapeHtml(line) + "</span>";
+        lines += '<span class="coding-agent-diff-line added">+ ' + escapeHtml(line) + "</span>";
       });
       if (!lines) return "";
       return (
-        '<div class="ai-agent-diff">' +
-          (path ? '<div class="ai-agent-diff-path">' + path + "</div>" : "") +
+        '<div class="coding-agent-diff">' +
+          (path ? '<div class="coding-agent-diff-path">' + path + "</div>" : "") +
           lines +
         "</div>"
       );
@@ -953,34 +953,34 @@
     if (!msg || !payload) return null;
     var files = payload.files || [];
     if (!files.length) return null;
-    var main = msg.querySelector(".ai-agent-msg-main");
+    var main = msg.querySelector(".coding-agent-msg-main");
     if (!main) return null;
-    var existing = main.querySelector(".ai-agent-turn-changes");
+    var existing = main.querySelector(".coding-agent-turn-changes");
     var wasOpen = !existing || existing.classList.contains("is-open");
     if (existing) existing.remove();
 
     var panel = document.createElement("div");
-    panel.className = "ai-agent-turn-changes" + (wasOpen ? " is-open" : "");
+    panel.className = "coding-agent-turn-changes" + (wasOpen ? " is-open" : "");
     if (payload.undone) panel.classList.add("is-undone");
     panel.setAttribute("data-turn-id", payload.turn_id || "");
     var add = Number(payload.additions || 0);
     var del = Number(payload.deletions || 0);
     var undoable = !!payload.undoable && !payload.undone;
     var header = document.createElement("div");
-    header.className = "ai-agent-turn-changes-header";
+    header.className = "coding-agent-turn-changes-header";
     header.innerHTML =
-      '<span class="ai-agent-turn-changes-chevron" aria-hidden="true"></span>' +
-      '<span class="ai-agent-turn-changes-title">' + turnChangesHeaderTitle(files) + "</span>" +
-      '<span class="ai-agent-turn-changes-stats">' +
+      '<span class="coding-agent-turn-changes-chevron" aria-hidden="true"></span>' +
+      '<span class="coding-agent-turn-changes-title">' + turnChangesHeaderTitle(files) + "</span>" +
+      '<span class="coding-agent-turn-changes-stats">' +
         '<span class="add">+' + add + "</span> · " +
         '<span class="del">-' + del + "</span>" +
       "</span>" +
-      '<span class="ai-agent-turn-changes-actions"></span>';
-    var actions = header.querySelector(".ai-agent-turn-changes-actions");
+      '<span class="coding-agent-turn-changes-actions"></span>';
+    var actions = header.querySelector(".coding-agent-turn-changes-actions");
     if (payload.turn_id && (undoable || payload.undone)) {
       var undoBtn = document.createElement("button");
       undoBtn.type = "button";
-      undoBtn.className = "ai-agent-turn-undo" + (payload.undone ? " is-done" : "");
+      undoBtn.className = "coding-agent-turn-undo" + (payload.undone ? " is-done" : "");
       undoBtn.textContent = payload.undone ? "已全部撤销" : "撤销全部";
       undoBtn.disabled = !!payload.undone;
       undoBtn.addEventListener("click", function (ev) {
@@ -1010,26 +1010,26 @@
       panel.classList.toggle("is-open");
     });
     var body = document.createElement("div");
-    body.className = "ai-agent-turn-changes-body";
+    body.className = "coding-agent-turn-changes-body";
     files.forEach(function (file) {
       var row = document.createElement("div");
       var fileUndone = !!file.undone || !!payload.undone;
       var fileUndoable = !!payload.turn_id && !fileUndone && (file.undoable !== false);
-      row.className = "ai-agent-turn-file status-" + (file.status || "modified") +
+      row.className = "coding-agent-turn-file status-" + (file.status || "modified") +
         (fileUndone ? " is-undone" : "");
       var status = file.status || "modified";
       var fa = Number(file.additions || 0);
       var fd = Number(file.deletions || 0);
       var head = document.createElement("div");
-      head.className = "ai-agent-turn-file-head";
+      head.className = "coding-agent-turn-file-head";
       head.innerHTML =
-        '<div class="ai-agent-turn-file-path">' + escapeHtml(file.path || "") + "</div>" +
-        '<div class="ai-agent-turn-file-meta">' +
-          '<span class="ai-agent-turn-file-status">' + turnFileStatusLabel(status) + "</span>" +
+        '<div class="coding-agent-turn-file-path">' + escapeHtml(file.path || "") + "</div>" +
+        '<div class="coding-agent-turn-file-meta">' +
+          '<span class="coding-agent-turn-file-status">' + turnFileStatusLabel(status) + "</span>" +
           " · <span class=\"add\">+" + fa + "</span> / <span class=\"del\">-" + fd + "</span></div>" +
-        '<span class="ai-agent-turn-file-actions"></span>';
-      var fileActions = head.querySelector(".ai-agent-turn-file-actions");
-      var pathEl = head.querySelector(".ai-agent-turn-file-path");
+        '<span class="coding-agent-turn-file-actions"></span>';
+      var fileActions = head.querySelector(".coding-agent-turn-file-actions");
+      var pathEl = head.querySelector(".coding-agent-turn-file-path");
       if (pathEl && file.path && file.status !== "deleted") {
         pathEl.style.cursor = "pointer";
         pathEl.title = "在编辑器中打开 (Ctrl+G)";
@@ -1041,7 +1041,7 @@
       if (payload.turn_id && (fileUndoable || fileUndone)) {
         var fileUndoBtn = document.createElement("button");
         fileUndoBtn.type = "button";
-        fileUndoBtn.className = "ai-agent-turn-undo ai-agent-turn-file-undo" +
+        fileUndoBtn.className = "coding-agent-turn-undo coding-agent-turn-file-undo" +
           (fileUndone ? " is-done" : "");
         fileUndoBtn.textContent = fileUndone ? "已撤销" : "撤销";
         fileUndoBtn.disabled = fileUndone;
@@ -1124,7 +1124,7 @@
   function collectLocalTurnChanges(msg) {
     // Cursor path: aggregate edit cards into a summary (no undo).
     var byPath = {};
-    var cards = msg.querySelectorAll(".ai-agent-card.kind-edit");
+    var cards = msg.querySelectorAll(".coding-agent-card.kind-edit");
     for (var i = 0; i < cards.length; i++) {
       var data = cards[i].__cardData || {};
       var paths = data.paths || [];
@@ -1199,7 +1199,7 @@
   function setCardExpanded(card, expanded) {
     card.classList.toggle("is-expanded", !!expanded);
     card.classList.toggle("is-collapsed", !expanded);
-    var header = card.querySelector(".ai-agent-card-header");
+    var header = card.querySelector(".coding-agent-card-header");
     if (header) header.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 
@@ -1224,7 +1224,7 @@
   function bindCardToggle(card) {
     if (card.__toggleBound) return;
     card.__toggleBound = true;
-    var header = card.querySelector(".ai-agent-card-header");
+    var header = card.querySelector(".coding-agent-card-header");
     function toggle() {
       if (!card.classList.contains("has-body") || card.classList.contains("is-live")) return;
       var next = !card.classList.contains("is-expanded");
@@ -1283,7 +1283,7 @@
       live: true,
       worklog: worklog,
     });
-    var body = card && card.querySelector(".ai-agent-card-body");
+    var body = card && card.querySelector(".coding-agent-card-body");
     if (body) body.scrollTop = body.scrollHeight;
     scrollToBottom(false);
   }
@@ -1336,7 +1336,7 @@
 
   function cardByKey(msg, key) {
     // Avoid CSS attribute selectors — call_id / titles can contain ] " etc. and throw.
-    var cards = msg.querySelectorAll(".ai-agent-card");
+    var cards = msg.querySelectorAll(".coding-agent-card");
     for (var i = 0; i < cards.length; i++) {
       if (cards[i].getAttribute("data-card-key") === key) return cards[i];
     }
@@ -1356,16 +1356,16 @@
     var card = existing;
     if (!card) {
       card = document.createElement("div");
-      card.className = "ai-agent-card is-collapsed";
+      card.className = "coding-agent-card is-collapsed";
       card.setAttribute("data-card-key", key);
       card.setAttribute("data-card-index", String(meta.nextIndex++));
       card.innerHTML =
-        '<div class="ai-agent-card-header" role="button" tabindex="0" aria-expanded="false">' +
-          '<span class="ai-agent-card-chevron" aria-hidden="true">›</span>' +
-          '<span class="ai-agent-card-title"></span>' +
-          '<span class="ai-agent-card-meta"></span>' +
+        '<div class="coding-agent-card-header" role="button" tabindex="0" aria-expanded="false">' +
+          '<span class="coding-agent-card-chevron" aria-hidden="true">›</span>' +
+          '<span class="coding-agent-card-title"></span>' +
+          '<span class="coding-agent-card-meta"></span>' +
         "</div>" +
-        '<div class="ai-agent-card-body"></div>';
+        '<div class="coding-agent-card-body"></div>';
       bindCardToggle(card);
       worklog.appendChild(card);
     } else if (options.worklog && card.parentNode !== options.worklog) {
@@ -1416,21 +1416,21 @@
     }
     if (!merged.live && previous.live) card.__userExpanded = false;
     card.__cardData = merged;
-    card.className = "ai-agent-card kind-" + merged.kind;
+    card.className = "coding-agent-card kind-" + merged.kind;
     card.classList.toggle("is-live", merged.live);
     card.classList.toggle("has-body", cardHasBody(merged, renderPaths));
     card.classList.toggle("is-explore-step", key.indexOf("explore-step-") === 0);
-    var header = card.querySelector(".ai-agent-card-header");
+    var header = card.querySelector(".coding-agent-card-header");
     var expandable = cardHasBody(merged, renderPaths);
     header.setAttribute("tabindex", expandable ? "0" : "-1");
     header.setAttribute("role", expandable ? "button" : "presentation");
-    card.querySelector(".ai-agent-card-title").textContent = merged.title;
+    card.querySelector(".coding-agent-card-title").textContent = merged.title;
     // Edit cards: show +N/-M on the card itself (counted at edit time).
-    var metaEl = card.querySelector(".ai-agent-card-meta");
+    var metaEl = card.querySelector(".coding-agent-card-meta");
     var metaHtml = editCardMetaHtml(merged);
     if (metaHtml) metaEl.innerHTML = metaHtml;
     else metaEl.textContent = merged.meta || "";
-    var body = card.querySelector(".ai-agent-card-body");
+    var body = card.querySelector(".coding-agent-card-body");
     body.innerHTML = "";
     if (merged.detail) {
       var detail = document.createElement("div");
@@ -1474,7 +1474,7 @@
 
   function hasOtherLiveCard(msg) {
     if (!msg) return false;
-    var live = msg.querySelectorAll(".ai-agent-card.is-live");
+    var live = msg.querySelectorAll(".coding-agent-card.is-live");
     for (var i = 0; i < live.length; i++) {
       if (live[i].getAttribute("data-card-key") !== "status-live") return true;
     }
@@ -1483,12 +1483,12 @@
 
   function liveCardActivityTitle(msg) {
     if (!msg) return "";
-    var live = msg.querySelectorAll(".ai-agent-card.is-live");
+    var live = msg.querySelectorAll(".coding-agent-card.is-live");
     var fallback = "";
     for (var i = live.length - 1; i >= 0; i--) {
       var key = live[i].getAttribute("data-card-key") || "";
       if (key === "status-live") continue;
-      var title = (live[i].querySelector(".ai-agent-card-title") || {}).textContent || "";
+      var title = (live[i].querySelector(".coding-agent-card-title") || {}).textContent || "";
       title = String(title).replace(/\s·\s*\d+s\s*$/, "").trim();
       if (!title) continue;
       if (key === "explore-live") {
@@ -1559,7 +1559,7 @@
     }
 
     // Reuse the live tool card so partial updates cannot spawn a twin.
-    var liveTools = msg.querySelectorAll(".ai-agent-card.is-live");
+    var liveTools = msg.querySelectorAll(".coding-agent-card.is-live");
     for (var li = liveTools.length - 1; li >= 0; li--) {
       var lk = liveTools[li].getAttribute("data-card-key") || "";
       if (
@@ -1641,7 +1641,7 @@
     var live = cardByKey(msg, "explore-live");
     // Pin Explored where Exploring lived — never open a new worklog under mid-explore text.
     var home = (live && live.parentNode && live.parentNode.classList
-      && live.parentNode.classList.contains("ai-agent-worklog"))
+      && live.parentNode.classList.contains("coding-agent-worklog"))
       ? live.parentNode
       : null;
     var hadExplore = !!meta.exploreActive || !!(meta.exploreSteps || []).length;
@@ -1824,7 +1824,7 @@
   // Tool cards stay .is-live "Running" until completed — if the stream ends
   // without tool-call-completed, seal them so the UI doesn't look stuck.
   function finalizeLiveToolCards(msg) {
-    var cards = Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-card.is-live"));
+    var cards = Array.prototype.slice.call(msg.querySelectorAll(".coding-agent-card.is-live"));
     cards.forEach(function (card) {
       var key = card.getAttribute("data-card-key") || "";
       if (
@@ -1900,7 +1900,7 @@
       live: true,
       forceCollapsed: false,
     });
-    var body = card && card.querySelector(".ai-agent-card-body");
+    var body = card && card.querySelector(".coding-agent-card-body");
     if (body && meta.planningDetail) {
       body.style.display = "block";
       body.scrollTop = body.scrollHeight;

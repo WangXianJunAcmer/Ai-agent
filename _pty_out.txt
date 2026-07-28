@@ -1,0 +1,5 @@
+alive True
+pre b'\x1b[1t\x1b[c\x1b[?1004h\x1b[?9001hPS D:\\code\\Coding Agent> '
+after b'\x1b[?25l\x1b[1;22H\x1b[93mW\x1b[39;49m\x1b[0m\x1b[1;23H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[1;20H\x1b[91m> \x1b[0m\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"he\x1b[39;49m\x1b[0m\x1b[1;38H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hel\x1b[39;49m\x1b[0m\x1b[1;39H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hell\x1b[39;49m\x1b[0m\x1b[1;40H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hello\x1b[39;49m\x1b[0m\x1b[1;41H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hello-\x1b[39;49m\x1b[0m\x1b[1;42H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hello-p\x1b[39;49m\x1b[0m\x1b[1;43H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hello-pt\x1b[39;49m\x1b[0m\x1b[1;44H\x1b[?25h\x1b[?25l\x1b[1;22H\x1b[93mWrite-Output\x1b[39;49m \x1b[36m"hello-pty\x1b[39;49m'
+has_hello True
+DONE

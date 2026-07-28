@@ -1,55 +1,55 @@
-/* ai-agent frontend/js/history.js — Repositories / Home grouped agents */
+/* coding-agent frontend/js/history.js — Repositories / Home grouped agents */
 
-  var navListEl = document.getElementById("ai-agent-nav-list");
-  var navEmptyEl = document.getElementById("ai-agent-nav-empty");
-  var navLabelBtn = document.getElementById("ai-agent-nav-label");
-  var navScrollEl = document.getElementById("ai-agent-nav-scroll");
-  var railChatsBtn = document.getElementById("ai-agent-nav-rail-chats");
-  var railFlyout = document.getElementById("ai-agent-nav-rail-flyout");
-  var railFlyoutList = document.getElementById("ai-agent-nav-rail-flyout-list");
-  var railFlyoutEmpty = document.getElementById("ai-agent-nav-rail-flyout-empty");
-  var ctxWsBtn = document.getElementById("ai-agent-ctx-ws");
-  var ctxWsLabel = document.getElementById("ai-agent-ctx-ws-label");
-  var ctxBranchBtn = document.getElementById("ai-agent-ctx-branch");
-  var ctxBranchLabel = document.getElementById("ai-agent-ctx-branch-label");
-  var wsPicker = document.getElementById("ai-agent-ws-picker");
-  var wsSearch = document.getElementById("ai-agent-ws-search");
-  var wsRecents = document.getElementById("ai-agent-ws-recents");
-  var wsRepos = document.getElementById("ai-agent-ws-repos");
-  var wsPathRow = document.getElementById("ai-agent-ws-path-row");
-  var wsPathInput = document.getElementById("ai-agent-ws-path-input");
-  var wsPathGo = document.getElementById("ai-agent-ws-path-go");
-  var wsUseExisting = document.getElementById("ai-agent-ws-use-existing");
-  var wsNewFolder = document.getElementById("ai-agent-ws-new-folder");
-  var wsFlyout = document.getElementById("ai-agent-ws-flyout");
-  var wsOpenFolder = document.getElementById("ai-agent-ws-open-folder");
-  var wsFlyoutPath = document.getElementById("ai-agent-ws-flyout-path");
-  var wsFlyoutInput = document.getElementById("ai-agent-ws-flyout-input");
-  var wsFlyoutGo = document.getElementById("ai-agent-ws-flyout-go");
-  var wsFlyoutSearch = document.getElementById("ai-agent-ws-flyout-search");
-  var wsFlyoutList = document.getElementById("ai-agent-ws-flyout-list");
-  var wsUeOpenFolder = document.getElementById("ai-agent-ws-ue-open-folder");
-  var wsUeSsh = document.getElementById("ai-agent-ws-ue-ssh");
-  var wsFlyoutPathUe = document.getElementById("ai-agent-ws-flyout-path-ue");
-  var wsUePathInput = document.getElementById("ai-agent-ws-ue-path-input");
-  var wsUePathGo = document.getElementById("ai-agent-ws-ue-path-go");
-  var wsSshTreeHead = document.getElementById("ai-agent-ws-ssh-tree-head");
-  var wsSshTreeList = document.getElementById("ai-agent-ws-ssh-tree-list");
-  var wsSshUseHere = document.getElementById("ai-agent-ws-ssh-use-here");
-  var wsSshId = document.getElementById("ai-agent-ws-ssh-id");
-  var wsSshLabel = document.getElementById("ai-agent-ws-ssh-label");
-  var wsSshHost = document.getElementById("ai-agent-ws-ssh-host");
-  var wsSshPort = document.getElementById("ai-agent-ws-ssh-port");
-  var wsSshUser = document.getElementById("ai-agent-ws-ssh-user");
-  var wsSshAuth = document.getElementById("ai-agent-ws-ssh-auth");
-  var wsSshKey = document.getElementById("ai-agent-ws-ssh-key");
-  var wsSshPass = document.getElementById("ai-agent-ws-ssh-pass");
-  var wsSshDefault = document.getElementById("ai-agent-ws-ssh-default");
-  var wsSshKeyWrap = document.getElementById("ai-agent-ws-ssh-key-wrap");
-  var wsSshPassWrap = document.getElementById("ai-agent-ws-ssh-pass-wrap");
-  var wsSshStatus = document.getElementById("ai-agent-ws-ssh-status");
-  var wsSshTest = document.getElementById("ai-agent-ws-ssh-test");
-  var wsSshSave = document.getElementById("ai-agent-ws-ssh-save");
+  var navListEl = document.getElementById("coding-agent-nav-list");
+  var navEmptyEl = document.getElementById("coding-agent-nav-empty");
+  var navLabelBtn = document.getElementById("coding-agent-nav-label");
+  var navScrollEl = document.getElementById("coding-agent-nav-scroll");
+  var railChatsBtn = document.getElementById("coding-agent-nav-rail-chats");
+  var railFlyout = document.getElementById("coding-agent-nav-rail-flyout");
+  var railFlyoutList = document.getElementById("coding-agent-nav-rail-flyout-list");
+  var railFlyoutEmpty = document.getElementById("coding-agent-nav-rail-flyout-empty");
+  var ctxWsBtn = document.getElementById("coding-agent-ctx-ws");
+  var ctxWsLabel = document.getElementById("coding-agent-ctx-ws-label");
+  var ctxBranchBtn = document.getElementById("coding-agent-ctx-branch");
+  var ctxBranchLabel = document.getElementById("coding-agent-ctx-branch-label");
+  var wsPicker = document.getElementById("coding-agent-ws-picker");
+  var wsSearch = document.getElementById("coding-agent-ws-search");
+  var wsRecents = document.getElementById("coding-agent-ws-recents");
+  var wsRepos = document.getElementById("coding-agent-ws-repos");
+  var wsPathRow = document.getElementById("coding-agent-ws-path-row");
+  var wsPathInput = document.getElementById("coding-agent-ws-path-input");
+  var wsPathGo = document.getElementById("coding-agent-ws-path-go");
+  var wsUseExisting = document.getElementById("coding-agent-ws-use-existing");
+  var wsNewFolder = document.getElementById("coding-agent-ws-new-folder");
+  var wsFlyout = document.getElementById("coding-agent-ws-flyout");
+  var wsOpenFolder = document.getElementById("coding-agent-ws-open-folder");
+  var wsFlyoutPath = document.getElementById("coding-agent-ws-flyout-path");
+  var wsFlyoutInput = document.getElementById("coding-agent-ws-flyout-input");
+  var wsFlyoutGo = document.getElementById("coding-agent-ws-flyout-go");
+  var wsFlyoutSearch = document.getElementById("coding-agent-ws-flyout-search");
+  var wsFlyoutList = document.getElementById("coding-agent-ws-flyout-list");
+  var wsUeOpenFolder = document.getElementById("coding-agent-ws-ue-open-folder");
+  var wsUeSsh = document.getElementById("coding-agent-ws-ue-ssh");
+  var wsFlyoutPathUe = document.getElementById("coding-agent-ws-flyout-path-ue");
+  var wsUePathInput = document.getElementById("coding-agent-ws-ue-path-input");
+  var wsUePathGo = document.getElementById("coding-agent-ws-ue-path-go");
+  var wsSshTreeHead = document.getElementById("coding-agent-ws-ssh-tree-head");
+  var wsSshTreeList = document.getElementById("coding-agent-ws-ssh-tree-list");
+  var wsSshUseHere = document.getElementById("coding-agent-ws-ssh-use-here");
+  var wsSshId = document.getElementById("coding-agent-ws-ssh-id");
+  var wsSshLabel = document.getElementById("coding-agent-ws-ssh-label");
+  var wsSshHost = document.getElementById("coding-agent-ws-ssh-host");
+  var wsSshPort = document.getElementById("coding-agent-ws-ssh-port");
+  var wsSshUser = document.getElementById("coding-agent-ws-ssh-user");
+  var wsSshAuth = document.getElementById("coding-agent-ws-ssh-auth");
+  var wsSshKey = document.getElementById("coding-agent-ws-ssh-key");
+  var wsSshPass = document.getElementById("coding-agent-ws-ssh-pass");
+  var wsSshDefault = document.getElementById("coding-agent-ws-ssh-default");
+  var wsSshKeyWrap = document.getElementById("coding-agent-ws-ssh-key-wrap");
+  var wsSshPassWrap = document.getElementById("coding-agent-ws-ssh-pass-wrap");
+  var wsSshStatus = document.getElementById("coding-agent-ws-ssh-status");
+  var wsSshTest = document.getElementById("coding-agent-ws-ssh-test");
+  var wsSshSave = document.getElementById("coding-agent-ws-ssh-save");
   var workspaceRootsCache = [];
   var sshHostsCache = [];
   var wsPickerMode = "switch"; // switch | new-agent | add-repo
@@ -58,12 +58,12 @@
   var wsFlyoutMode = ""; // pc | use-existing | ssh-tree | ssh-form
   var sshBrowse = { hostId: "", path: "/", label: "", uri: "" };
   var branchFetchToken = 0;
-  var WS_ICON_FOLDER = '<svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>';
-  var WS_ICON_HOME = '<svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"></path></svg>';
-  var WS_ICON_PC = '<svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M8 21h8"></path><path d="M12 18v3"></path></svg>';
-  var WS_ICON_SSH = '<svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>';
-  var WS_ICON_CHECK = '<svg class="ai-agent-ws-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>';
-  var REPOS_COLLAPSE_KEY = "ai-agent-repos-collapsed:" + provider;
+  var WS_ICON_FOLDER = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>';
+  var WS_ICON_HOME = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"></path></svg>';
+  var WS_ICON_PC = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M8 21h8"></path><path d="M12 18v3"></path></svg>';
+  var WS_ICON_SSH = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>';
+  var WS_ICON_CHECK = '<svg class="coding-agent-ws-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>';
+  var REPOS_COLLAPSE_KEY = "coding-agent-repos-collapsed:" + provider;
 
   function isReposSectionCollapsed() {
     try { return localStorage.getItem(REPOS_COLLAPSE_KEY) === "1"; } catch (err) { return false; }
@@ -90,7 +90,7 @@
 
   function conversationStorageKey() {
     var uid = currentUser && currentUser.id != null ? String(currentUser.id) : "anon";
-    return "ai-agent-active-conversation:" + uid + ":" + provider;
+    return "coding-agent-active-conversation:" + uid + ":" + provider;
   }
 
   function rememberActiveConversation(id) {
@@ -160,7 +160,7 @@
   }
 
   function repoCollapseKey(path) {
-    return "ai-agent-repo-collapsed:" + provider + ":" + normPath(path || "home");
+    return "coding-agent-repo-collapsed:" + provider + ":" + normPath(path || "home");
   }
 
   function isRepoCollapsed(path) {
@@ -250,24 +250,24 @@
       var box = document.createElement("div");
       var collapsed = isRepoCollapsed(group.path || group.key);
       var isEmpty = !group.agents.length;
-      box.className = "ai-agent-repo-group"
+      box.className = "coding-agent-repo-group"
         + (collapsed ? " is-collapsed" : "")
         + (isEmpty ? " is-empty" : "");
       var head = document.createElement("div");
-      head.className = "ai-agent-repo-head";
+      head.className = "coding-agent-repo-head";
       var addTitle = "在 " + (group.name || "仓库") + " 新建 Agent";
       head.innerHTML =
-        '<button type="button" class="ai-agent-repo-toggle">' +
-          '<span class="ai-agent-repo-chevron" aria-hidden="true"></span>' +
-          '<span class="ai-agent-repo-name"></span>' +
+        '<button type="button" class="coding-agent-repo-toggle">' +
+          '<span class="coding-agent-repo-chevron" aria-hidden="true"></span>' +
+          '<span class="coding-agent-repo-name"></span>' +
         '</button>' +
-        '<span class="ai-agent-repo-count"></span>' +
-        '<button type="button" class="ai-agent-repo-add" title="' + addTitle.replace(/"/g, "&quot;") + '" aria-label="' + addTitle.replace(/"/g, "&quot;") + '">' +
+        '<span class="coding-agent-repo-count"></span>' +
+        '<button type="button" class="coding-agent-repo-add" title="' + addTitle.replace(/"/g, "&quot;") + '" aria-label="' + addTitle.replace(/"/g, "&quot;") + '">' +
           '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10"/><path d="M3 8h10"/></svg>' +
         '</button>';
-      head.querySelector(".ai-agent-repo-name").textContent = group.name;
-      head.querySelector(".ai-agent-repo-count").textContent = String(group.agents.length);
-      head.querySelector(".ai-agent-repo-toggle").onclick = function () {
+      head.querySelector(".coding-agent-repo-name").textContent = group.name;
+      head.querySelector(".coding-agent-repo-count").textContent = String(group.agents.length);
+      head.querySelector(".coding-agent-repo-toggle").onclick = function () {
         // Focusing the group updates workspace context for IDE / picker; top「新建 Agent」
         // still defaults to No Repo unless the user picks a repo.
         if (group.path) focusRepoWorkspace(group.path, group.name);
@@ -277,17 +277,17 @@
         renderConversationList();
         if (isRailChatsOpen()) positionRailChatsFlyout();
       };
-      head.querySelector(".ai-agent-repo-add").onclick = function (ev) {
+      head.querySelector(".coding-agent-repo-add").onclick = function (ev) {
         ev.stopPropagation();
         var ws = group.path || homeWorkspaceRoot || "";
         if (ws && !isHomePath(ws)) focusedRepoPath = ws;
         createAgentInWorkspace(ws, group.name || "Home");
       };
       var body = document.createElement("div");
-      body.className = "ai-agent-repo-body";
+      body.className = "coding-agent-repo-body";
       if (isEmpty) {
         var empty = document.createElement("div");
-        empty.className = "ai-agent-repo-empty";
+        empty.className = "coding-agent-repo-empty";
         empty.textContent = "暂无 Agent";
         body.appendChild(empty);
       } else {
@@ -297,26 +297,26 @@
           var isBusy = typeof isConversationBusy === "function"
             ? isConversationBusy(item.id)
             : (isActive && !!(isRunning || pendingFollow));
-          row.className = "ai-agent-nav-item"
+          row.className = "coding-agent-nav-item"
             + (isActive ? " is-active" : "")
             + (isBusy ? " is-running" : "");
           row.setAttribute("role", "button");
           row.tabIndex = 0;
           row.dataset.convId = String(item.id);
           row.innerHTML =
-            '<span class="ai-agent-nav-item-spin" aria-hidden="true"></span>' +
-            '<span class="ai-agent-nav-item-title"></span>' +
-            '<span class="ai-agent-nav-item-time"></span>' +
-            '<span class="ai-agent-nav-item-actions">' +
-              '<button type="button" class="ai-agent-nav-item-action ai-agent-nav-item-more" title="更多" aria-label="更多" aria-haspopup="menu">' +
+            '<span class="coding-agent-nav-item-spin" aria-hidden="true"></span>' +
+            '<span class="coding-agent-nav-item-title"></span>' +
+            '<span class="coding-agent-nav-item-time"></span>' +
+            '<span class="coding-agent-nav-item-actions">' +
+              '<button type="button" class="coding-agent-nav-item-action coding-agent-nav-item-more" title="更多" aria-label="更多" aria-haspopup="menu">' +
                 '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg>' +
               '</button>' +
             '</span>';
-          row.querySelector(".ai-agent-nav-item-title").textContent = item.title || "新对话";
-          row.querySelector(".ai-agent-nav-item-time").textContent = relativeTime(item.updated_at);
+          row.querySelector(".coding-agent-nav-item-title").textContent = item.title || "新对话";
+          row.querySelector(".coding-agent-nav-item-time").textContent = relativeTime(item.updated_at);
           row.onclick = function (ev) {
             if (Date.now() < ignoreNavItemClickUntil) return;
-            if (ev.target && ev.target.closest && ev.target.closest(".ai-agent-nav-item-actions")) return;
+            if (ev.target && ev.target.closest && ev.target.closest(".coding-agent-nav-item-actions")) return;
             openConversation(item.id).then(function () {
               if (opts.closeOnSelect) closeRailChatsFlyout();
             });
@@ -330,7 +330,7 @@
               });
             }
           };
-          var moreBtn = row.querySelector(".ai-agent-nav-item-more");
+          var moreBtn = row.querySelector(".coding-agent-nav-item-more");
           moreBtn.onmousedown = function (ev) { ev.stopPropagation(); };
           moreBtn.onclick = function (ev) {
             ev.preventDefault();
@@ -371,8 +371,8 @@
     if (railFlyout && railFlyout.contains(ev.target)) return;
     if (railChatsBtn && railChatsBtn.contains(ev.target)) return;
     // Menu / confirm are portaled outside the flyout — keep flyout open while using them.
-    var menuEl = document.getElementById("ai-agent-nav-item-menu");
-    var confirmEl = document.getElementById("ai-agent-confirm-modal");
+    var menuEl = document.getElementById("coding-agent-nav-item-menu");
+    var confirmEl = document.getElementById("coding-agent-confirm-modal");
     if (menuEl && menuEl.contains(ev.target)) return;
     if (confirmEl && confirmEl.contains(ev.target)) return;
     closeRailChatsFlyout();
@@ -471,7 +471,7 @@
 
   function threadHasContent() {
     return !!(
-      (threadDiv && threadDiv.querySelector(".ai-agent-msg"))
+      (threadDiv && threadDiv.querySelector(".coding-agent-msg"))
       || (sendQueue && sendQueue.length)
       || (pendingFiles && pendingFiles.length)
     );
@@ -801,7 +801,7 @@
     return conversationSwitchInFlight;
   }
 
-  var navItemMenu = document.getElementById("ai-agent-nav-item-menu");
+  var navItemMenu = document.getElementById("coding-agent-nav-item-menu");
   var navItemMenuTarget = null;
   var navItemMenuRow = null;
   var navItemMenuConvId = null;
@@ -859,7 +859,7 @@
   function renameConversation(item) {
     if (!item || !item.id) return;
     hideNavItemMenu();
-    var rows = document.querySelectorAll('.ai-agent-nav-item[data-conv-id="' + String(item.id) + '"]');
+    var rows = document.querySelectorAll('.coding-agent-nav-item[data-conv-id="' + String(item.id) + '"]');
     var row = rows[0] || null;
     if (!row) {
       // Fallback if row not in DOM (e.g. collapsed)
@@ -870,19 +870,19 @@
       patchConversation(item.id, { title: typed.slice(0, 80) });
       return;
     }
-    var titleEl = row.querySelector(".ai-agent-nav-item-title");
+    var titleEl = row.querySelector(".coding-agent-nav-item-title");
     if (!titleEl || row.classList.contains("is-renaming")) return;
     row.classList.add("is-renaming");
     var original = item.title || "新对话";
     var input = document.createElement("input");
     input.type = "text";
-    input.className = "ai-agent-nav-item-rename";
+    input.className = "coding-agent-nav-item-rename";
     input.value = original;
     input.maxLength = 80;
     input.setAttribute("aria-label", "重命名");
     titleEl.replaceWith(input);
-    var actions = row.querySelector(".ai-agent-nav-item-actions");
-    var timeEl = row.querySelector(".ai-agent-nav-item-time");
+    var actions = row.querySelector(".coding-agent-nav-item-actions");
+    var timeEl = row.querySelector(".coding-agent-nav-item-time");
     if (actions) actions.style.display = "none";
     if (timeEl) timeEl.style.display = "none";
 
@@ -926,7 +926,7 @@
     if (!convId) return;
     navItemMenuTarget = item;
     navItemMenuConvId = convId;
-    navItemMenuRow = anchor.closest(".ai-agent-nav-item");
+    navItemMenuRow = anchor.closest(".coding-agent-nav-item");
     if (navItemMenuRow) {
       navItemMenuRow.classList.add("is-menu-open");
       // Prefer the row's data-conv-id so we never act on a stale list object.
@@ -1002,7 +1002,7 @@
   document.addEventListener("mousedown", function (ev) {
     if (!navItemMenu || !navItemMenu.classList.contains("is-on")) return;
     if (navItemMenu.contains(ev.target)) return;
-    if (ev.target && ev.target.closest && ev.target.closest(".ai-agent-nav-item-more")) return;
+    if (ev.target && ev.target.closest && ev.target.closest(".coding-agent-nav-item-more")) return;
     hideNavItemMenu();
   });
   document.addEventListener("keydown", function (ev) {
@@ -1011,11 +1011,11 @@
   window.addEventListener("resize", hideNavItemMenu);
   window.addEventListener("scroll", hideNavItemMenu, true);
 
-  var confirmModal = document.getElementById("ai-agent-confirm-modal");
-  var confirmTitle = document.getElementById("ai-agent-confirm-title");
-  var confirmMessage = document.getElementById("ai-agent-confirm-message");
-  var confirmOk = document.getElementById("ai-agent-confirm-ok");
-  var confirmCancel = document.getElementById("ai-agent-confirm-cancel");
+  var confirmModal = document.getElementById("coding-agent-confirm-modal");
+  var confirmTitle = document.getElementById("coding-agent-confirm-title");
+  var confirmMessage = document.getElementById("coding-agent-confirm-message");
+  var confirmOk = document.getElementById("coding-agent-confirm-ok");
+  var confirmCancel = document.getElementById("coding-agent-confirm-cancel");
   var confirmResolve = null;
 
   function closeConfirmDialog(result) {
@@ -1426,7 +1426,7 @@
         var roots = (data && data.roots) || [];
         if (!roots.length) {
           var empty = document.createElement("div");
-          empty.className = "ai-agent-ws-item-path";
+          empty.className = "coding-agent-ws-item-path";
           empty.style.padding = "6px 8px";
           empty.textContent = q ? "No matches" : "No folders";
           wsFlyoutList.appendChild(empty);
@@ -1435,12 +1435,12 @@
         roots.forEach(function (r) {
           var btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "ai-agent-ws-item";
+          btn.className = "coding-agent-ws-item";
           btn.innerHTML = WS_ICON_FOLDER
-            + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name"></span>'
-            + '<span class="ai-agent-ws-item-path"></span></span>';
-          btn.querySelector(".ai-agent-ws-item-name").textContent = r.name || r.path || "";
-          btn.querySelector(".ai-agent-ws-item-path").textContent = r.path || "";
+            + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
+            + '<span class="coding-agent-ws-item-path"></span></span>';
+          btn.querySelector(".coding-agent-ws-item-name").textContent = r.name || r.path || "";
+          btn.querySelector(".coding-agent-ws-item-path").textContent = r.path || "";
           btn.title = r.path || "";
           btn.onclick = function () { selectWorkspacePath(r.path, r.is_home ? "No Repo" : r.name); };
           wsFlyoutList.appendChild(btn);
@@ -1474,7 +1474,7 @@
   function makeRecentRow(r) {
     var btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "ai-agent-ws-item";
+    btn.className = "coding-agent-ws-item";
     var active = activeWorkspaceRoot
       && normPath(r.path || "") === normPath(activeWorkspaceRoot);
     if (active) btn.classList.add("is-active");
@@ -1483,16 +1483,16 @@
     if (r.is_ssh || isSshWorkspace(r.path)) {
       sub = r.host_label || r.host_id || "SSH";
       btn.innerHTML = WS_ICON_SSH
-        + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name"></span>'
-        + '<span class="ai-agent-ws-item-host"></span></span>'
+        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
+        + '<span class="coding-agent-ws-item-host"></span></span>'
         + WS_ICON_CHECK;
-      btn.querySelector(".ai-agent-ws-item-name").textContent = name;
-      btn.querySelector(".ai-agent-ws-item-host").textContent = sub;
+      btn.querySelector(".coding-agent-ws-item-name").textContent = name;
+      btn.querySelector(".coding-agent-ws-item-host").textContent = sub;
     } else {
       btn.innerHTML = WS_ICON_FOLDER
-        + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name"></span></span>'
+        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
         + WS_ICON_CHECK;
-      btn.querySelector(".ai-agent-ws-item-name").textContent = r.path || name;
+      btn.querySelector(".coding-agent-ws-item-name").textContent = r.path || name;
     }
     btn.title = r.path || "";
     btn.onclick = function () {
@@ -1504,13 +1504,13 @@
   function makeSshHostRow(host) {
     var btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "ai-agent-ws-nav";
+    btn.className = "coding-agent-ws-nav";
     btn.innerHTML = WS_ICON_SSH
-      + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name"></span>'
-      + '<span class="ai-agent-ws-item-host"></span></span>'
-      + '<span class="ai-agent-ws-chevron-r" aria-hidden="true"></span>';
-    btn.querySelector(".ai-agent-ws-item-name").textContent = host.label || host.id;
-    btn.querySelector(".ai-agent-ws-item-host").textContent =
+      + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
+      + '<span class="coding-agent-ws-item-host"></span></span>'
+      + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
+    btn.querySelector(".coding-agent-ws-item-name").textContent = host.label || host.id;
+    btn.querySelector(".coding-agent-ws-item-host").textContent =
       (host.user || "") + "@" + (host.host || "") + (host.port && host.port !== 22 ? (":" + host.port) : "");
     btn.onclick = function (ev) {
       ev.stopPropagation();
@@ -1532,7 +1532,7 @@
     if (wsSshTreeHead) {
       wsSshTreeHead.textContent = (sshBrowse.label || hostId) + " · " + (path || "/");
     }
-    if (wsSshTreeList) wsSshTreeList.innerHTML = "<div class='ai-agent-ws-item-path' style='padding:6px 8px'>Loading…</div>";
+    if (wsSshTreeList) wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>Loading…</div>";
     apiFetch(apiBase + "/api/ssh/hosts/" + encodeURIComponent(hostId)
       + "/tree?path=" + encodeURIComponent(path || "/"))
       .then(function (res) {
@@ -1543,7 +1543,7 @@
         wsSshTreeList.innerHTML = "";
         if (!result.ok) {
           var err = document.createElement("div");
-          err.className = "ai-agent-ws-item-path";
+          err.className = "coding-agent-ws-item-path";
           err.style.padding = "6px 8px";
           err.textContent = (result.data && (result.data.detail || result.data.message)) || "加载失败";
           wsSshTreeList.appendChild(err);
@@ -1558,8 +1558,8 @@
         if (sshBrowse.path && sshBrowse.path !== "/") {
           var up = document.createElement("button");
           up.type = "button";
-          up.className = "ai-agent-ws-item";
-          up.innerHTML = '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">..</span></span>';
+          up.className = "coding-agent-ws-item";
+          up.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span></span>';
           up.onclick = function () {
             var parts = sshBrowse.path.replace(/\/+$/, "").split("/");
             parts.pop();
@@ -1571,18 +1571,18 @@
         (result.data.entries || []).forEach(function (e) {
           var btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "ai-agent-ws-item";
+          btn.className = "coding-agent-ws-item";
           btn.innerHTML = WS_ICON_FOLDER
-            + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name"></span></span>'
-            + '<span class="ai-agent-ws-chevron-r" aria-hidden="true"></span>';
-          btn.querySelector(".ai-agent-ws-item-name").textContent = e.name || e.path;
+            + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
+            + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
+          btn.querySelector(".coding-agent-ws-item-name").textContent = e.name || e.path;
           btn.onclick = function () { loadSshTree(hostId, e.path); };
           wsSshTreeList.appendChild(btn);
         });
       })
       .catch(function () {
         if (wsSshTreeList) {
-          wsSshTreeList.innerHTML = "<div class='ai-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
+          wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
         }
       });
   }
@@ -1723,7 +1723,7 @@
       wsRecents.innerHTML = "";
       if (!recents.length) {
         var empty = document.createElement("div");
-        empty.className = "ai-agent-ws-item-path";
+        empty.className = "coding-agent-ws-item-path";
         empty.style.padding = "6px 8px";
         empty.textContent = q ? "No matches" : "No recent folders";
         wsRecents.appendChild(empty);
@@ -1740,12 +1740,12 @@
       || q.indexOf("no") >= 0 || q.indexOf("home") >= 0)) {
       var noRepo = document.createElement("button");
       noRepo.type = "button";
-      noRepo.className = "ai-agent-ws-item";
+      noRepo.className = "coding-agent-ws-item";
       var homeActive = activeWorkspaceRoot
         && String(homeRoot.path || "").toLowerCase() === String(activeWorkspaceRoot).toLowerCase();
       if (homeActive) noRepo.classList.add("is-active");
       noRepo.innerHTML = WS_ICON_HOME
-        + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">No Repo</span></span>'
+        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">No Repo</span></span>'
         + WS_ICON_CHECK;
       noRepo.onclick = function () { selectWorkspacePath(homeRoot.path, "No Repo"); };
       wsRepos.appendChild(noRepo);
@@ -1754,10 +1754,10 @@
     if (!q || "on this pc".indexOf(q) >= 0 || "this pc".indexOf(q) >= 0 || "open folder".indexOf(q) >= 0) {
       var pcBtn = document.createElement("button");
       pcBtn.type = "button";
-      pcBtn.className = "ai-agent-ws-nav";
+      pcBtn.className = "coding-agent-ws-nav";
       pcBtn.innerHTML = WS_ICON_PC
-        + '<span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">On This PC</span></span>'
-        + '<span class="ai-agent-ws-chevron-r" aria-hidden="true"></span>';
+        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">On This PC</span></span>'
+        + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
       pcBtn.onmouseenter = function () { openPcFlyout(pcBtn); };
       pcBtn.onclick = function (ev) {
         ev.stopPropagation();
@@ -1829,7 +1829,7 @@
     closeWorkspacePicker();
     setRepoCollapsed(ws, false);
     // Switching folder always opens/creates an agent in that workspace.
-    // Never PATCH-move the current chat (that made Ai-agent chats jump under Home).
+    // Never PATCH-move the current chat (that made Coding Agent chats jump under Home).
     createAgentInWorkspace(ws, name || workspaceDisplayName(ws));
   }
 
@@ -1912,9 +1912,9 @@
       openNewAgentFlow();
     };
   }
-  var navAddRepoBtn = document.getElementById("ai-agent-nav-add-repo");
-  var navFilterBtn = document.getElementById("ai-agent-nav-filter");
-  var HIDE_EMPTY_KEY = "ai-agent-hide-empty-repos:" + provider;
+  var navAddRepoBtn = document.getElementById("coding-agent-nav-add-repo");
+  var navFilterBtn = document.getElementById("coding-agent-nav-filter");
+  var HIDE_EMPTY_KEY = "coding-agent-hide-empty-repos:" + provider;
   function isHideEmptyRepos() {
     try { return localStorage.getItem(HIDE_EMPTY_KEY) === "1"; } catch (err) { return false; }
   }

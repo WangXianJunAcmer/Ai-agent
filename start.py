@@ -1,4 +1,4 @@
-"""Portable Python entrypoint for Ai-agent."""
+"""Portable Python entrypoint for Coding Agent."""
 
 from __future__ import annotations
 

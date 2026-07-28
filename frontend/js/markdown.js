@@ -1,4 +1,4 @@
-/* ai-agent frontend/js/markdown.js */
+/* coding-agent frontend/js/markdown.js */
   function escapeHtml(text) {
     return text
       .replace(/&/g, "&amp;")
@@ -15,7 +15,7 @@
 
   function refreshMathMarkdownBodies() {
     var nodes = document.querySelectorAll(
-      "#ai-agent-sidebar [data-raw-text], #ai-agent-thread [data-raw-text]"
+      "#coding-agent-sidebar [data-raw-text], #coding-agent-thread [data-raw-text]"
     );
     Array.prototype.forEach.call(nodes, function (el) {
       var raw = el.getAttribute("data-raw-text") || "";
@@ -55,14 +55,14 @@
       if (ok) refreshMathMarkdownBodies();
     }
 
-    if (!document.querySelector('link[data-ai-agent-katex="1"]')) {
+    if (!document.querySelector('link[data-coding-agent-katex="1"]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = KATEX_CSS;
-      link.setAttribute("data-ai-agent-katex", "1");
+      link.setAttribute("data-coding-agent-katex", "1");
       document.head.appendChild(link);
     }
-    var existing = document.querySelector('script[data-ai-agent-katex="1"]');
+    var existing = document.querySelector('script[data-coding-agent-katex="1"]');
     if (existing) {
       existing.addEventListener("load", function () { finish(!!window.katex); });
       existing.addEventListener("error", function () { finish(false); });
@@ -71,7 +71,7 @@
     var script = document.createElement("script");
     script.src = KATEX_JS;
     script.async = true;
-    script.setAttribute("data-ai-agent-katex", "1");
+    script.setAttribute("data-coding-agent-katex", "1");
     script.onload = function () { finish(!!window.katex); };
     script.onerror = function () { finish(false); };
     document.head.appendChild(script);
@@ -96,7 +96,7 @@
     // Don't put multi-line TeX in attributes — newlines break HTML.
     var tag = displayMode ? "div" : "span";
     return (
-      "<" + tag + ' class="ai-agent-math' + (displayMode ? " is-display" : "") + '">' +
+      "<" + tag + ' class="coding-agent-math' + (displayMode ? " is-display" : "") + '">' +
       escapeHtml(source) +
       "</" + tag + ">"
     );
@@ -647,10 +647,10 @@
     var cls = language ? ' class="language-' + escapeHtml(normalizeCodeLang(language)) + '"' : "";
     var highlighted = highlightCode(raw, language);
     return (
-      '<div class="ai-agent-codeblock">' +
-        '<div class="ai-agent-codeblock-header">' +
-          '<span class="ai-agent-codeblock-lang">' + escapeHtml(label) + "</span>" +
-          '<button type="button" class="ai-agent-codeblock-copy" data-copy-label="复制">复制</button>' +
+      '<div class="coding-agent-codeblock">' +
+        '<div class="coding-agent-codeblock-header">' +
+          '<span class="coding-agent-codeblock-lang">' + escapeHtml(label) + "</span>" +
+          '<button type="button" class="coding-agent-codeblock-copy" data-copy-label="复制">复制</button>' +
         "</div>" +
         "<pre><code" + cls + ">" + highlighted + "</code></pre>" +
       "</div>"
@@ -659,10 +659,10 @@
 
   function bindCodeBlockCopy(root) {
     if (!root) return;
-    Array.prototype.forEach.call(root.querySelectorAll(".ai-agent-codeblock"), function (block) {
+    Array.prototype.forEach.call(root.querySelectorAll(".coding-agent-codeblock"), function (block) {
       if (block.__copyBound) return;
       block.__copyBound = true;
-      var btn = block.querySelector(".ai-agent-codeblock-copy");
+      var btn = block.querySelector(".coding-agent-codeblock-copy");
       var codeEl = block.querySelector("pre code");
       if (!btn || !codeEl) return;
       btn.addEventListener("click", function (event) {

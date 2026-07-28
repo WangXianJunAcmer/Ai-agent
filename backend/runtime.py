@@ -292,7 +292,7 @@ class SessionManager:
         opts: dict = {
             "model": model,
             "api_key": cursor_api_key(settings),
-            "name": f"Ai-agent ({label})",
+            "name": f"Coding Agent ({label})",
         }
         if settings["runtime"] == "cloud":
             if not settings["cloud_repo_url"]:

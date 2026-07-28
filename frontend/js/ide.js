@@ -1,43 +1,43 @@
-/* ai-agent frontend/js/ide.js — Cursor-like code sidebar (Ctrl+G) */
+/* coding-agent frontend/js/ide.js — Cursor-like code sidebar (Ctrl+G) */
 
-  var idePanel = document.getElementById("ai-agent-ide");
-  var ideExplorer = document.getElementById("ai-agent-ide-explorer");
-  var ideTree = document.getElementById("ai-agent-ide-tree");
-  var ideRootName = document.getElementById("ai-agent-ide-root-name");
-  var ideEditor = document.getElementById("ai-agent-ide-editor");
-  var ideTabs = document.getElementById("ai-agent-ide-tabs-scroll") || document.getElementById("ai-agent-ide-tabs");
-  var ideMaximizeBtn = document.getElementById("ai-agent-ide-maximize");
-  var IDE_MAX_KEY = "ai-agent-ide-maximized:" + provider;
-  var ideCodeWrap = document.getElementById("ai-agent-ide-code-wrap");
-  var ideGutter = document.getElementById("ai-agent-ide-gutter");
-  var ideCode = document.getElementById("ai-agent-ide-code");
-  var ideHighlight = document.getElementById("ai-agent-ide-highlight");
+  var idePanel = document.getElementById("coding-agent-ide");
+  var ideExplorer = document.getElementById("coding-agent-ide-explorer");
+  var ideTree = document.getElementById("coding-agent-ide-tree");
+  var ideRootName = document.getElementById("coding-agent-ide-root-name");
+  var ideEditor = document.getElementById("coding-agent-ide-editor");
+  var ideTabs = document.getElementById("coding-agent-ide-tabs-scroll") || document.getElementById("coding-agent-ide-tabs");
+  var ideMaximizeBtn = document.getElementById("coding-agent-ide-maximize");
+  var IDE_MAX_KEY = "coding-agent-ide-maximized:" + provider;
+  var ideCodeWrap = document.getElementById("coding-agent-ide-code-wrap");
+  var ideGutter = document.getElementById("coding-agent-ide-gutter");
+  var ideCode = document.getElementById("coding-agent-ide-code");
+  var ideHighlight = document.getElementById("coding-agent-ide-highlight");
   var ideHighlightCode = ideHighlight ? ideHighlight.querySelector("code") : null;
-  var idePreview = document.getElementById("ai-agent-ide-preview");
-  var ideEmpty = document.getElementById("ai-agent-ide-empty");
-  var ideCrumbName = document.getElementById("ai-agent-ide-crumb-name");
-  var ideViewTools = document.getElementById("ai-agent-ide-view-tools");
-  var ideViewPreview = document.getElementById("ai-agent-ide-view-preview");
-  var ideViewSource = document.getElementById("ai-agent-ide-view-source");
-  var ideFindBar = document.getElementById("ai-agent-ide-find");
-  var ideFindInput = document.getElementById("ai-agent-ide-find-input");
-  var ideFindCount = document.getElementById("ai-agent-ide-find-count");
-  var ideFindToggle = document.getElementById("ai-agent-ide-find-toggle");
-  var ideFindPrev = document.getElementById("ai-agent-ide-find-prev");
-  var ideFindNext = document.getElementById("ai-agent-ide-find-next");
-  var ideFindClose = document.getElementById("ai-agent-ide-find-close");
-  var ideSaveBtn = document.getElementById("ai-agent-ide-save");
-  var ideRefreshBtn = document.getElementById("ai-agent-ide-refresh");
-  var ideNewFileBtn = document.getElementById("ai-agent-ide-new-file");
-  var ideNewFolderBtn = document.getElementById("ai-agent-ide-new-folder");
-  var ideBackBtn = document.getElementById("ai-agent-ide-back");
-  var ideForwardBtn = document.getElementById("ai-agent-ide-forward");
-  var ideToggleBtn = document.getElementById("ai-agent-toggle-ide");
-  var ideToggleDockBtn = document.getElementById("ai-agent-toggle-ide-dock");
-  var ideCollapseAllBtn = document.getElementById("ai-agent-ide-collapse-all");
-  var ideResize = document.getElementById("ai-agent-ide-resize");
-  var ideTreeResize = document.getElementById("ai-agent-ide-tree-resize");
-  var ideCtx = document.getElementById("ai-agent-ide-ctx");
+  var idePreview = document.getElementById("coding-agent-ide-preview");
+  var ideEmpty = document.getElementById("coding-agent-ide-empty");
+  var ideCrumbName = document.getElementById("coding-agent-ide-crumb-name");
+  var ideViewTools = document.getElementById("coding-agent-ide-view-tools");
+  var ideViewPreview = document.getElementById("coding-agent-ide-view-preview");
+  var ideViewSource = document.getElementById("coding-agent-ide-view-source");
+  var ideFindBar = document.getElementById("coding-agent-ide-find");
+  var ideFindInput = document.getElementById("coding-agent-ide-find-input");
+  var ideFindCount = document.getElementById("coding-agent-ide-find-count");
+  var ideFindToggle = document.getElementById("coding-agent-ide-find-toggle");
+  var ideFindPrev = document.getElementById("coding-agent-ide-find-prev");
+  var ideFindNext = document.getElementById("coding-agent-ide-find-next");
+  var ideFindClose = document.getElementById("coding-agent-ide-find-close");
+  var ideSaveBtn = document.getElementById("coding-agent-ide-save");
+  var ideRefreshBtn = document.getElementById("coding-agent-ide-refresh");
+  var ideNewFileBtn = document.getElementById("coding-agent-ide-new-file");
+  var ideNewFolderBtn = document.getElementById("coding-agent-ide-new-folder");
+  var ideBackBtn = document.getElementById("coding-agent-ide-back");
+  var ideForwardBtn = document.getElementById("coding-agent-ide-forward");
+  var ideToggleBtn = document.getElementById("coding-agent-toggle-ide");
+  var ideToggleDockBtn = document.getElementById("coding-agent-toggle-ide-dock");
+  var ideCollapseAllBtn = document.getElementById("coding-agent-ide-collapse-all");
+  var ideResize = document.getElementById("coding-agent-ide-resize");
+  var ideTreeResize = document.getElementById("coding-agent-ide-tree-resize");
+  var ideCtx = document.getElementById("coding-agent-ide-ctx");
   var ideOpenTabs = []; // { id, kind:'file'|'terminal', path?, title?, content?, dirty?, original?, unsaved?, view?, termHtml? }
   var ideActivePath = "";
   var ideActiveId = "";
@@ -48,13 +48,13 @@
   var ideChildrenCache = {};
   var ideClipboard = null; // { mode: 'copy'|'cut', path, type }
   var ideCtxTarget = null; // { path, type }
-  var ideOutline = document.getElementById("ai-agent-ide-outline");
-  var ideOutlineToggle = document.getElementById("ai-agent-ide-outline-toggle");
+  var ideOutline = document.getElementById("coding-agent-ide-outline");
+  var ideOutlineToggle = document.getElementById("coding-agent-ide-outline-toggle");
   var ideFindMatches = [];
   var ideFindIndex = -1;
   var ideOutlineOpen = false;
-  var IDE_WIDTH_KEY = "ai-agent-ide-width:" + provider;
-  var IDE_TREE_WIDTH_KEY = "ai-agent-ide-tree-width:" + provider;
+  var IDE_WIDTH_KEY = "coding-agent-ide-width:" + provider;
+  var IDE_TREE_WIDTH_KEY = "coding-agent-ide-tree-width:" + provider;
 
   function applyIdeWidth(px) {
     if (!sidebar) return;
@@ -189,7 +189,7 @@
     var next = panel || "files";
     if (next !== "files" && next !== "terminal") next = "files";
     idePanel.setAttribute("data-panel", next);
-    try { localStorage.setItem("ai-agent-ide-panel:" + provider, next); } catch (err) {}
+    try { localStorage.setItem("coding-agent-ide-panel:" + provider, next); } catch (err) {}
   }
 
   function currentIdePanel() {
@@ -200,7 +200,7 @@
     if (!sidebar) return;
     if (panel) setIdePanel(panel);
     sidebar.classList.toggle("has-ide", !!on);
-    try { localStorage.setItem("ai-agent-ide-open:" + provider, on ? "1" : "0"); } catch (err) {}
+    try { localStorage.setItem("coding-agent-ide-open:" + provider, on ? "1" : "0"); } catch (err) {}
     syncIdeToggle();
     if (on) {
       if (ideRootName) ideRootName.textContent = ideExplorerTitle();
@@ -335,7 +335,7 @@
       var level = m[1].length;
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ai-agent-ide-outline-item is-h" + level;
+      btn.className = "coding-agent-ide-outline-item is-h" + level;
       btn.textContent = m[2].replace(/#+\s*$/, "").trim();
       btn.title = btn.textContent;
       btn.onclick = function () {
@@ -648,7 +648,7 @@
     items.forEach(function (item) {
       if (item.sep) {
         var sep = document.createElement("div");
-        sep.className = "ai-agent-ide-ctx-sep";
+        sep.className = "coding-agent-ide-ctx-sep";
         ideCtx.appendChild(sep);
         return;
       }
@@ -778,12 +778,12 @@
       var label = kind === "file"
         ? (tab.displayName || fileBase(tab.path))
         : (tab.title || kind);
-      btn.className = "ai-agent-ide-tab" +
+      btn.className = "coding-agent-ide-tab" +
         (key === ideActiveId ? " is-active" : "") +
         (tab.dirty ? " is-dirty" : "");
       btn.title = kind === "file" ? tab.path : label;
       var icon = document.createElement("span");
-      icon.className = "ai-agent-ide-tab-icon";
+      icon.className = "coding-agent-ide-tab-icon";
       if (kind === "terminal") icon.textContent = ">_";
       else {
         icon.className += " " + fileExtClass(fileBase(tab.path) || label);
@@ -791,11 +791,11 @@
       }
       btn.appendChild(icon);
       var name = document.createElement("span");
-      name.className = "ai-agent-ide-tab-name";
+      name.className = "coding-agent-ide-tab-name";
       name.textContent = label;
       btn.appendChild(name);
       var close = document.createElement("span");
-      close.className = "ai-agent-ide-tab-close";
+      close.className = "coding-agent-ide-tab-close";
       close.setAttribute("role", "button");
       close.title = "关闭";
       close.textContent = "×";
@@ -1051,7 +1051,7 @@
     items.forEach(function (item) {
       if (item.sep) {
         var sep = document.createElement("div");
-        sep.className = "ai-agent-ide-ctx-sep";
+        sep.className = "coding-agent-ide-ctx-sep";
         ideCtx.appendChild(sep);
         return;
       }
@@ -1097,7 +1097,7 @@
       ensureDirExpanded(dir).then(function () {
         renderIdeTree();
         var wrap = document.createElement("div");
-        wrap.className = "ai-agent-ide-inline-input";
+        wrap.className = "coding-agent-ide-inline-input";
         wrap.style.paddingLeft = "20px";
         var input = document.createElement("input");
         input.type = "text";
@@ -1294,7 +1294,7 @@
     function appendEntry(item, depth) {
       var row = document.createElement("button");
       row.type = "button";
-      row.className = "ai-agent-ide-tree-item" +
+      row.className = "coding-agent-ide-tree-item" +
         (item.type === "dir" ? " is-dir" : "") +
         (ideExpanded[item.path] ? " is-expanded" : "") +
         (item.path === ideActivePath ? " is-active" : "") +
@@ -1305,18 +1305,18 @@
       row.title = item.path;
 
       var chev = document.createElement("span");
-      chev.className = "ai-agent-ide-tree-chevron";
+      chev.className = "coding-agent-ide-tree-chevron";
       chev.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6 3l5 5-5 5z"/></svg>';
       row.appendChild(chev);
 
       var icon = document.createElement("span");
-      icon.className = "ai-agent-ide-tree-icon " +
+      icon.className = "coding-agent-ide-tree-icon " +
         (item.type === "dir" ? "is-dir" : fileExtClass(item.name));
       icon.textContent = item.type === "dir" ? "📁" : fileIconGlyph(item.name);
       row.appendChild(icon);
 
       var label = document.createElement("span");
-      label.className = "ai-agent-ide-tree-label";
+      label.className = "coding-agent-ide-tree-label";
       label.textContent = item.name;
       row.appendChild(label);
 
@@ -1420,14 +1420,14 @@
       renderIdeTree();
     };
   }
-  var ideRail = document.getElementById("ai-agent-ide-rail");
-  var ideRailTerminal = document.getElementById("ai-agent-ide-rail-terminal");
-  var ideRailFiles = document.getElementById("ai-agent-ide-rail-files");
-  var ideRailExpand = document.getElementById("ai-agent-ide-rail-expand");
-  var ideTermMount = document.getElementById("ai-agent-ide-term-mount");
-  var ideTabAdd = document.getElementById("ai-agent-ide-tab-add");
-  var ideNewMenu = document.getElementById("ai-agent-ide-new-menu");
-  var IDE_RAIL_LABELS_KEY = "ai-agent-ide-rail-labels:" + provider;
+  var ideRail = document.getElementById("coding-agent-ide-rail");
+  var ideRailTerminal = document.getElementById("coding-agent-ide-rail-terminal");
+  var ideRailFiles = document.getElementById("coding-agent-ide-rail-files");
+  var ideRailExpand = document.getElementById("coding-agent-ide-rail-expand");
+  var ideTermMount = document.getElementById("coding-agent-ide-term-mount");
+  var ideTabAdd = document.getElementById("coding-agent-ide-tab-add");
+  var ideNewMenu = document.getElementById("coding-agent-ide-new-menu");
+  var IDE_RAIL_LABELS_KEY = "coding-agent-ide-rail-labels:" + provider;
   var _xtermLoadPromise = null;
   var _termEncoder = (typeof TextEncoder !== "undefined") ? new TextEncoder() : null;
   var _termResizeObs = null;
@@ -1677,7 +1677,7 @@
     return loadXtermLibs().then(function () {
       if (tab.xterm) return tab;
       var host = document.createElement("div");
-      host.className = "ai-agent-ide-xterm-host";
+      host.className = "coding-agent-ide-xterm-host";
       var term = new window.Terminal({
         cursorBlink: true,
         fontSize: 14,
@@ -1720,7 +1720,7 @@
 
   function attachActiveTerminal(tab) {
     if (!tab || tab.kind !== "terminal") return;
-    if (!ideTermMount) ideTermMount = document.getElementById("ai-agent-ide-term-mount");
+    if (!ideTermMount) ideTermMount = document.getElementById("coding-agent-ide-term-mount");
     ensureTabXterm(tab)
       .then(function () {
         if (!ideTermMount || !tab.termHost) return;
@@ -1804,7 +1804,7 @@
       ideRailExpand.title = open ? "收起" : "展开";
       ideRailExpand.setAttribute("aria-label", open ? "收起" : "展开");
       ideRailExpand.setAttribute("aria-expanded", open ? "true" : "false");
-      var label = ideRailExpand.querySelector(".ai-agent-ide-rail-label");
+      var label = ideRailExpand.querySelector(".coding-agent-ide-rail-label");
       if (label) label.textContent = open ? "收起" : "展开";
     }
     try {
@@ -1913,7 +1913,7 @@
   });
 
   try {
-    var savedPanel = localStorage.getItem("ai-agent-ide-panel:" + provider);
+    var savedPanel = localStorage.getItem("coding-agent-ide-panel:" + provider);
     if (savedPanel === "browser") savedPanel = "files";
     if (savedPanel) setIdePanel(savedPanel);
   } catch (err) {}
@@ -1989,7 +1989,7 @@
 
   if (ideTree) {
     ideTree.addEventListener("contextmenu", function (ev) {
-      if (ev.target && ev.target.closest && ev.target.closest(".ai-agent-ide-tree-item")) return;
+      if (ev.target && ev.target.closest && ev.target.closest(".coding-agent-ide-tree-item")) return;
       ev.preventDefault();
       showIdeCtx(ev.clientX, ev.clientY, { path: ".", isDir: true });
     });
@@ -1997,10 +1997,10 @@
   if (ideExplorer) {
     ideExplorer.addEventListener("contextmenu", function (ev) {
       if (ev.target && ev.target.closest && (
-        ev.target.closest(".ai-agent-ide-tree-item") ||
-        ev.target.closest("#ai-agent-ide-explorer-actions")
+        ev.target.closest(".coding-agent-ide-tree-item") ||
+        ev.target.closest("#coding-agent-ide-explorer-actions")
       )) return;
-      if (ev.target && ev.target.closest && ev.target.closest("#ai-agent-ide-tree")) return;
+      if (ev.target && ev.target.closest && ev.target.closest("#coding-agent-ide-tree")) return;
       ev.preventDefault();
       showIdeCtx(ev.clientX, ev.clientY, { path: ".", isDir: true });
     });
@@ -2043,7 +2043,7 @@
   updateCrumb();
   showIdeEditor(!!ideActiveId);
   try {
-    if (localStorage.getItem("ai-agent-ide-open:" + provider) === "1" && hubFullscreen) {
+    if (localStorage.getItem("coding-agent-ide-open:" + provider) === "1" && hubFullscreen) {
       setIdeOpen(true);
       if (!ideActiveId) showIdeEditor(false);
     }

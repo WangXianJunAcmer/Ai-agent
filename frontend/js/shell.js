@@ -1,4 +1,4 @@
-/* ai-agent frontend/js/shell.js */
+/* coding-agent frontend/js/shell.js */
   var script = document.currentScript;
   var scriptUrl = "";
   try {
@@ -10,7 +10,7 @@
   var apiBase = (script && script.getAttribute("data-api-base")) || inferredApiBase;
   var defaultModel = (script && script.getAttribute("data-default-model")) || "auto";
   var provider = (script && script.getAttribute("data-provider")) || "cursor";
-  var AUTH_TOKEN_KEY = "ai-agent-auth-token";
+  var AUTH_TOKEN_KEY = "coding-agent-auth-token";
   var currentUser = null;
   function getAuthToken() {
     try {
@@ -48,7 +48,7 @@
       return res;
     });
   }
-  var sessionStorageKey = "ai-agent-session-id:" + provider;
+  var sessionStorageKey = "coding-agent-session-id:" + provider;
   var sessionId = localStorage.getItem(sessionStorageKey) || "";
   // Brand / copy keyed by data-provider (Cursor · OpenAI · DeepSeek).
   var PROVIDER_UI = {
@@ -96,20 +96,20 @@
   var hubFullscreen = (script && script.getAttribute("data-layout")) === "fullscreen";
 
   var styles = `
-    #ai-agent-backdrop {
+    #coding-agent-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,.18);
       z-index: 2147482999; opacity: 0; pointer-events: none; transition: opacity .2s ease;
     }
-    #ai-agent-backdrop.open { opacity: 1; pointer-events: auto; }
-    #ai-agent-trigger {
+    #coding-agent-backdrop.open { opacity: 1; pointer-events: auto; }
+    #coding-agent-trigger {
       position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
       padding: 0; border: none; background: transparent; border-radius: 14px;
       display: flex; align-items: center; justify-content: center; cursor: pointer;
       box-shadow: 0 10px 28px rgba(0,0,0,.18); z-index: 2147483000;
       overflow: hidden; user-select: none;
     }
-    #ai-agent-trigger svg { width: 56px; height: 56px; display: block; }
-    #ai-agent-sidebar {
+    #coding-agent-trigger svg { width: 56px; height: 56px; display: block; }
+    #coding-agent-sidebar {
       --ai-bg: #ffffff;
       --ai-surface: #f7f7f8;
       --ai-border: rgba(0,0,0,.08);
@@ -140,16 +140,16 @@
       font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: var(--ai-text);
     }
-    #ai-agent-nav { display: none; }
-    #ai-agent-main {
+    #coding-agent-nav { display: none; }
+    #coding-agent-main {
       flex: 1 1 auto; min-width: 0; min-height: 0;
       display: flex; flex-direction: column; overflow: hidden;
       background: var(--ai-bg);
     }
-    #ai-agent-sidebar.is-resizing { transition: none; user-select: none; }
-    #ai-agent-sidebar *, #ai-agent-sidebar *::before, #ai-agent-sidebar *::after { box-sizing: border-box; }
-    #ai-agent-sidebar.open { right: 0; }
-    #ai-agent-sidebar.is-fullscreen {
+    #coding-agent-sidebar.is-resizing { transition: none; user-select: none; }
+    #coding-agent-sidebar *, #coding-agent-sidebar *::before, #coding-agent-sidebar *::after { box-sizing: border-box; }
+    #coding-agent-sidebar.open { right: 0; }
+    #coding-agent-sidebar.is-fullscreen {
       --ai-sidebar-width: 100vw;
       right: -100vw;
       width: 100vw;
@@ -157,238 +157,238 @@
       box-shadow: none;
       flex-direction: column;
     }
-    #ai-agent-sidebar.is-fullscreen.open { right: 0; left: 0; }
-    #ai-agent-workspace {
+    #coding-agent-sidebar.is-fullscreen.open { right: 0; left: 0; }
+    #coding-agent-workspace {
       flex: 1 1 auto; min-width: 0; min-height: 0;
       display: flex; flex-direction: column; overflow: hidden;
       position: relative;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-workspace {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-workspace {
       flex-direction: row;
     }
     /* Shell wraps expanded nav + collapsed rail so brand/avatar pins stay put. */
-    #ai-agent-nav-shell {
+    #coding-agent-nav-shell {
       display: none; position: relative; flex: 0 0 auto;
       height: 100%; min-height: 0;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-nav-shell {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-nav-shell {
       display: flex; flex-direction: row;
     }
-    #ai-agent-nav-pins {
+    #coding-agent-nav-pins {
       position: absolute; inset: 0; z-index: 8;
       pointer-events: none;
     }
-    #ai-agent-nav-rail-brand,
-    #ai-agent-nav-rail-avatar {
+    #coding-agent-nav-rail-brand,
+    #coding-agent-nav-rail-avatar {
       position: absolute;
       left: var(--ai-nav-chrome-pad-x);
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size);
       pointer-events: auto; padding: 0; cursor: pointer;
       display: grid; place-items: center; box-sizing: border-box;
     }
-    #ai-agent-nav-rail-brand {
+    #coding-agent-nav-rail-brand {
       top: var(--ai-nav-chrome-pad-y);
       border: 0; border-radius: 8px; background: transparent; overflow: hidden;
       transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
     }
-    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail-brand:hover {
+    #coding-agent-sidebar.is-fullscreen.nav-hidden #coding-agent-nav-rail-brand:hover {
       background: rgba(0,0,0,.07);
       box-shadow: 0 0 0 3px rgba(0,0,0,.06);
     }
-    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail-brand:active {
+    #coding-agent-sidebar.is-fullscreen.nav-hidden #coding-agent-nav-rail-brand:active {
       transform: scale(.96);
     }
-    #ai-agent-sidebar.is-fullscreen:not(.nav-hidden) #ai-agent-nav-rail-brand {
+    #coding-agent-sidebar.is-fullscreen:not(.nav-hidden) #coding-agent-nav-rail-brand {
       cursor: default;
     }
-    #ai-agent-nav-rail-brand svg {
+    #coding-agent-nav-rail-brand svg {
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); display: block;
     }
-    #ai-agent-nav-rail-avatar {
+    #coding-agent-nav-rail-avatar {
       bottom: var(--ai-nav-chrome-pad-y);
       border: 0; border-radius: 999px;
       background: #111; color: #fff; font: 700 12px/1 inherit;
       transition: transform .12s ease, box-shadow .15s ease, opacity .15s ease;
     }
-    #ai-agent-nav-rail-avatar:hover {
+    #coding-agent-nav-rail-avatar:hover {
       transform: scale(1.06);
       box-shadow: 0 0 0 3px rgba(0,0,0,.08);
       opacity: .95;
     }
-    .ai-agent-nav-pin-slot {
+    .coding-agent-nav-pin-slot {
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size);
       flex: 0 0 auto; visibility: hidden;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-nav {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-nav {
       display: flex; flex-direction: column;
       flex: 0 0 var(--ai-nav-width); width: var(--ai-nav-width);
       height: 100%; background: var(--ai-nav-bg);
       border-right: 1px solid var(--ai-border);
       min-height: 0; position: relative; overflow: hidden;
     }
-    #ai-agent-nav-rail {
+    #coding-agent-nav-rail {
       display: none; flex: 0 0 var(--ai-nav-rail-width); width: var(--ai-nav-rail-width);
       height: 100%; flex-direction: column; align-items: center; gap: 6px;
       padding: 0; background: var(--ai-nav-bg);
       border-right: 1px solid var(--ai-border); min-height: 0;
     }
-    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav { display: none; }
-    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail { display: flex; }
-    #ai-agent-nav-rail-top,
-    #ai-agent-nav-rail-bottom {
+    #coding-agent-sidebar.is-fullscreen.nav-hidden #coding-agent-nav { display: none; }
+    #coding-agent-sidebar.is-fullscreen.nav-hidden #coding-agent-nav-rail { display: flex; }
+    #coding-agent-nav-rail-top,
+    #coding-agent-nav-rail-bottom {
       display: flex; flex-direction: column; align-items: center; gap: 6px;
       width: 100%;
     }
-    #ai-agent-nav-rail-top {
+    #coding-agent-nav-rail-top {
       flex: 0 0 auto;
       padding-top: calc(var(--ai-nav-chrome-pad-y) + var(--ai-nav-icon-size) + 6px);
     }
-    #ai-agent-nav-rail-spacer { flex: 1 1 auto; min-height: 8px; }
-    #ai-agent-nav-rail-bottom {
+    #coding-agent-nav-rail-spacer { flex: 1 1 auto; min-height: 8px; }
+    #coding-agent-nav-rail-bottom {
       flex: 0 0 auto; margin-top: auto;
       min-height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size));
     }
-    .ai-agent-nav-rail-btn {
+    .coding-agent-nav-rail-btn {
       width: 36px; height: 36px; border: 0; border-radius: 10px;
       background: transparent; color: #444; cursor: pointer;
       display: grid; place-items: center; padding: 0;
       transition: background .15s ease, color .15s ease, transform .12s ease;
     }
-    .ai-agent-nav-rail-btn:hover {
+    .coding-agent-nav-rail-btn:hover {
       background: rgba(0,0,0,.07); color: var(--ai-text);
     }
-    .ai-agent-nav-rail-btn:active {
+    .coding-agent-nav-rail-btn:active {
       background: rgba(0,0,0,.11); transform: scale(.96);
     }
-    .ai-agent-nav-rail-btn svg { width: 18px; height: 18px; display: block; }
-    .ai-agent-nav-rail-btn.is-on {
+    .coding-agent-nav-rail-btn svg { width: 18px; height: 18px; display: block; }
+    .coding-agent-nav-rail-btn.is-on {
       background: rgba(0,0,0,.08); color: var(--ai-text);
     }
-    #ai-agent-nav-rail-flyout {
+    #coding-agent-nav-rail-flyout {
       display: none; position: fixed; z-index: 2147483630;
       width: 300px; max-height: min(72vh, 560px);
       overflow: auto; padding: 10px 8px 12px;
       background: #fff; border: 1px solid rgba(0,0,0,.1);
       border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,.14);
     }
-    #ai-agent-nav-rail-flyout.is-on { display: block; }
-    #ai-agent-nav-rail-flyout-title {
+    #coding-agent-nav-rail-flyout.is-on { display: block; }
+    #coding-agent-nav-rail-flyout-title {
       padding: 2px 10px 10px; font: 600 15px/1.3 inherit; color: var(--ai-text);
     }
-    #ai-agent-nav-rail-flyout-list { display: flex; flex-direction: column; gap: 2px; }
-    #ai-agent-nav-rail-flyout-empty {
+    #coding-agent-nav-rail-flyout-list { display: flex; flex-direction: column; gap: 2px; }
+    #coding-agent-nav-rail-flyout-empty {
       display: none; padding: 16px 12px; color: var(--ai-muted);
       font-size: 13px; line-height: 1.45;
     }
-    #ai-agent-nav-rail-flyout-empty.is-on { display: block; }
-    #ai-agent-nav-head {
+    #coding-agent-nav-rail-flyout-empty.is-on { display: block; }
+    #coding-agent-nav-head {
       flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
       height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size));
       padding: var(--ai-nav-chrome-pad-y) 10px var(--ai-nav-chrome-pad-y) var(--ai-nav-chrome-pad-x);
       box-sizing: border-box;
     }
-    #ai-agent-nav-brand {
+    #coding-agent-nav-brand {
       display: flex; align-items: center; gap: 8px; min-width: 0;
     }
-    #ai-agent-toggle-nav {
+    #coding-agent-toggle-nav {
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); padding: 0; border: 0; border-radius: 6px;
       background: transparent; color: #555; cursor: pointer;
       display: grid; place-items: center; flex: 0 0 auto;
       transition: background .15s ease, color .15s ease;
     }
-    #ai-agent-toggle-nav:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    #ai-agent-toggle-nav svg { width: 16px; height: 16px; display: block; }
-    #ai-agent-nav-resize {
+    #coding-agent-toggle-nav:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #coding-agent-toggle-nav svg { width: 16px; height: 16px; display: block; }
+    #coding-agent-nav-resize {
       position: absolute; right: -3px; top: 0; width: 6px; height: 100%;
       cursor: ew-resize; z-index: 6;
     }
-    #ai-agent-nav-resize:hover,
-    #ai-agent-sidebar.is-nav-resizing #ai-agent-nav-resize {
+    #coding-agent-nav-resize:hover,
+    #coding-agent-sidebar.is-nav-resizing #coding-agent-nav-resize {
       background: rgba(0,120,212,.45);
     }
-    #ai-agent-sidebar.is-nav-resizing { user-select: none; cursor: ew-resize; }
-    #ai-agent-nav-top { flex: 0 0 auto; padding: 12px 12px 8px; }
-    #ai-agent-nav-new {
+    #coding-agent-sidebar.is-nav-resizing { user-select: none; cursor: ew-resize; }
+    #coding-agent-nav-top { flex: 0 0 auto; padding: 12px 12px 8px; }
+    #coding-agent-nav-new {
       width: 100%; display: flex; align-items: center; gap: 10px;
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 10px; padding: 10px 12px; font: 600 14px/1.2 inherit;
       cursor: pointer; text-align: left;
     }
-    #ai-agent-nav-new:hover { background: #f3f3f3; }
-    #ai-agent-nav-new svg { width: 16px; height: 16px; flex: 0 0 auto; }
-    #ai-agent-ide-topbar {
+    #coding-agent-nav-new:hover { background: #f3f3f3; }
+    #coding-agent-nav-new svg { width: 16px; height: 16px; flex: 0 0 auto; }
+    #coding-agent-ide-topbar {
       flex: 0 0 auto; min-height: 35px; display: flex; align-items: stretch;
       border-bottom: 1px solid var(--ai-border); background: #ececec;
       overflow: visible; position: relative; z-index: 20;
     }
-    #ai-agent-ide-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
-    #ai-agent-ide-editor {
+    #coding-agent-ide-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
+    #coding-agent-ide-editor {
       flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
       background: #fff; border-right: 1px solid var(--ai-border);
     }
-    #ai-agent-ide-tabs {
+    #coding-agent-ide-tabs {
       flex: 1 1 auto; min-width: 0; display: flex; gap: 0; overflow: visible;
       padding: 0; background: transparent; align-items: stretch;
     }
-    #ai-agent-ide-tabs-scroll {
+    #coding-agent-ide-tabs-scroll {
       flex: 1 1 auto; min-width: 0; display: flex; overflow-x: auto; align-items: stretch;
     }
-    #ai-agent-ide-tab-add {
+    #coding-agent-ide-tab-add {
       flex: 0 0 auto; width: 28px; height: 28px; margin: 3px 2px 0;
       border: 0; border-radius: 6px; background: transparent; color: #666;
       cursor: pointer; display: grid; place-items: center; position: relative;
       font: 600 16px/1 inherit;
     }
-    #ai-agent-ide-tab-add:hover,
-    #ai-agent-ide-tab-add.is-open { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    #ai-agent-ide-new-menu {
-      /* fixed: parent #ai-agent-ide / sidebar use overflow:hidden and would clip absolute menus */
+    #coding-agent-ide-tab-add:hover,
+    #coding-agent-ide-tab-add.is-open { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #coding-agent-ide-new-menu {
+      /* fixed: parent #coding-agent-ide / sidebar use overflow:hidden and would clip absolute menus */
       display: none; position: fixed; top: 0; left: 0;
       min-width: 200px; z-index: 2147483600; padding: 4px;
       background: #fff; border-radius: 10px;
       box-shadow: 0 12px 32px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.06);
     }
-    #ai-agent-ide-new-menu.is-on { display: block; }
-    #ai-agent-ide-new-menu button {
+    #coding-agent-ide-new-menu.is-on { display: block; }
+    #coding-agent-ide-new-menu button {
       display: flex; align-items: center; gap: 10px; width: 100%;
       border: 0; background: transparent; border-radius: 8px;
       padding: 8px 10px; margin: 0; cursor: pointer; text-align: left;
       font: 13px/1.25 inherit; color: #18181b;
     }
-    #ai-agent-ide-new-menu button:hover { background: #f4f4f5; }
-    #ai-agent-ide-new-menu .ai-agent-ide-new-ico {
+    #coding-agent-ide-new-menu button:hover { background: #f4f4f5; }
+    #coding-agent-ide-new-menu .coding-agent-ide-new-ico {
       width: 16px; height: 16px; flex: 0 0 auto; opacity: .75;
     }
-    #ai-agent-ide-new-menu .ai-agent-ide-new-kbd {
+    #coding-agent-ide-new-menu .coding-agent-ide-new-kbd {
       margin-left: auto; color: #a1a1aa; font-size: 11px;
     }
-    #ai-agent-ide-maximize {
+    #coding-agent-ide-maximize {
       flex: 0 0 auto; width: 28px; height: 28px; margin: 3px 4px 0;
       border: 0; border-radius: 6px; background: transparent; color: #666;
       cursor: pointer; display: grid; place-items: center;
     }
-    #ai-agent-ide-maximize:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    #ai-agent-ide-maximize svg { width: 14px; height: 14px; display: block; }
-    #ai-agent-ide-maximize .ai-agent-icon-expand,
-    #ai-agent-ide-maximize .ai-agent-icon-shrink {
+    #coding-agent-ide-maximize:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #coding-agent-ide-maximize svg { width: 14px; height: 14px; display: block; }
+    #coding-agent-ide-maximize .coding-agent-icon-expand,
+    #coding-agent-ide-maximize .coding-agent-icon-shrink {
       display: grid; place-items: center; width: 14px; height: 14px;
     }
-    #ai-agent-ide-maximize .ai-agent-icon-shrink { display: none; }
-    #ai-agent-sidebar.ide-maximized #ai-agent-ide-maximize .ai-agent-icon-expand { display: none; }
-    #ai-agent-sidebar.ide-maximized #ai-agent-ide-maximize .ai-agent-icon-shrink { display: grid; }
+    #coding-agent-ide-maximize .coding-agent-icon-shrink { display: none; }
+    #coding-agent-sidebar.ide-maximized #coding-agent-ide-maximize .coding-agent-icon-expand { display: none; }
+    #coding-agent-sidebar.ide-maximized #coding-agent-ide-maximize .coding-agent-icon-shrink { display: grid; }
     /* Maximized IDE: keep chat title topbar, hide thread/composer, IDE fills the rest. */
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-workspace {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-workspace {
       display: grid;
       grid-template-columns: auto 1fr;
       grid-template-rows: auto 1fr;
     }
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-nav-shell {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-nav-shell {
       grid-column: 1;
       grid-row: 1 / -1;
       height: 100%;
       max-height: none;
     }
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-main {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-main {
       grid-column: 2;
       grid-row: 1;
       display: flex;
@@ -397,11 +397,11 @@
       min-width: 0;
       min-height: 0;
     }
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-scroll-wrap,
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-footer {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-scroll-wrap,
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-footer {
       display: none !important;
     }
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-ide {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide {
       grid-column: 2;
       grid-row: 2;
       display: flex;
@@ -412,234 +412,234 @@
       min-height: 0;
       height: auto;
     }
-    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-ide-resize { display: none; }
-    #ai-agent-ide-top-actions {
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-resize { display: none; }
+    #coding-agent-ide-top-actions {
       flex: 0 0 auto; display: flex; align-items: center; gap: 2px;
       padding: 0 6px 0 4px; border-left: 1px solid rgba(0,0,0,.06);
       background: #ececec;
     }
-    #ai-agent-ide-top-actions .ai-agent-ide-icon-btn,
-    #ai-agent-toggle-ide-dock {
+    #coding-agent-ide-top-actions .coding-agent-ide-icon-btn,
+    #coding-agent-toggle-ide-dock {
       width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
       background: transparent; color: #555; cursor: pointer;
       display: grid; place-items: center;
     }
-    #ai-agent-ide-top-actions .ai-agent-ide-icon-btn:hover,
-    #ai-agent-toggle-ide-dock:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    #ai-agent-toggle-ide-dock svg { width: 16px; height: 16px; display: block; }
-    #ai-agent-sidebar.has-ide #ai-agent-toggle-ide-dock {
+    #coding-agent-ide-top-actions .coding-agent-ide-icon-btn:hover,
+    #coding-agent-toggle-ide-dock:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #coding-agent-toggle-ide-dock svg { width: 16px; height: 16px; display: block; }
+    #coding-agent-sidebar.has-ide #coding-agent-toggle-ide-dock {
       background: rgba(0,0,0,.06); color: var(--ai-text);
     }
-    .ai-agent-ide-tab {
+    .coding-agent-ide-tab {
       display: inline-flex; align-items: center; gap: 6px;
       border: 0; border-right: 1px solid rgba(0,0,0,.06); background: transparent;
       padding: 0 8px 0 10px; font: 12px/1.2 inherit; color: var(--ai-muted);
       cursor: pointer; max-width: 180px; height: 100%; position: relative;
     }
-    .ai-agent-ide-tab:hover { background: rgba(255,255,255,.45); color: var(--ai-text); }
-    .ai-agent-ide-tab.is-active {
+    .coding-agent-ide-tab:hover { background: rgba(255,255,255,.45); color: var(--ai-text); }
+    .coding-agent-ide-tab.is-active {
       background: #fff; color: var(--ai-text);
     }
-    .ai-agent-ide-tab-icon {
+    .coding-agent-ide-tab-icon {
       flex: 0 0 auto; width: 14px; height: 14px; display: grid; place-items: center;
       font-size: 10px; font-weight: 700; line-height: 1;
     }
-    .ai-agent-ide-tab-icon.is-md { color: #0550ae; }
-    .ai-agent-ide-tab-icon.is-py { color: #3776ab; }
-    .ai-agent-ide-tab-icon.is-js { color: #c5a000; }
-    .ai-agent-ide-tab-name {
+    .coding-agent-ide-tab-icon.is-md { color: #0550ae; }
+    .coding-agent-ide-tab-icon.is-py { color: #3776ab; }
+    .coding-agent-ide-tab-icon.is-js { color: #c5a000; }
+    .coding-agent-ide-tab-name {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;
     }
-    .ai-agent-ide-tab.is-dirty .ai-agent-ide-tab-name::after { content: " ●"; color: #0078d4; font-size: 9px; }
-    .ai-agent-ide-tab-close {
+    .coding-agent-ide-tab.is-dirty .coding-agent-ide-tab-name::after { content: " ●"; color: #0078d4; font-size: 9px; }
+    .coding-agent-ide-tab-close {
       flex: 0 0 auto; width: 16px; height: 16px; border: 0; border-radius: 4px;
       background: transparent; color: var(--ai-muted); cursor: pointer;
       display: grid; place-items: center; opacity: 0; font-size: 12px; line-height: 1; padding: 0;
     }
-    .ai-agent-ide-tab:hover .ai-agent-ide-tab-close,
-    .ai-agent-ide-tab.is-active .ai-agent-ide-tab-close { opacity: 1; }
-    .ai-agent-ide-tab-close:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
-    #ai-agent-ide-crumb {
+    .coding-agent-ide-tab:hover .coding-agent-ide-tab-close,
+    .coding-agent-ide-tab.is-active .coding-agent-ide-tab-close { opacity: 1; }
+    .coding-agent-ide-tab-close:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    #coding-agent-ide-crumb {
       flex: 0 0 auto; height: 35px; padding: 0 8px 0 4px;
       display: flex; align-items: center; gap: 2px;
       border-bottom: 1px solid var(--ai-border); background: #fff;
       color: var(--ai-muted); font-size: 12px;
     }
-    #ai-agent-ide-crumb .ai-agent-ide-icon-btn { width: 24px; height: 24px; }
-    #ai-agent-ide-crumb-name {
+    #coding-agent-ide-crumb .coding-agent-ide-icon-btn { width: 24px; height: 24px; }
+    #coding-agent-ide-crumb-name {
       margin-left: 4px; color: var(--ai-text); font-weight: 500;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
-    #ai-agent-ide-crumb-spacer { flex: 1 1 auto; }
-    #ai-agent-ide-view-tools {
+    #coding-agent-ide-crumb-spacer { flex: 1 1 auto; }
+    #coding-agent-ide-view-tools {
       flex: 0 0 auto; display: none; align-items: center; gap: 0;
       margin-right: 6px; padding: 2px; border-radius: 8px; background: #f0f0f0;
     }
-    #ai-agent-ide-view-tools.is-on { display: inline-flex; }
-    .ai-agent-ide-view-btn {
+    #coding-agent-ide-view-tools.is-on { display: inline-flex; }
+    .coding-agent-ide-view-btn {
       border: 0; background: transparent; color: #555; border-radius: 6px;
       padding: 4px 10px; font: 12px/1.2 inherit; cursor: pointer;
     }
-    .ai-agent-ide-view-btn:hover { color: var(--ai-text); }
-    .ai-agent-ide-view-btn.is-on {
+    .coding-agent-ide-view-btn:hover { color: var(--ai-text); }
+    .coding-agent-ide-view-btn.is-on {
       background: #fff; color: var(--ai-text); font-weight: 600;
       box-shadow: 0 0 0 1px rgba(0,0,0,.06);
     }
-    #ai-agent-ide-find {
+    #coding-agent-ide-find {
       display: none; flex: 0 0 auto; align-items: center; gap: 6px;
       padding: 6px 10px; border-bottom: 1px solid var(--ai-border); background: #f7f7f7;
     }
-    #ai-agent-ide-find.is-on { display: flex; }
-    #ai-agent-ide-find-input {
+    #coding-agent-ide-find.is-on { display: flex; }
+    #coding-agent-ide-find-input {
       flex: 1 1 auto; min-width: 0; border: 1px solid var(--ai-border); border-radius: 6px;
       padding: 5px 8px; font: 12px/1.3 inherit; outline: none;
     }
-    #ai-agent-ide-find-input:focus { border-color: #0078d4; }
-    #ai-agent-ide-find-count { flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); }
-    #ai-agent-ide-code-wrap {
+    #coding-agent-ide-find-input:focus { border-color: #0078d4; }
+    #coding-agent-ide-find-count { flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); }
+    #coding-agent-ide-code-wrap {
       flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; position: relative; background: #fff;
     }
-    #ai-agent-ide-code-pane {
+    #coding-agent-ide-code-pane {
       flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; overflow: hidden;
     }
-    #ai-agent-ide-highlight {
+    #coding-agent-ide-highlight {
       position: absolute; inset: 0; margin: 0; border: 0;
       padding: 10px 14px; overflow: hidden; pointer-events: none;
       font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: var(--ai-text); background: #fff; white-space: pre; tab-size: 2;
     }
-    #ai-agent-ide-highlight code {
+    #coding-agent-ide-highlight code {
       font: inherit; color: inherit; background: transparent; padding: 0;
       display: block; white-space: inherit; tab-size: inherit;
     }
-    #ai-agent-ide-highlight .tok-kw { color: #0000ff; }
-    #ai-agent-ide-highlight .tok-key { color: #0451a5; }
-    #ai-agent-ide-highlight .tok-type { color: #267f99; }
-    #ai-agent-ide-highlight .tok-fn { color: #795e26; }
-    #ai-agent-ide-highlight .tok-str { color: #a31515; }
-    #ai-agent-ide-highlight .tok-cmt { color: #008000; font-style: italic; }
-    #ai-agent-ide-highlight .tok-num { color: #098658; }
-    #ai-agent-ide-highlight .tok-pp { color: #0000ff; }
-    #ai-agent-ide-highlight .tok-op { color: #000000; }
-    #ai-agent-ide-highlight .tok-punct { color: #000000; }
-    #ai-agent-ide-preview {
+    #coding-agent-ide-highlight .tok-kw { color: #0000ff; }
+    #coding-agent-ide-highlight .tok-key { color: #0451a5; }
+    #coding-agent-ide-highlight .tok-type { color: #267f99; }
+    #coding-agent-ide-highlight .tok-fn { color: #795e26; }
+    #coding-agent-ide-highlight .tok-str { color: #a31515; }
+    #coding-agent-ide-highlight .tok-cmt { color: #008000; font-style: italic; }
+    #coding-agent-ide-highlight .tok-num { color: #098658; }
+    #coding-agent-ide-highlight .tok-pp { color: #0000ff; }
+    #coding-agent-ide-highlight .tok-op { color: #000000; }
+    #coding-agent-ide-highlight .tok-punct { color: #000000; }
+    #coding-agent-ide-preview {
       display: none; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto;
       padding: 20px 28px 40px; background: #fff; color: var(--ai-text);
       font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    #ai-agent-ide-stage {
+    #coding-agent-ide-stage {
       flex: 1 1 auto; min-height: 0; display: flex; position: relative; background: #fff;
     }
-    #ai-agent-ide-outline {
+    #coding-agent-ide-outline {
       display: none; flex: 0 0 200px; width: 200px; overflow: auto;
       border-left: 1px solid var(--ai-border); background: #fafafa; padding: 8px 0;
     }
-    #ai-agent-ide-outline.is-on { display: block; }
-    .ai-agent-ide-outline-item {
+    #coding-agent-ide-outline.is-on { display: block; }
+    .coding-agent-ide-outline-item {
       display: block; width: 100%; border: 0; background: transparent; text-align: left;
       padding: 5px 12px; font: 12px/1.35 inherit; color: #444; cursor: pointer;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-ide-outline-item:hover { background: rgba(0,0,0,.05); color: var(--ai-text); }
-    .ai-agent-ide-outline-item.is-h2 { padding-left: 22px; }
-    .ai-agent-ide-outline-item.is-h3 { padding-left: 32px; color: #666; }
-    #ai-agent-ide-editor.is-preview #ai-agent-ide-code-wrap { display: none !important; }
-    #ai-agent-ide-editor.is-preview #ai-agent-ide-preview { display: block; }
-    #ai-agent-ide-editor.is-preview #ai-agent-ide-empty { display: none !important; }
-    #ai-agent-ide-preview h1, #ai-agent-ide-preview h2, #ai-agent-ide-preview h3 {
+    .coding-agent-ide-outline-item:hover { background: rgba(0,0,0,.05); color: var(--ai-text); }
+    .coding-agent-ide-outline-item.is-h2 { padding-left: 22px; }
+    .coding-agent-ide-outline-item.is-h3 { padding-left: 32px; color: #666; }
+    #coding-agent-ide-editor.is-preview #coding-agent-ide-code-wrap { display: none !important; }
+    #coding-agent-ide-editor.is-preview #coding-agent-ide-preview { display: block; }
+    #coding-agent-ide-editor.is-preview #coding-agent-ide-empty { display: none !important; }
+    #coding-agent-ide-preview h1, #coding-agent-ide-preview h2, #coding-agent-ide-preview h3 {
       margin: 1.1em 0 .45em; line-height: 1.3;
     }
-    #ai-agent-ide-preview h1 { font-size: 1.7em; border-bottom: 1px solid #eee; padding-bottom: .25em; }
-    #ai-agent-ide-preview h2 { font-size: 1.35em; }
-    #ai-agent-ide-preview p { margin: .7em 0; }
-    #ai-agent-ide-preview pre {
+    #coding-agent-ide-preview h1 { font-size: 1.7em; border-bottom: 1px solid #eee; padding-bottom: .25em; }
+    #coding-agent-ide-preview h2 { font-size: 1.35em; }
+    #coding-agent-ide-preview p { margin: .7em 0; }
+    #coding-agent-ide-preview pre {
       background: #f6f8fa; border-radius: 8px; padding: 12px 14px; overflow: auto;
       font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    #ai-agent-ide-preview code {
+    #coding-agent-ide-preview code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: .92em;
     }
-    #ai-agent-ide-preview :not(pre) > code {
+    #coding-agent-ide-preview :not(pre) > code {
       background: rgba(0,0,0,.06); padding: .12em .35em; border-radius: 4px;
     }
-    #ai-agent-ide-preview ul, #ai-agent-ide-preview ol { padding-left: 1.4em; margin: .6em 0; }
-    #ai-agent-ide-preview blockquote {
+    #coding-agent-ide-preview ul, #coding-agent-ide-preview ol { padding-left: 1.4em; margin: .6em 0; }
+    #coding-agent-ide-preview blockquote {
       margin: .8em 0; padding: .2em 0 .2em 12px; border-left: 3px solid #ddd; color: #555;
     }
-    #ai-agent-ide-gutter {
+    #coding-agent-ide-gutter {
       flex: 0 0 auto; min-width: 40px; padding: 10px 8px 10px 10px;
       text-align: right; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: #9a9a9a; background: #fff; border-right: 1px solid #f0f0f0;
       overflow: hidden; user-select: none; white-space: pre;
     }
-    #ai-agent-ide-code {
+    #coding-agent-ide-code {
       position: absolute; inset: 0; width: 100%; height: 100%; border: 0; resize: none;
       padding: 10px 14px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: transparent; caret-color: #111; background: transparent; outline: none;
       white-space: pre; overflow: auto; tab-size: 2; z-index: 1;
     }
-    #ai-agent-ide-code::selection {
+    #coding-agent-ide-code::selection {
       background: rgba(0, 120, 212, 0.28); color: transparent;
     }
-    #ai-agent-ide-empty {
+    #coding-agent-ide-empty {
       flex: 1 1 auto; min-width: 0; display: none; place-items: center; color: var(--ai-muted);
       font-size: 13px; padding: 24px; text-align: center; background: #fff;
     }
-    #ai-agent-ide-empty.is-on { display: grid; }
-    #ai-agent-ide-empty-cards {
+    #coding-agent-ide-empty.is-on { display: grid; }
+    #coding-agent-ide-empty-cards {
       display: flex; align-items: center; justify-content: center; gap: 12px;
     }
-    .ai-agent-ide-empty-card {
+    .coding-agent-ide-empty-card {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 6px; width: 96px; height: 84px; border: 1px solid #e8e8ea; border-radius: 10px;
       background: transparent; color: #52525b; cursor: pointer;
       font: 500 12px/1.2 inherit; padding: 10px 8px;
     }
-    .ai-agent-ide-empty-card:hover { background: #f4f4f5; border-color: #d4d4d8; color: #18181b; }
-    .ai-agent-ide-empty-card svg {
+    .coding-agent-ide-empty-card:hover { background: #f4f4f5; border-color: #d4d4d8; color: #18181b; }
+    .coding-agent-ide-empty-card svg {
       width: 20px; height: 20px; opacity: .65;
     }
-    .ai-agent-ide-empty-card:hover svg { opacity: .9; }
-    #ai-agent-ide-explorer {
+    .coding-agent-ide-empty-card:hover svg { opacity: .9; }
+    #coding-agent-ide-explorer {
       flex: 0 0 var(--ai-ide-tree-width, 220px); width: var(--ai-ide-tree-width, 220px);
       min-width: 140px; max-width: 45%; display: flex; flex-direction: column;
       background: #f3f3f3; position: relative;
     }
-    #ai-agent-ide-explorer-head {
+    #coding-agent-ide-explorer-head {
       flex: 0 0 auto; height: 35px; padding: 0 6px 0 12px;
       display: flex; align-items: center; gap: 4px;
       border-bottom: 0; background: #f3f3f3;
       position: sticky; top: 0; z-index: 2;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-top-actions {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-top-actions {
       padding-right: 36px;
     }
-    #ai-agent-sidebar.has-ide #ai-agent-top-actions {
+    #coding-agent-sidebar.has-ide #coding-agent-top-actions {
       padding-right: 0;
     }
-    #ai-agent-ide-root-name {
+    #coding-agent-ide-root-name {
       flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600;
       letter-spacing: 0; text-transform: none; color: var(--ai-text);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #ai-agent-ide-explorer-actions {
+    #coding-agent-ide-explorer-actions {
       flex: 0 0 auto; display: flex; align-items: center; gap: 0;
       margin-left: auto;
       opacity: 0; pointer-events: none;
       transition: opacity .12s ease;
     }
-    #ai-agent-ide-explorer:hover #ai-agent-ide-explorer-actions,
-    #ai-agent-ide-explorer:focus-within #ai-agent-ide-explorer-actions {
+    #coding-agent-ide-explorer:hover #coding-agent-ide-explorer-actions,
+    #coding-agent-ide-explorer:focus-within #coding-agent-ide-explorer-actions {
       opacity: 1; pointer-events: auto;
     }
-    #ai-agent-ide-explorer-actions .ai-agent-ide-icon-btn {
+    #coding-agent-ide-explorer-actions .coding-agent-ide-icon-btn {
       width: 26px; height: 26px;
     }
-    #ai-agent-ide-explorer-actions .ai-agent-ide-icon-btn svg {
+    #coding-agent-ide-explorer-actions .coding-agent-ide-icon-btn svg {
       width: 14px; height: 14px;
     }
-    #ai-agent-ide-ctx {
+    #coding-agent-ide-ctx {
       display: none; position: fixed; z-index: 2147483640; min-width: 200px;
       padding: 4px 0; margin: 0; list-style: none;
       background: #fff; border: 1px solid rgba(0,0,0,.12); border-radius: 8px;
@@ -647,86 +647,86 @@
       font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: #222;
     }
-    #ai-agent-ide-ctx.is-on { display: block; }
-    #ai-agent-ide-ctx button {
+    #coding-agent-ide-ctx.is-on { display: block; }
+    #coding-agent-ide-ctx button {
       display: block; width: 100%; border: 0; background: transparent;
       text-align: left; padding: 7px 14px; cursor: pointer; color: inherit;
       font: inherit;
     }
-    #ai-agent-ide-ctx button:hover:not(:disabled) { background: #f0f0f0; }
-    #ai-agent-ide-ctx button:disabled { color: #aaa; cursor: default; }
-    #ai-agent-ide-ctx .ai-agent-ide-ctx-sep {
+    #coding-agent-ide-ctx button:hover:not(:disabled) { background: #f0f0f0; }
+    #coding-agent-ide-ctx button:disabled { color: #aaa; cursor: default; }
+    #coding-agent-ide-ctx .coding-agent-ide-ctx-sep {
       height: 1px; margin: 4px 0; background: rgba(0,0,0,.08); border: 0;
     }
-    .ai-agent-ide-tree-item.is-cut { opacity: .45; }
-    .ai-agent-ide-inline-input {
+    .coding-agent-ide-tree-item.is-cut { opacity: .45; }
+    .coding-agent-ide-inline-input {
       display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px;
     }
-    .ai-agent-ide-inline-input input {
+    .coding-agent-ide-inline-input input {
       flex: 1 1 auto; min-width: 0; border: 1px solid #0078d4; border-radius: 4px;
       padding: 2px 6px; font: 13px/1.3 inherit; outline: none;
     }
-    #ai-agent-ide-tree {
+    #coding-agent-ide-tree {
       flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 8px;
       font-size: 13px;
     }
-    .ai-agent-ide-tree-item {
+    .coding-agent-ide-tree-item {
       display: flex; align-items: center; gap: 4px; width: 100%;
       border: 0; background: transparent; text-align: left;
       padding: 3px 8px 3px 4px; color: var(--ai-text); cursor: pointer;
       font: 13px/1.35 inherit; overflow: hidden;
     }
-    .ai-agent-ide-tree-item:hover { background: rgba(0,0,0,.05); }
-    .ai-agent-ide-tree-item.is-active { background: rgba(0,120,212,.12); }
-    .ai-agent-ide-tree-chevron {
+    .coding-agent-ide-tree-item:hover { background: rgba(0,0,0,.05); }
+    .coding-agent-ide-tree-item.is-active { background: rgba(0,120,212,.12); }
+    .coding-agent-ide-tree-chevron {
       flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center;
       color: #666; opacity: 0;
     }
-    .ai-agent-ide-tree-item.is-dir .ai-agent-ide-tree-chevron { opacity: 1; }
-    .ai-agent-ide-tree-chevron svg {
+    .coding-agent-ide-tree-item.is-dir .coding-agent-ide-tree-chevron { opacity: 1; }
+    .coding-agent-ide-tree-chevron svg {
       width: 10px; height: 10px; transition: transform .12s ease;
     }
-    .ai-agent-ide-tree-item.is-expanded .ai-agent-ide-tree-chevron svg {
+    .coding-agent-ide-tree-item.is-expanded .coding-agent-ide-tree-chevron svg {
       transform: rotate(90deg);
     }
-    .ai-agent-ide-tree-icon {
+    .coding-agent-ide-tree-icon {
       flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center;
       font-size: 11px; line-height: 1; border-radius: 3px; font-weight: 700;
     }
-    .ai-agent-ide-tree-icon.is-dir { color: #dcb67a; background: transparent; font-size: 13px; }
-    .ai-agent-ide-tree-icon.is-py { color: #3776ab; }
-    .ai-agent-ide-tree-icon.is-js { color: #c5a000; }
-    .ai-agent-ide-tree-icon.is-html { color: #e34c26; }
-    .ai-agent-ide-tree-icon.is-css { color: #264de4; }
-    .ai-agent-ide-tree-icon.is-md { color: #555; }
-    .ai-agent-ide-tree-icon.is-json,
-    .ai-agent-ide-tree-icon.is-yml,
-    .ai-agent-ide-tree-icon.is-yaml { color: #cb171e; }
-    .ai-agent-ide-tree-icon.is-env { color: #888; }
-    .ai-agent-ide-tree-icon.is-bat,
-    .ai-agent-ide-tree-icon.is-sh { color: #3e7a3e; }
-    .ai-agent-ide-tree-label {
+    .coding-agent-ide-tree-icon.is-dir { color: #dcb67a; background: transparent; font-size: 13px; }
+    .coding-agent-ide-tree-icon.is-py { color: #3776ab; }
+    .coding-agent-ide-tree-icon.is-js { color: #c5a000; }
+    .coding-agent-ide-tree-icon.is-html { color: #e34c26; }
+    .coding-agent-ide-tree-icon.is-css { color: #264de4; }
+    .coding-agent-ide-tree-icon.is-md { color: #555; }
+    .coding-agent-ide-tree-icon.is-json,
+    .coding-agent-ide-tree-icon.is-yml,
+    .coding-agent-ide-tree-icon.is-yaml { color: #cb171e; }
+    .coding-agent-ide-tree-icon.is-env { color: #888; }
+    .coding-agent-ide-tree-icon.is-bat,
+    .coding-agent-ide-tree-icon.is-sh { color: #3e7a3e; }
+    .coding-agent-ide-tree-label {
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-ide-icon-btn {
+    .coding-agent-ide-icon-btn {
       width: 28px; height: 28px; border: 0; border-radius: 6px;
       background: transparent; color: #555; cursor: pointer;
       display: grid; place-items: center; padding: 0; flex: 0 0 auto;
     }
-    .ai-agent-ide-icon-btn:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    .ai-agent-ide-icon-btn.is-on { background: rgba(0,0,0,.08); color: var(--ai-text); }
-    .ai-agent-ide-icon-btn:disabled { opacity: .35; cursor: default; }
-    .ai-agent-ide-icon-btn svg { width: 16px; height: 16px; display: block; }
-    #ai-agent-ctx-bar {
+    .coding-agent-ide-icon-btn:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    .coding-agent-ide-icon-btn.is-on { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .coding-agent-ide-icon-btn:disabled { opacity: .35; cursor: default; }
+    .coding-agent-ide-icon-btn svg { width: 16px; height: 16px; display: block; }
+    #coding-agent-ctx-bar {
       position: relative;
       display: none; align-items: center; gap: 4px;
       min-height: 28px; padding: 0 2px 2px;
       z-index: 8;
     }
     /* Only on empty / new-agent landing — hide once a real conversation starts. */
-    #ai-agent-sidebar.is-empty #ai-agent-ctx-bar { display: flex; }
-    .ai-agent-ctx-chip {
+    #coding-agent-sidebar.is-empty #coding-agent-ctx-bar { display: flex; }
+    .coding-agent-ctx-chip {
       display: inline-flex; align-items: center; gap: 6px;
       max-width: min(100%, 420px); min-width: 0;
       border: 0; background: transparent; color: #3f3f46;
@@ -734,35 +734,35 @@
       font: 500 12.5px/1.2 inherit; cursor: pointer;
       white-space: nowrap;
     }
-    .ai-agent-ctx-chip:hover { background: rgba(0,0,0,.05); color: #111; }
-    .ai-agent-ctx-chip:disabled { opacity: .55; cursor: default; }
-    .ai-agent-ctx-chip:disabled:hover { background: transparent; color: #3f3f46; }
-    .ai-agent-ctx-chip.is-open { background: rgba(0,0,0,.06); color: #111; }
-    .ai-agent-ctx-chip-label {
+    .coding-agent-ctx-chip:hover { background: rgba(0,0,0,.05); color: #111; }
+    .coding-agent-ctx-chip:disabled { opacity: .55; cursor: default; }
+    .coding-agent-ctx-chip:disabled:hover { background: transparent; color: #3f3f46; }
+    .coding-agent-ctx-chip.is-open { background: rgba(0,0,0,.06); color: #111; }
+    .coding-agent-ctx-chip-label {
       min-width: 0; overflow: hidden; text-overflow: ellipsis;
     }
-    .ai-agent-ctx-chevron {
+    .coding-agent-ctx-chevron {
       width: 0; height: 0; flex: 0 0 auto;
       border-left: 3.5px solid transparent;
       border-right: 3.5px solid transparent;
       border-top: 4.5px solid currentColor;
       opacity: .55;
     }
-    .ai-agent-ctx-icon {
+    .coding-agent-ctx-icon {
       width: 14px; height: 14px; flex: 0 0 auto; display: block; opacity: .7;
     }
-    #ai-agent-ws-picker {
+    #coding-agent-ws-picker {
       display: none; position: absolute; left: 0; top: calc(100% + 4px);
       width: min(360px, calc(100vw - 48px));
       background: #fff; border-radius: 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.06);
       padding: 8px; z-index: 30;
-      /* Must stay visible: nested #ai-agent-ws-flyout is position:absolute to the
+      /* Must stay visible: nested #coding-agent-ws-flyout is position:absolute to the
          right; overflow:auto on this box creates phantom empty scroll area. */
       overflow: visible;
     }
-    #ai-agent-ws-picker.is-on { display: block; }
-    #ai-agent-ws-flyout {
+    #coding-agent-ws-picker.is-on { display: block; }
+    #coding-agent-ws-flyout {
       display: none; position: absolute; left: calc(100% + 6px); top: 0;
       width: min(280px, calc(100vw - 48px));
       background: #fff; border-radius: 12px;
@@ -770,349 +770,349 @@
       padding: 6px; z-index: 31;
       max-height: min(420px, 70vh); overflow: auto;
     }
-    #ai-agent-ws-flyout.is-on { display: block; }
-    #ai-agent-ws-flyout-path {
+    #coding-agent-ws-flyout.is-on { display: block; }
+    #coding-agent-ws-flyout-path {
       display: none; flex-direction: column; gap: 6px;
       padding: 6px 4px 4px;
     }
-    #ai-agent-ws-flyout-path.is-on { display: flex; }
-    #ai-agent-ws-flyout-path-ue {
+    #coding-agent-ws-flyout-path.is-on { display: flex; }
+    #coding-agent-ws-flyout-path-ue {
       display: none; flex-direction: column; gap: 6px;
       padding: 6px 4px 4px;
     }
-    #ai-agent-ws-flyout-path-ue.is-on { display: flex; }
-    #ai-agent-ws-flyout-path-ue input {
+    #coding-agent-ws-flyout-path-ue.is-on { display: flex; }
+    #coding-agent-ws-flyout-path-ue input {
       width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
       border-radius: 8px; padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
     }
-    #ai-agent-ws-flyout-path-ue button {
+    #coding-agent-ws-flyout-path-ue button {
       border: 0; background: #111; color: #fff; border-radius: 8px;
       padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #ai-agent-ws-flyout-path input {
+    #coding-agent-ws-flyout-path input {
       width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
       border-radius: 8px; padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
     }
-    #ai-agent-ws-flyout-path button {
+    #coding-agent-ws-flyout-path button {
       border: 0; background: #111; color: #fff; border-radius: 8px;
       padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #ai-agent-ws-flyout-search {
+    #coding-agent-ws-flyout-search {
       width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
       border-radius: 8px; padding: 8px 10px; margin: 2px 0 6px;
       font: 12.5px/1.3 inherit; outline: none;
     }
-    #ai-agent-ws-flyout-list {
+    #coding-agent-ws-flyout-list {
       display: flex; flex-direction: column; gap: 1px;
       max-height: 220px; overflow: auto; margin-bottom: 4px;
     }
-    #ai-agent-ws-flyout-panels > [data-flyout-panel] { display: none; }
-    #ai-agent-ws-flyout-panels > [data-flyout-panel].is-on { display: block; }
-    #ai-agent-ws-ssh-form {
+    #coding-agent-ws-flyout-panels > [data-flyout-panel] { display: none; }
+    #coding-agent-ws-flyout-panels > [data-flyout-panel].is-on { display: block; }
+    #coding-agent-ws-ssh-form {
       display: none; flex-direction: column; gap: 6px; padding: 4px 2px 6px;
     }
-    #ai-agent-ws-ssh-form.is-on { display: flex; }
-    #ai-agent-ws-ssh-form label {
+    #coding-agent-ws-ssh-form.is-on { display: flex; }
+    #coding-agent-ws-ssh-form label {
       display: flex; flex-direction: column; gap: 3px;
       font-size: 11px; color: #71717a; font-weight: 600;
     }
-    #ai-agent-ws-ssh-form input, #ai-agent-ws-ssh-form select {
+    #coding-agent-ws-ssh-form input, #coding-agent-ws-ssh-form select {
       border: 0; background: #f4f4f5; border-radius: 8px;
       padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none; color: #18181b;
     }
-    #ai-agent-ws-ssh-form-actions {
+    #coding-agent-ws-ssh-form-actions {
       display: flex; gap: 6px; margin-top: 4px;
     }
-    #ai-agent-ws-ssh-form-actions button {
+    #coding-agent-ws-ssh-form-actions button {
       flex: 1 1 auto; border: 0; border-radius: 8px;
       padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #ai-agent-ws-ssh-test { background: #f4f4f5; color: #18181b; }
-    #ai-agent-ws-ssh-save { background: #111; color: #fff; }
-    #ai-agent-ws-ssh-status {
+    #coding-agent-ws-ssh-test { background: #f4f4f5; color: #18181b; }
+    #coding-agent-ws-ssh-save { background: #111; color: #fff; }
+    #coding-agent-ws-ssh-status {
       font-size: 11.5px; color: #71717a; min-height: 1.2em; padding: 0 2px;
     }
-    #ai-agent-ws-ssh-status.is-err { color: #b91c1c; }
-    #ai-agent-ws-ssh-status.is-ok { color: #15803d; }
-    .ai-agent-ws-item-host {
+    #coding-agent-ws-ssh-status.is-err { color: #b91c1c; }
+    #coding-agent-ws-ssh-status.is-ok { color: #15803d; }
+    .coding-agent-ws-item-host {
       display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       color: #8b8b93; font-size: 11.5px; margin-top: 2px;
     }
-    #ai-agent-ws-search {
+    #coding-agent-ws-search {
       width: 100%; box-sizing: border-box;
       border: 0; background: #f4f4f5; border-radius: 8px;
       padding: 9px 10px; font: 13px/1.3 inherit; color: var(--ai-text);
       margin: 0 0 4px; outline: none;
     }
-    #ai-agent-ws-search:focus { background: #ececee; }
-    #ai-agent-ws-search::placeholder { color: #8b8b93; }
-    .ai-agent-ws-section-label {
+    #coding-agent-ws-search:focus { background: #ececee; }
+    #coding-agent-ws-search::placeholder { color: #8b8b93; }
+    .coding-agent-ws-section-label {
       font: 600 11px/1 inherit; color: #8b8b93;
       letter-spacing: .01em; padding: 10px 8px 4px;
     }
-    .ai-agent-ws-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow: auto; }
-    .ai-agent-ws-item,
-    .ai-agent-ws-nav {
+    .coding-agent-ws-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow: auto; }
+    .coding-agent-ws-item,
+    .coding-agent-ws-nav {
       display: flex; align-items: center; gap: 8px;
       width: 100%; border: 0; background: transparent; color: #18181b;
       border-radius: 8px; padding: 7px 8px; margin: 0;
       font: 13px/1.25 inherit; cursor: pointer; text-align: left;
     }
-    .ai-agent-ws-item:hover,
-    .ai-agent-ws-nav:hover { background: #f4f4f5; }
-    .ai-agent-ws-item.is-active { background: #f0f0f2; }
-    .ai-agent-ws-item-ico,
-    .ai-agent-ws-nav .ai-agent-ctx-icon {
+    .coding-agent-ws-item:hover,
+    .coding-agent-ws-nav:hover { background: #f4f4f5; }
+    .coding-agent-ws-item.is-active { background: #f0f0f2; }
+    .coding-agent-ws-item-ico,
+    .coding-agent-ws-nav .coding-agent-ctx-icon {
       width: 15px; height: 15px; flex: 0 0 auto; opacity: .72; display: block;
     }
-    .ai-agent-ws-item-main { flex: 1 1 auto; min-width: 0; }
-    .ai-agent-ws-item-name {
+    .coding-agent-ws-item-main { flex: 1 1 auto; min-width: 0; }
+    .coding-agent-ws-item-name {
       display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       font-weight: 450;
     }
-    .ai-agent-ws-item-path {
+    .coding-agent-ws-item-path {
       display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       color: #8b8b93; font-size: 11.5px; margin-top: 2px;
     }
-    .ai-agent-ws-item-check {
+    .coding-agent-ws-item-check {
       flex: 0 0 auto; width: 14px; height: 14px; color: #111; opacity: 0;
     }
-    .ai-agent-ws-item.is-active .ai-agent-ws-item-check { opacity: 1; }
-    .ai-agent-ws-chevron-r {
+    .coding-agent-ws-item.is-active .coding-agent-ws-item-check { opacity: 1; }
+    .coding-agent-ws-chevron-r {
       width: 0; height: 0; margin-left: auto; flex: 0 0 auto;
       border-top: 4px solid transparent;
       border-bottom: 4px solid transparent;
       border-left: 5px solid #a1a1aa;
     }
-    .ai-agent-ws-nav.is-open,
-    .ai-agent-ws-nav.is-hot { background: #f4f4f5; }
-    .ai-agent-ws-foot {
+    .coding-agent-ws-nav.is-open,
+    .coding-agent-ws-nav.is-hot { background: #f4f4f5; }
+    .coding-agent-ws-foot {
       display: flex; flex-direction: column; gap: 1px; margin-top: 4px; padding-top: 2px;
     }
-    .ai-agent-ws-foot button {
+    .coding-agent-ws-foot button {
       display: flex; align-items: center; gap: 8px;
       width: 100%; border: 0; background: transparent; color: #18181b;
       border-radius: 8px; padding: 7px 8px; margin: 0;
       font: 13px/1.25 inherit; cursor: pointer; text-align: left;
     }
-    .ai-agent-ws-foot button:hover { background: #f4f4f5; }
-    #ai-agent-ws-path-row {
+    .coding-agent-ws-foot button:hover { background: #f4f4f5; }
+    #coding-agent-ws-path-row {
       display: none; gap: 6px; padding: 6px 2px 2px; align-items: center;
     }
-    #ai-agent-ws-path-row.is-on { display: flex; }
-    #ai-agent-ws-path-input {
+    #coding-agent-ws-path-row.is-on { display: flex; }
+    #coding-agent-ws-path-input {
       flex: 1 1 auto; min-width: 0;
       border: 0; background: #f4f4f5; border-radius: 8px;
       padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
     }
-    #ai-agent-ws-path-go {
+    #coding-agent-ws-path-go {
       flex: 0 0 auto; border: 0; background: #111; color: #fff;
       border-radius: 8px; padding: 8px 12px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #ai-agent-ctx-branch[hidden] { display: none !important; }
-    #ai-agent-confirm-modal {
+    #coding-agent-ctx-branch[hidden] { display: none !important; }
+    #coding-agent-confirm-modal {
       display: none; position: fixed; inset: 0; z-index: 2147483601;
       background: rgba(0,0,0,.35); place-items: center; padding: 24px;
     }
-    #ai-agent-confirm-modal.is-on { display: grid; }
-    #ai-agent-confirm-card {
+    #coding-agent-confirm-modal.is-on { display: grid; }
+    #coding-agent-confirm-card {
       width: min(380px, 100%); background: #fff; border-radius: 14px;
       border: 1px solid var(--ai-border); padding: 20px 18px;
       box-shadow: 0 18px 40px rgba(0,0,0,.12);
     }
-    #ai-agent-confirm-card h2 { margin: 0 0 6px; font-size: 17px; }
-    #ai-agent-confirm-card p { margin: 0 0 16px; color: var(--ai-muted); font-size: 13px; line-height: 1.45; }
-    #ai-agent-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
-    #ai-agent-confirm-actions button {
+    #coding-agent-confirm-card h2 { margin: 0 0 6px; font-size: 17px; }
+    #coding-agent-confirm-card p { margin: 0 0 16px; color: var(--ai-muted); font-size: 13px; line-height: 1.45; }
+    #coding-agent-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    #coding-agent-confirm-actions button {
       border: 1px solid var(--ai-border); background: #fff; border-radius: 10px;
       padding: 8px 14px; font: 600 13px/1 inherit; cursor: pointer;
     }
-    #ai-agent-confirm-actions .primary { background: #111; color: #fff; border-color: #111; }
-    #ai-agent-confirm-actions .danger { background: #c62828; color: #fff; border-color: #c62828; }
-    #ai-agent-confirm-actions .danger:hover { background: #b71c1c; }
-    .ai-agent-nav-item-meta {
+    #coding-agent-confirm-actions .primary { background: #111; color: #fff; border-color: #111; }
+    #coding-agent-confirm-actions .danger { background: #c62828; color: #fff; border-color: #c62828; }
+    #coding-agent-confirm-actions .danger:hover { background: #b71c1c; }
+    .coding-agent-nav-item-meta {
       display: block; font-size: 11px; color: var(--ai-muted); font-weight: 400;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #ai-agent-nav-scroll {
+    #coding-agent-nav-scroll {
       flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 8px 12px;
     }
-    #ai-agent-nav-label-row {
+    #coding-agent-nav-label-row {
       display: flex; align-items: center; gap: 2px;
       padding: 6px 4px 4px; border-radius: 8px;
     }
-    #ai-agent-nav-label-row:hover { background: rgba(0,0,0,.03); }
-    #ai-agent-nav-label {
+    #coding-agent-nav-label-row:hover { background: rgba(0,0,0,.03); }
+    #coding-agent-nav-label {
       display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0;
       border: 0; background: transparent; cursor: pointer; text-align: left;
       padding: 4px 4px; font: 600 12px/1.2 inherit;
       color: var(--ai-muted); letter-spacing: .02em; border-radius: 6px;
     }
-    #ai-agent-nav-label:hover { color: var(--ai-text); }
-    #ai-agent-nav-label-actions {
+    #coding-agent-nav-label:hover { color: var(--ai-text); }
+    #coding-agent-nav-label-actions {
       flex: 0 0 auto; display: flex; align-items: center; gap: 0;
       opacity: 0; pointer-events: none; transition: opacity .12s ease;
     }
-    #ai-agent-nav-label-row:hover #ai-agent-nav-label-actions,
-    #ai-agent-nav-label-row:focus-within #ai-agent-nav-label-actions {
+    #coding-agent-nav-label-row:hover #coding-agent-nav-label-actions,
+    #coding-agent-nav-label-row:focus-within #coding-agent-nav-label-actions {
       opacity: 1; pointer-events: auto;
     }
-    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn {
+    #coding-agent-nav-label-actions .coding-agent-nav-mini-btn {
       width: 24px; height: 24px; border: 0; border-radius: 6px;
       background: transparent; color: #666; cursor: pointer;
       display: grid; place-items: center; padding: 0;
     }
-    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn:hover,
-    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn.is-on {
+    #coding-agent-nav-label-actions .coding-agent-nav-mini-btn:hover,
+    #coding-agent-nav-label-actions .coding-agent-nav-mini-btn.is-on {
       background: rgba(0,0,0,.08); color: var(--ai-text);
     }
-    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn svg {
+    #coding-agent-nav-label-actions .coding-agent-nav-mini-btn svg {
       width: 14px; height: 14px; display: block;
     }
-    .ai-agent-nav-label-chevron {
+    .coding-agent-nav-label-chevron {
       width: 0; height: 0; border-style: solid; flex: 0 0 auto;
       border-width: 4px 0 4px 6px; border-color: transparent transparent transparent #888;
       transition: transform .12s ease;
     }
-    #ai-agent-nav-label[aria-expanded="true"] .ai-agent-nav-label-chevron {
+    #coding-agent-nav-label[aria-expanded="true"] .coding-agent-nav-label-chevron {
       transform: rotate(90deg);
     }
-    #ai-agent-nav-scroll.is-repos-collapsed #ai-agent-nav-list,
-    #ai-agent-nav-scroll.is-repos-collapsed #ai-agent-nav-empty {
+    #coding-agent-nav-scroll.is-repos-collapsed #coding-agent-nav-list,
+    #coding-agent-nav-scroll.is-repos-collapsed #coding-agent-nav-empty {
       display: none;
     }
-    #ai-agent-nav-scroll.is-hide-empty .ai-agent-repo-group.is-empty {
+    #coding-agent-nav-scroll.is-hide-empty .coding-agent-repo-group.is-empty {
       display: none;
     }
-    #ai-agent-nav-list { display: flex; flex-direction: column; gap: 2px; }
-    .ai-agent-repo-group { margin: 0 0 6px; }
-    .ai-agent-repo-head {
+    #coding-agent-nav-list { display: flex; flex-direction: column; gap: 2px; }
+    .coding-agent-repo-group { margin: 0 0 6px; }
+    .coding-agent-repo-head {
       display: flex; align-items: center; gap: 4px; width: 100%;
       border: 0; background: transparent; color: var(--ai-text);
       border-radius: 8px; padding: 2px 4px 2px 2px; font: 600 13px/1.2 inherit;
     }
-    .ai-agent-repo-head:hover { background: rgba(0,0,0,.04); }
-    .ai-agent-repo-toggle {
+    .coding-agent-repo-head:hover { background: rgba(0,0,0,.04); }
+    .coding-agent-repo-toggle {
       display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0;
       border: 0; background: transparent; color: inherit; font: inherit;
       cursor: pointer; text-align: left; padding: 5px 4px; border-radius: 6px;
     }
-    .ai-agent-repo-chevron {
+    .coding-agent-repo-chevron {
       width: 0; height: 0; border-style: solid;
       border-width: 4px 0 4px 6px; border-color: transparent transparent transparent #888;
       transition: transform .12s ease; flex: 0 0 auto;
     }
-    .ai-agent-repo-group.is-collapsed .ai-agent-repo-chevron {
+    .coding-agent-repo-group.is-collapsed .coding-agent-repo-chevron {
       transform: rotate(0deg);
     }
-    .ai-agent-repo-group:not(.is-collapsed) .ai-agent-repo-chevron {
+    .coding-agent-repo-group:not(.is-collapsed) .coding-agent-repo-chevron {
       transform: rotate(90deg);
     }
-    .ai-agent-repo-name {
+    .coding-agent-repo-name {
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-repo-count {
+    .coding-agent-repo-count {
       flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); font-weight: 500;
       padding-right: 4px;
     }
-    .ai-agent-repo-add {
+    .coding-agent-repo-add {
       flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 6px;
       background: transparent; color: #666; cursor: pointer;
       display: none; place-items: center; padding: 0;
     }
-    .ai-agent-repo-add svg { width: 14px; height: 14px; display: block; }
-    .ai-agent-repo-add:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
-    .ai-agent-repo-head:hover .ai-agent-repo-add,
-    .ai-agent-repo-head:focus-within .ai-agent-repo-add { display: grid; }
-    .ai-agent-repo-head:hover .ai-agent-repo-count,
-    .ai-agent-repo-head:focus-within .ai-agent-repo-count { display: none; }
-    .ai-agent-repo-body { display: flex; flex-direction: column; gap: 1px; padding: 0 0 4px 8px; }
-    .ai-agent-repo-group.is-collapsed .ai-agent-repo-body { display: none; }
-    .ai-agent-repo-empty {
+    .coding-agent-repo-add svg { width: 14px; height: 14px; display: block; }
+    .coding-agent-repo-add:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .coding-agent-repo-head:hover .coding-agent-repo-add,
+    .coding-agent-repo-head:focus-within .coding-agent-repo-add { display: grid; }
+    .coding-agent-repo-head:hover .coding-agent-repo-count,
+    .coding-agent-repo-head:focus-within .coding-agent-repo-count { display: none; }
+    .coding-agent-repo-body { display: flex; flex-direction: column; gap: 1px; padding: 0 0 4px 8px; }
+    .coding-agent-repo-group.is-collapsed .coding-agent-repo-body { display: none; }
+    .coding-agent-repo-empty {
       padding: 6px 10px 8px; font-size: 12px; color: var(--ai-muted);
     }
-    .ai-agent-nav-item {
+    .coding-agent-nav-item {
       display: flex; align-items: center; gap: 6px;
       width: 100%; border: 0; background: transparent; color: var(--ai-text);
       border-radius: 8px; padding: 7px 8px 7px 10px; font: 13px/1.35 inherit;
       cursor: pointer; text-align: left; position: relative;
     }
-    .ai-agent-nav-item:hover { background: rgba(0,0,0,.05); }
-    .ai-agent-nav-item.is-active { background: rgba(0,0,0,.08); font-weight: 600; }
-    .ai-agent-nav-item-spin {
+    .coding-agent-nav-item:hover { background: rgba(0,0,0,.05); }
+    .coding-agent-nav-item.is-active { background: rgba(0,0,0,.08); font-weight: 600; }
+    .coding-agent-nav-item-spin {
       display: none; flex: 0 0 auto; width: 12px; height: 12px;
       border: 1.5px solid rgba(0,0,0,.14); border-top-color: #444;
-      border-radius: 50%; animation: ai-agent-nav-spin .7s linear infinite;
+      border-radius: 50%; animation: coding-agent-nav-spin .7s linear infinite;
     }
-    .ai-agent-nav-item.is-running .ai-agent-nav-item-spin { display: inline-block; }
-    @keyframes ai-agent-nav-spin {
+    .coding-agent-nav-item.is-running .coding-agent-nav-item-spin { display: inline-block; }
+    @keyframes coding-agent-nav-spin {
       to { transform: rotate(360deg); }
     }
-    .ai-agent-nav-item-title {
+    .coding-agent-nav-item-title {
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       display: block;
     }
-    .ai-agent-nav-item.is-renaming {
+    .coding-agent-nav-item.is-renaming {
       background: rgba(0,0,0,.06);
     }
-    .ai-agent-nav-item-rename {
+    .coding-agent-nav-item-rename {
       flex: 1 1 auto; min-width: 0; width: 100%;
       border: 1px solid #0078d4; border-radius: 6px;
       padding: 2px 6px; margin: 0; outline: none;
       font: 13px/1.35 inherit; color: var(--ai-text); background: #fff;
       box-shadow: 0 0 0 2px rgba(0,120,212,.18);
     }
-    .ai-agent-nav-item-time {
+    .coding-agent-nav-item-time {
       flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); font-weight: 400;
     }
-    .ai-agent-nav-item-actions {
+    .coding-agent-nav-item-actions {
       flex: 0 0 auto; display: none; align-items: center; gap: 1px;
     }
-    .ai-agent-nav-item:hover .ai-agent-nav-item-actions,
-    .ai-agent-nav-item:focus-within .ai-agent-nav-item-actions,
-    .ai-agent-nav-item.is-menu-open .ai-agent-nav-item-actions { display: inline-flex; }
-    .ai-agent-nav-item:hover .ai-agent-nav-item-time,
-    .ai-agent-nav-item:focus-within .ai-agent-nav-item-time,
-    .ai-agent-nav-item.is-menu-open .ai-agent-nav-item-time { display: none; }
-    .ai-agent-nav-item-action {
+    .coding-agent-nav-item:hover .coding-agent-nav-item-actions,
+    .coding-agent-nav-item:focus-within .coding-agent-nav-item-actions,
+    .coding-agent-nav-item.is-menu-open .coding-agent-nav-item-actions { display: inline-flex; }
+    .coding-agent-nav-item:hover .coding-agent-nav-item-time,
+    .coding-agent-nav-item:focus-within .coding-agent-nav-item-time,
+    .coding-agent-nav-item.is-menu-open .coding-agent-nav-item-time { display: none; }
+    .coding-agent-nav-item-action {
       width: 24px; height: 24px; border: 0; border-radius: 6px;
       background: transparent; color: #555; cursor: pointer;
       display: grid; place-items: center; padding: 0;
     }
-    .ai-agent-nav-item-action:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
-    .ai-agent-nav-item-action svg { width: 14px; height: 14px; display: block; }
-    #ai-agent-nav-item-menu {
+    .coding-agent-nav-item-action:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .coding-agent-nav-item-action svg { width: 14px; height: 14px; display: block; }
+    #coding-agent-nav-item-menu {
       display: none; position: fixed; z-index: 2147483642; min-width: 180px;
       padding: 6px; margin: 0; list-style: none;
       background: #fff; border: 1px solid rgba(0,0,0,.1); border-radius: 12px;
       box-shadow: 0 10px 28px rgba(0,0,0,.14);
       font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    #ai-agent-nav-item-menu.is-on { display: block; }
-    #ai-agent-nav-item-menu button {
+    #coding-agent-nav-item-menu.is-on { display: block; }
+    #coding-agent-nav-item-menu button {
       width: 100%; display: flex; align-items: center; gap: 10px;
       border: 0; background: transparent; color: var(--ai-text);
       border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: left;
       font: inherit;
     }
-    #ai-agent-nav-item-menu button:hover { background: rgba(0,0,0,.05); }
-    #ai-agent-nav-item-menu button.is-danger { color: #c62828; }
-    #ai-agent-nav-item-menu button.is-danger:hover { background: rgba(198,40,40,.08); }
-    #ai-agent-nav-item-menu button svg {
+    #coding-agent-nav-item-menu button:hover { background: rgba(0,0,0,.05); }
+    #coding-agent-nav-item-menu button.is-danger { color: #c62828; }
+    #coding-agent-nav-item-menu button.is-danger:hover { background: rgba(198,40,40,.08); }
+    #coding-agent-nav-item-menu button svg {
       width: 15px; height: 15px; flex: 0 0 auto; display: block;
     }
-    #ai-agent-nav-empty {
+    #coding-agent-nav-empty {
       padding: 16px 10px; color: var(--ai-muted); font-size: 13px; line-height: 1.45;
     }
-    #ai-agent-ide {
+    #coding-agent-ide {
       display: none; flex: 0 0 var(--ai-ide-width); width: var(--ai-ide-width);
       height: 100%; min-width: 320px; max-width: 75vw; border-left: 1px solid var(--ai-border);
       background: #fff; flex-direction: column; overflow: hidden; position: relative;
     }
-    #ai-agent-sidebar.is-fullscreen.has-ide #ai-agent-ide { display: flex; }
-    #ai-agent-ide-rail {
+    #coding-agent-sidebar.is-fullscreen.has-ide #coding-agent-ide { display: flex; }
+    #coding-agent-ide-rail {
       display: none; position: absolute; right: 10px; top: 44px;
       z-index: 28;
       flex-direction: column; align-items: center; gap: 2px;
@@ -1121,116 +1121,116 @@
       box-shadow: 0 6px 20px rgba(0,0,0,.08);
       transition: width .18s ease, padding .18s ease, border-radius .18s ease;
     }
-    #ai-agent-sidebar.is-fullscreen:not(.has-ide) #ai-agent-ide-rail { display: flex; }
-    #ai-agent-ide-rail.is-labels {
+    #coding-agent-sidebar.is-fullscreen:not(.has-ide) #coding-agent-ide-rail { display: flex; }
+    #coding-agent-ide-rail.is-labels {
       width: 168px; align-items: stretch; padding: 8px;
       border-radius: 14px;
     }
-    .ai-agent-ide-rail-btn {
+    .coding-agent-ide-rail-btn {
       width: 32px; height: 32px; border: 0; border-radius: 999px;
       background: transparent; color: #555; cursor: pointer;
       display: inline-flex; align-items: center; justify-content: center;
       gap: 0; padding: 0; flex: 0 0 auto;
       transition: background .15s ease, color .15s ease, transform .12s ease, width .15s ease, border-radius .15s ease;
     }
-    #ai-agent-ide-rail.is-labels .ai-agent-ide-rail-btn {
+    #coding-agent-ide-rail.is-labels .coding-agent-ide-rail-btn {
       width: 100%; height: 34px; border-radius: 8px;
       justify-content: flex-start; gap: 10px; padding: 0 10px;
     }
-    .ai-agent-ide-rail-btn:hover {
+    .coding-agent-ide-rail-btn:hover {
       background: rgba(0,0,0,.07); color: var(--ai-text);
     }
-    .ai-agent-ide-rail-btn:active {
+    .coding-agent-ide-rail-btn:active {
       background: rgba(0,0,0,.11); transform: scale(.96);
     }
-    .ai-agent-ide-rail-btn svg { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
-    .ai-agent-ide-rail-label {
+    .coding-agent-ide-rail-btn svg { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+    .coding-agent-ide-rail-label {
       display: none; font: 13px/1.2 inherit; color: inherit;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    #ai-agent-ide-rail.is-labels .ai-agent-ide-rail-label { display: inline; }
-    #ai-agent-ide-rail-expand .ai-agent-ide-rail-expand-icon {
+    #coding-agent-ide-rail.is-labels .coding-agent-ide-rail-label { display: inline; }
+    #coding-agent-ide-rail-expand .coding-agent-ide-rail-expand-icon {
       display: block; transition: transform .18s ease;
     }
-    #ai-agent-ide-rail.is-labels #ai-agent-ide-rail-expand .ai-agent-ide-rail-expand-icon {
+    #coding-agent-ide-rail.is-labels #coding-agent-ide-rail-expand .coding-agent-ide-rail-expand-icon {
       transform: scaleX(-1);
     }
-    #ai-agent-ide-panel-terminal {
+    #coding-agent-ide-panel-terminal {
       display: none; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
       flex-direction: column; background: #0c0c0c;
     }
-    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-editor,
-    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-explorer { display: none !important; }
-    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-panel-terminal { display: flex; }
-    #ai-agent-ide[data-panel="files"] #ai-agent-ide-explorer { display: flex; }
-    .ai-agent-ide-panel-empty {
+    #coding-agent-ide[data-panel="terminal"] #coding-agent-ide-editor,
+    #coding-agent-ide[data-panel="terminal"] #coding-agent-ide-explorer { display: none !important; }
+    #coding-agent-ide[data-panel="terminal"] #coding-agent-ide-panel-terminal { display: flex; }
+    #coding-agent-ide[data-panel="files"] #coding-agent-ide-explorer { display: flex; }
+    .coding-agent-ide-panel-empty {
       flex: 1 1 auto; display: grid; place-items: center; text-align: center;
       color: var(--ai-muted); font-size: 13px; padding: 24px; gap: 8px;
     }
-    .ai-agent-ide-panel-empty strong {
+    .coding-agent-ide-panel-empty strong {
       display: block; color: var(--ai-text); font-size: 15px; margin-bottom: 6px;
     }
-    #ai-agent-ide-term-mount {
+    #coding-agent-ide-term-mount {
       flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
       background: #0c0c0c;
       position: relative;
     }
-    #ai-agent-ide-term-mount .ai-agent-ide-xterm-host {
+    #coding-agent-ide-term-mount .coding-agent-ide-xterm-host {
       position: absolute; inset: 0;
     }
-    #ai-agent-ide-term-mount .xterm {
+    #coding-agent-ide-term-mount .xterm {
       height: 100%;
       padding: 4px 0 0 4px;
     }
-    #ai-agent-ide-term-mount .xterm-viewport {
+    #coding-agent-ide-term-mount .xterm-viewport {
       scrollbar-color: #555 #0c0c0c;
     }
-    #ai-agent-ide-resize {
+    #coding-agent-ide-resize {
       position: absolute; left: -3px; top: 0; width: 6px; height: 100%;
       cursor: ew-resize; z-index: 5;
     }
-    #ai-agent-ide-resize:hover,
-    #ai-agent-sidebar.is-ide-resizing #ai-agent-ide-resize {
+    #coding-agent-ide-resize:hover,
+    #coding-agent-sidebar.is-ide-resizing #coding-agent-ide-resize {
       background: rgba(0,120,212,.45);
     }
-    #ai-agent-ide-tree-resize {
+    #coding-agent-ide-tree-resize {
       position: absolute; left: -3px; top: 0; width: 6px; height: 100%;
       cursor: ew-resize; z-index: 3;
     }
-    #ai-agent-ide-tree-resize:hover,
-    #ai-agent-sidebar.is-ide-tree-resizing #ai-agent-ide-tree-resize {
+    #coding-agent-ide-tree-resize:hover,
+    #coding-agent-sidebar.is-ide-tree-resizing #coding-agent-ide-tree-resize {
       background: rgba(0,120,212,.45);
     }
-    #ai-agent-sidebar.is-ide-resizing,
-    #ai-agent-sidebar.is-ide-tree-resizing { user-select: none; cursor: ew-resize; }
-    #ai-agent-nav-footer {
+    #coding-agent-sidebar.is-ide-resizing,
+    #coding-agent-sidebar.is-ide-tree-resizing { user-select: none; cursor: ew-resize; }
+    #coding-agent-nav-footer {
       flex: 0 0 auto; border-top: 1px solid var(--ai-border);
       height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size) + 1px);
       padding: var(--ai-nav-chrome-pad-y) var(--ai-nav-chrome-pad-x);
       display: flex; align-items: center; gap: 8px;
       background: var(--ai-nav-bg); box-sizing: border-box;
     }
-    #ai-agent-nav-user {
+    #coding-agent-nav-user {
       flex: 1 1 auto; min-width: 0;
       display: flex; align-items: center; gap: 8px;
       font-size: 13px; font-weight: 600; color: var(--ai-text);
     }
-    #ai-agent-nav-user-name {
+    #coding-agent-nav-user-name {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-user-chip,
-    #ai-agent-sidebar.is-fullscreen #ai-agent-new-chat,
-    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-user-chip,
+    #coding-agent-sidebar.is-fullscreen #coding-agent-new-chat,
+    #coding-agent-sidebar.is-fullscreen #coding-agent-fullscreen {
       display: none !important;
     }
-    #ai-agent-toggle-ide {
+    #coding-agent-toggle-ide {
       width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
       background: transparent; color: #555; cursor: pointer;
       display: none; place-items: center;
       transition: background .15s ease, color .15s ease;
     }
     /* When IDE is closed: float at workspace top-right. When open: docked in IDE topbar. */
-    #ai-agent-sidebar.is-fullscreen:not(.has-ide) #ai-agent-toggle-ide {
+    #coding-agent-sidebar.is-fullscreen:not(.has-ide) #coding-agent-toggle-ide {
       display: grid;
       position: absolute;
       top: 8px;
@@ -1238,163 +1238,163 @@
       z-index: 30;
       background: #fff;
     }
-    #ai-agent-sidebar.has-ide #ai-agent-toggle-ide { display: none !important; }
-    #ai-agent-toggle-ide:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
-    #ai-agent-toggle-ide svg { width: 16px; height: 16px; display: block; }
+    #coding-agent-sidebar.has-ide #coding-agent-toggle-ide { display: none !important; }
+    #coding-agent-toggle-ide:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #coding-agent-toggle-ide svg { width: 16px; height: 16px; display: block; }
     @media (max-width: 720px) {
-      #ai-agent-sidebar.is-fullscreen #ai-agent-workspace { flex-direction: column; }
-      #ai-agent-sidebar.is-fullscreen #ai-agent-nav-shell {
+      #coding-agent-sidebar.is-fullscreen #coding-agent-workspace { flex-direction: column; }
+      #coding-agent-sidebar.is-fullscreen #coding-agent-nav-shell {
         width: 100%; height: auto; max-height: 38vh;
       }
-      #ai-agent-sidebar.is-fullscreen #ai-agent-nav {
+      #coding-agent-sidebar.is-fullscreen #coding-agent-nav {
         flex: 1 1 auto; width: 100%; height: 100%; max-height: none;
         border-right: 0; border-bottom: 1px solid var(--ai-border);
       }
-      #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail {
+      #coding-agent-sidebar.is-fullscreen.nav-hidden #coding-agent-nav-rail {
         width: 100%; flex-basis: auto;
       }
     }
-    #ai-agent-resize-handle {
+    #coding-agent-resize-handle {
       position: absolute; left: 0; top: 0; width: 6px; height: 100%;
       cursor: ew-resize; z-index: 12; touch-action: none;
     }
-    #ai-agent-resize-handle::after {
+    #coding-agent-resize-handle::after {
       content: ""; position: absolute; left: 2px; top: 0; bottom: 0; width: 2px;
       border-radius: 2px; background: transparent; transition: background .15s ease;
     }
-    #ai-agent-resize-handle:hover::after,
-    #ai-agent-sidebar.is-resizing #ai-agent-resize-handle::after {
+    #coding-agent-resize-handle:hover::after,
+    #coding-agent-sidebar.is-resizing #coding-agent-resize-handle::after {
       background: rgba(16,163,127,.45);
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-resize-handle { display: none; }
-    #ai-agent-topbar {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-resize-handle { display: none; }
+    #coding-agent-topbar {
       flex: 0 0 auto; height: 52px; padding: 0 14px;
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       border-bottom: 1px solid var(--ai-border);
       background: rgba(255,255,255,.85); backdrop-filter: blur(10px); z-index: 2;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-topbar {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-topbar {
       height: 44px; padding: 0 14px 0 16px; background: #fff; backdrop-filter: none;
       border-bottom: 0;
     }
-    #ai-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    #ai-agent-brand-mark-main {
+    #coding-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #coding-agent-brand-mark-main {
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); border-radius: 8px;
       overflow: hidden; flex: 0 0 auto;
       background: transparent;
       display: grid; place-items: center;
     }
-    #ai-agent-brand-mark-main svg {
+    #coding-agent-brand-mark-main svg {
       width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); display: block;
     }
-    #ai-agent-brand-text {
+    #coding-agent-brand-text {
       display: flex; align-items: center; gap: 8px; min-width: 0;
     }
     /* Run-state pill (就绪 / Read / Thinking) hidden — crowded next to title. */
-    .ai-agent-run-state { display: none !important; }
+    .coding-agent-run-state { display: none !important; }
     /* Expanded fullscreen: logo in left nav. Collapsed / floating: logo beside title. */
-    #ai-agent-brand-mark-main { display: none; }
-    #ai-agent-sidebar:not(.is-fullscreen) #ai-agent-brand-mark-main { display: grid; }
-    #ai-agent-brand strong {
+    #coding-agent-brand-mark-main { display: none; }
+    #coding-agent-sidebar:not(.is-fullscreen) #coding-agent-brand-mark-main { display: grid; }
+    #coding-agent-brand strong {
       font-size: 15px; font-weight: 600; color: var(--ai-text);
       line-height: 1.2; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-brand strong {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-brand strong {
       font-size: 14px; font-weight: 600;
     }
-    #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    #ai-agent-user-chip {
+    #coding-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    #coding-agent-user-chip {
       display: none; align-items: center; gap: 6px;
       max-width: 170px; padding: 0 2px 0 4px;
       color: var(--ai-muted, #6b6b6b); font: 12px/1.2 inherit;
     }
-    #ai-agent-user-chip.is-on { display: inline-flex; }
-    #ai-agent-user-name {
+    #coding-agent-user-chip.is-on { display: inline-flex; }
+    #coding-agent-user-name {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;
     }
-    #ai-agent-logout {
+    #coding-agent-logout {
       border: 1px solid var(--ai-border); background: #fff; color: inherit;
       border-radius: 999px; height: var(--ai-nav-icon-size); padding: 0 10px;
       font: 12px/1 inherit; cursor: pointer; box-sizing: border-box;
       display: inline-flex; align-items: center; flex: 0 0 auto;
     }
-    #ai-agent-logout:hover { background: var(--ai-surface); color: var(--ai-text); }
-    #ai-agent-new-chat, #ai-agent-fullscreen {
+    #coding-agent-logout:hover { background: var(--ai-surface); color: var(--ai-text); }
+    #coding-agent-new-chat, #coding-agent-fullscreen {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 7px 12px; font: 12px/1.2 inherit; cursor: pointer;
     }
-    #ai-agent-new-chat:hover, #ai-agent-fullscreen:hover { background: var(--ai-surface); }
-    #ai-agent-fullscreen {
+    #coding-agent-new-chat:hover, #coding-agent-fullscreen:hover { background: var(--ai-surface); }
+    #coding-agent-fullscreen {
       width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 16px;
     }
-    #ai-agent-fullscreen .ai-agent-icon-expand,
-    #ai-agent-fullscreen .ai-agent-icon-shrink {
+    #coding-agent-fullscreen .coding-agent-icon-expand,
+    #coding-agent-fullscreen .coding-agent-icon-shrink {
       display: grid; place-items: center; width: 16px; height: 16px; color: #444;
     }
-    #ai-agent-fullscreen svg {
+    #coding-agent-fullscreen svg {
       width: 16px; height: 16px; display: block;
     }
-    #ai-agent-fullscreen .ai-agent-icon-shrink { display: none; }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen .ai-agent-icon-expand { display: none; }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen .ai-agent-icon-shrink { display: grid; }
-    #ai-agent-trigger.is-hidden { display: none !important; }
-    #ai-agent-stop {
+    #coding-agent-fullscreen .coding-agent-icon-shrink { display: none; }
+    #coding-agent-sidebar.is-fullscreen #coding-agent-fullscreen .coding-agent-icon-expand { display: none; }
+    #coding-agent-sidebar.is-fullscreen #coding-agent-fullscreen .coding-agent-icon-shrink { display: grid; }
+    #coding-agent-trigger.is-hidden { display: none !important; }
+    #coding-agent-stop {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
       flex: 0 0 auto; display: none; place-items: center;
       background: #0d0d0d; color: #fff;
     }
-    #ai-agent-stop.visible { display: grid; }
-    #ai-agent-stop:hover { background: #2a2a2a; }
-    #ai-agent-stop-square {
+    #coding-agent-stop.visible { display: grid; }
+    #coding-agent-stop:hover { background: #2a2a2a; }
+    #coding-agent-stop-square {
       width: 10px; height: 10px; border-radius: 2px; background: #fff;
     }
-    #ai-agent-scroll-wrap {
+    #coding-agent-scroll-wrap {
       position: relative;
       flex: 1 1 auto; min-height: 0;
       display: flex; flex-direction: column; overflow: hidden;
     }
-    #ai-agent-messages {
+    #coding-agent-messages {
       flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 16px 12px;
       background: var(--ai-bg); scroll-behavior: auto;
       -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-messages { padding: 24px 16px 12px; }
-    #ai-agent-jump-bottom {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-messages { padding: 24px 16px 12px; }
+    #coding-agent-jump-bottom {
       position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
       z-index: 6; display: none; align-items: center; gap: 6px;
       border: 1px solid var(--ai-border); background: #fff; color: #333;
       border-radius: 999px; padding: 8px 14px; font: 13px/1 inherit; cursor: pointer;
       box-shadow: 0 4px 16px rgba(0,0,0,.08);
     }
-    #ai-agent-jump-bottom.visible { display: inline-flex; }
-    #ai-agent-jump-bottom:hover { background: #f7f7f8; }
-    #ai-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-thread {
+    #coding-agent-jump-bottom.visible { display: inline-flex; }
+    #coding-agent-jump-bottom:hover { background: #f7f7f8; }
+    #coding-agent-thread { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+    #coding-agent-sidebar.is-fullscreen #coding-agent-thread {
       width: min(var(--ai-content-width), 100%);
       margin: 0 auto;
       gap: 22px;
     }
-    #ai-agent-empty {
+    #coding-agent-empty {
       display: none;
       text-align: center;
       color: var(--ai-text);
     }
-    #ai-agent-empty h1 {
+    #coding-agent-empty h1 {
       margin: 0 0 8px;
       font-size: 28px;
       font-weight: 600;
       letter-spacing: -.02em;
       text-align: center;
     }
-    #ai-agent-empty p {
+    #coding-agent-empty p {
       margin: 0;
       color: var(--ai-muted);
       font-size: 15px;
       text-align: center;
     }
     /* Empty chat greeting — sidebar + fullscreen. */
-    #ai-agent-sidebar.is-empty #ai-agent-empty {
+    #coding-agent-sidebar.is-empty #coding-agent-empty {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1405,23 +1405,23 @@
       padding: 28px 12px 12px;
       text-align: center !important;
     }
-    #ai-agent-sidebar.is-empty #ai-agent-empty h1,
-    #ai-agent-sidebar.is-empty #ai-agent-empty p {
+    #coding-agent-sidebar.is-empty #coding-agent-empty h1,
+    #coding-agent-sidebar.is-empty #coding-agent-empty p {
       width: 100%;
       text-align: center !important;
     }
-    #ai-agent-sidebar.is-empty #ai-agent-jump-bottom {
+    #coding-agent-sidebar.is-empty #coding-agent-jump-bottom {
       display: none !important;
     }
     /* Fullscreen landing: greeting + composer sit in the upper third so the
        workspace picker has room to open downward without clipping. */
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-scroll-wrap {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-scroll-wrap {
       flex: 0 0 auto;
       overflow: visible;
       margin-top: max(36px, 8vh);
       padding-top: 0;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-messages {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-messages {
       flex: 0 0 auto;
       width: min(var(--ai-content-width), 100%);
       max-width: 100%;
@@ -1431,61 +1431,61 @@
       padding: 0 16px;
       box-sizing: border-box;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-empty {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-empty {
       min-height: 0;
       margin: 0 0 14px;
       padding: 0;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-footer {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-footer {
       flex: 0 0 auto;
       margin-bottom: auto;
       padding: 0 16px max(20px, 4vh);
       background: transparent;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-composer-wrap {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-composer-wrap {
       width: min(var(--ai-content-width), 100%);
       margin: 0 auto;
       overflow: visible;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-footer,
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-ctx-bar {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-footer,
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-ctx-bar {
       overflow: visible;
     }
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-main,
-    #ai-agent-sidebar.is-fullscreen.is-empty #ai-agent-workspace {
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-main,
+    #coding-agent-sidebar.is-fullscreen.is-empty #coding-agent-workspace {
       overflow: visible;
     }
-    .ai-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
-    .ai-agent-worklog:empty { display: none; }
-    .ai-agent-segment-text {
+    .coding-agent-worklog { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
+    .coding-agent-worklog:empty { display: none; }
+    .coding-agent-segment-text {
       margin: 0 0 12px; font-size: 15px; line-height: 1.7; color: var(--ai-text);
       word-break: break-word;
     }
-    .ai-agent-segment-text:last-child { margin-bottom: 0; }
-    .ai-agent-card {
+    .coding-agent-segment-text:last-child { margin-bottom: 0; }
+    .coding-agent-card {
       border: 0; border-radius: 8px; background: transparent; overflow: hidden;
     }
-    .ai-agent-card-header {
+    .coding-agent-card-header {
       display: flex; align-items: center; gap: 6px; padding: 4px 6px;
       font-size: 13px; color: var(--ai-muted); background: transparent;
       border-radius: 8px; cursor: default; user-select: none;
     }
-    .ai-agent-card.has-body .ai-agent-card-header { cursor: pointer; }
-    .ai-agent-card.has-body .ai-agent-card-header:hover {
+    .coding-agent-card.has-body .coding-agent-card-header { cursor: pointer; }
+    .coding-agent-card.has-body .coding-agent-card-header:hover {
       background: rgba(0,0,0,.04); color: var(--ai-text);
     }
-    .ai-agent-card-chevron {
+    .coding-agent-card-chevron {
       flex: 0 0 14px; width: 14px; text-align: center;
       font-size: 13px; line-height: 1; color: var(--ai-muted);
       transition: transform .15s ease; transform: rotate(0deg);
     }
-    .ai-agent-card:not(.has-body) .ai-agent-card-chevron { visibility: hidden; }
-    .ai-agent-card.is-expanded .ai-agent-card-chevron { transform: rotate(90deg); }
-    .ai-agent-card-title {
+    .coding-agent-card:not(.has-body) .coding-agent-card-chevron { visibility: hidden; }
+    .coding-agent-card.is-expanded .coding-agent-card-chevron { transform: rotate(90deg); }
+    .coding-agent-card-title {
       font-weight: 500; flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-card.is-live .ai-agent-card-title {
+    .coding-agent-card.is-live .coding-agent-card-title {
       position: relative;
       color: transparent;
       -webkit-text-fill-color: transparent;
@@ -1500,89 +1500,89 @@
       background-size: 200% 100%;
       -webkit-background-clip: text;
       background-clip: text;
-      animation: ai-agent-live-shimmer 1.2s linear infinite;
+      animation: coding-agent-live-shimmer 1.2s linear infinite;
     }
-    @keyframes ai-agent-live-shimmer {
+    @keyframes coding-agent-live-shimmer {
       0% { background-position: 100% 0; }
       100% { background-position: -100% 0; }
     }
-    .ai-agent-card.is-live .ai-agent-card-header {
+    .coding-agent-card.is-live .coding-agent-card-header {
       color: var(--ai-text);
     }
-    .ai-agent-card.kind-plan.is-live .ai-agent-card-header,
-    .ai-agent-card.kind-explore.is-live .ai-agent-card-header {
+    .coding-agent-card.kind-plan.is-live .coding-agent-card-header,
+    .coding-agent-card.kind-explore.is-live .coding-agent-card-header {
       color: var(--ai-muted);
     }
-    .ai-agent-card.is-explore-step .ai-agent-card-header {
+    .coding-agent-card.is-explore-step .coding-agent-card-header {
       padding-left: 18px;
     }
-    .ai-agent-card.is-explore-step .ai-agent-card-title {
+    .coding-agent-card.is-explore-step .coding-agent-card-title {
       font-weight: 400;
     }
-    .ai-agent-card-meta {
+    .coding-agent-card-meta {
       font-size: 12px; color: var(--ai-muted); white-space: nowrap; flex: 0 0 auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .ai-agent-card-meta .add { color: #166534; font-weight: 600; }
-    .ai-agent-card-meta .del { color: #991b1b; font-weight: 600; }
-    .ai-agent-card-body {
+    .coding-agent-card-meta .add { color: #166534; font-weight: 600; }
+    .coding-agent-card-meta .del { color: #991b1b; font-weight: 600; }
+    .coding-agent-card-body {
       display: none; margin: 0 0 6px 20px; padding: 8px 10px;
       border-left: 2px solid var(--ai-border);
       color: var(--ai-muted); font-size: 12.5px; white-space: pre-wrap;
       word-break: break-word; background: transparent;
       max-height: 240px; overflow-y: auto;
     }
-    .ai-agent-card.is-expanded .ai-agent-card-body,
-    .ai-agent-card.is-live.has-body .ai-agent-card-body { display: block; }
-    .ai-agent-card.is-live:not(.has-body) .ai-agent-card-body { display: none; }
-    .ai-agent-card.is-live .ai-agent-card-body {
+    .coding-agent-card.is-expanded .coding-agent-card-body,
+    .coding-agent-card.is-live.has-body .coding-agent-card-body { display: block; }
+    .coding-agent-card.is-live:not(.has-body) .coding-agent-card-body { display: none; }
+    .coding-agent-card.is-live .coding-agent-card-body {
       max-height: 320px;
       color: var(--ai-text);
     }
-    .ai-agent-card.kind-run .ai-agent-card-body {
+    .coding-agent-card.kind-run .coding-agent-card-body {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
     }
-    .ai-agent-paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .ai-agent-path {
+    .coding-agent-paths { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .coding-agent-path {
       display: inline-flex; align-items: center; max-width: 100%;
       padding: 3px 8px; border-radius: 999px;
       background: #f4f4f4; border: 1px solid var(--ai-border); color: #333;
       font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .ai-agent-diff {
+    .coding-agent-diff {
       margin-top: 8px; border: 1px solid var(--ai-border);
       border-radius: 10px; overflow: hidden; background: #fafafa;
     }
-    .ai-agent-diff + .ai-agent-diff { margin-top: 8px; }
-    .ai-agent-diff-path {
+    .coding-agent-diff + .coding-agent-diff { margin-top: 8px; }
+    .coding-agent-diff-path {
       padding: 7px 10px; background: #eee; color: #111;
       font: 650 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .ai-agent-diff-line {
+    .coding-agent-diff-line {
       display: block; padding: 1px 12px;
       font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       white-space: pre-wrap; word-break: break-word;
     }
-    .ai-agent-diff-line.added { background: rgba(22, 101, 52, .06); color: #166534; }
-    .ai-agent-diff-line.removed { background: rgba(153, 27, 27, .06); color: #991b1b; }
+    .coding-agent-diff-line.added { background: rgba(22, 101, 52, .06); color: #166534; }
+    .coding-agent-diff-line.removed { background: rgba(153, 27, 27, .06); color: #991b1b; }
     /* Codex-like turn change review */
-    .ai-agent-turn-changes {
+    .coding-agent-turn-changes {
       margin: 12px 0 2px;
       border: 1px solid rgba(0,0,0,.08);
       border-radius: 10px;
       background: #fff;
       overflow: hidden;
     }
-    .ai-agent-turn-changes.is-undone { opacity: .72; }
-    .ai-agent-turn-changes-header {
+    .coding-agent-turn-changes.is-undone { opacity: .72; }
+    .coding-agent-turn-changes-header {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       padding: 8px 12px; cursor: pointer; user-select: none;
       background: #fafafa;
       border-bottom: 1px solid rgba(0,0,0,.06);
     }
-    .ai-agent-turn-changes-header:hover { background: #f5f5f5; }
-    .ai-agent-turn-changes-chevron {
+    .coding-agent-turn-changes-header:hover { background: #f5f5f5; }
+    .coding-agent-turn-changes-chevron {
       width: 0; height: 0;
       border-left: 4px solid transparent;
       border-right: 4px solid transparent;
@@ -1590,65 +1590,65 @@
       transition: transform .12s ease;
       flex: 0 0 auto;
     }
-    .ai-agent-turn-changes:not(.is-open) .ai-agent-turn-changes-chevron {
+    .coding-agent-turn-changes:not(.is-open) .coding-agent-turn-changes-chevron {
       transform: rotate(-90deg);
     }
-    .ai-agent-turn-changes-title {
+    .coding-agent-turn-changes-title {
       font: 600 13px/1.3 inherit; color: var(--ai-text);
     }
-    .ai-agent-turn-changes-stats {
+    .coding-agent-turn-changes-stats {
       font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: var(--ai-muted);
     }
-    .ai-agent-turn-changes-stats .add,
-    .ai-agent-turn-file-meta .add { color: #166534; font-weight: 600; }
-    .ai-agent-turn-changes-stats .del,
-    .ai-agent-turn-file-meta .del { color: #991b1b; font-weight: 600; }
-    .ai-agent-turn-changes-actions { margin-left: auto; display: flex; gap: 6px; }
-    .ai-agent-turn-undo {
+    .coding-agent-turn-changes-stats .add,
+    .coding-agent-turn-file-meta .add { color: #166534; font-weight: 600; }
+    .coding-agent-turn-changes-stats .del,
+    .coding-agent-turn-file-meta .del { color: #991b1b; font-weight: 600; }
+    .coding-agent-turn-changes-actions { margin-left: auto; display: flex; gap: 6px; }
+    .coding-agent-turn-undo {
       border: 1px solid rgba(0,0,0,.1); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 3px 10px; font: 12px/1.2 inherit; cursor: pointer;
     }
-    .ai-agent-turn-undo:hover { background: #f4f4f4; }
-    .ai-agent-turn-undo:disabled { opacity: .5; cursor: default; }
-    .ai-agent-turn-undo.is-done { color: #166534; border-color: #bbf7d0; background: #ecfdf5; }
-    .ai-agent-turn-file-undo { padding: 2px 8px; font-size: 11px; }
-    .ai-agent-turn-changes-body { display: none; }
-    .ai-agent-turn-changes.is-open .ai-agent-turn-changes-body { display: block; }
-    .ai-agent-turn-file {
+    .coding-agent-turn-undo:hover { background: #f4f4f4; }
+    .coding-agent-turn-undo:disabled { opacity: .5; cursor: default; }
+    .coding-agent-turn-undo.is-done { color: #166534; border-color: #bbf7d0; background: #ecfdf5; }
+    .coding-agent-turn-file-undo { padding: 2px 8px; font-size: 11px; }
+    .coding-agent-turn-changes-body { display: none; }
+    .coding-agent-turn-changes.is-open .coding-agent-turn-changes-body { display: block; }
+    .coding-agent-turn-file {
       border-top: 1px solid rgba(0,0,0,.06);
     }
-    .ai-agent-turn-file:first-child { border-top: 0; }
-    .ai-agent-turn-file.is-undone { opacity: .55; }
-    .ai-agent-turn-file-head {
+    .coding-agent-turn-file:first-child { border-top: 0; }
+    .coding-agent-turn-file.is-undone { opacity: .55; }
+    .coding-agent-turn-file-head {
       display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
       padding: 10px 12px 6px;
     }
-    .ai-agent-turn-file-path {
+    .coding-agent-turn-file-path {
       font: 600 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: #111;
     }
-    .ai-agent-turn-file-meta {
+    .coding-agent-turn-file-meta {
       font: 12px/1.35 inherit; color: var(--ai-muted);
     }
-    .ai-agent-turn-file-actions { margin-left: auto; }
-    .ai-agent-turn-file-status { font-weight: 600; }
-    .ai-agent-turn-file.status-deleted .ai-agent-turn-file-status { color: #991b1b; }
-    .ai-agent-turn-file.status-created .ai-agent-turn-file-status { color: #166534; }
-    .ai-agent-turn-file.status-modified .ai-agent-turn-file-status { color: #a16207; }
-    .ai-agent-turn-file .ai-agent-diff {
+    .coding-agent-turn-file-actions { margin-left: auto; }
+    .coding-agent-turn-file-status { font-weight: 600; }
+    .coding-agent-turn-file.status-deleted .coding-agent-turn-file-status { color: #991b1b; }
+    .coding-agent-turn-file.status-created .coding-agent-turn-file-status { color: #166534; }
+    .coding-agent-turn-file.status-modified .coding-agent-turn-file-status { color: #a16207; }
+    .coding-agent-turn-file .coding-agent-diff {
       margin: 0; border: 0; border-radius: 0; background: transparent;
     }
-    .ai-agent-turn-file .ai-agent-diff-path { display: none; }
-    .ai-agent-msg { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
-    .ai-agent-msg.user { justify-content: flex-end; }
-    .ai-agent-msg.agent { justify-content: flex-start; }
-    .ai-agent-msg.user .ai-agent-msg-main {
+    .coding-agent-turn-file .coding-agent-diff-path { display: none; }
+    .coding-agent-msg { display: flex; gap: 12px; align-items: flex-start; width: 100%; }
+    .coding-agent-msg.user { justify-content: flex-end; }
+    .coding-agent-msg.agent { justify-content: flex-start; }
+    .coding-agent-msg.user .coding-agent-msg-main {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
     }
-    .ai-agent-user-actions {
+    .coding-agent-user-actions {
       display: flex;
       justify-content: flex-end;
       gap: 2px;
@@ -1656,7 +1656,7 @@
       opacity: 0;
       transition: opacity .12s ease;
     }
-    .ai-agent-user-action {
+    .coding-agent-user-action {
       width: 28px;
       height: 28px;
       border: 0;
@@ -1669,17 +1669,17 @@
       padding: 0;
       transition: background .12s ease, color .12s ease;
     }
-    .ai-agent-user-action svg { width: 15px; height: 15px; display: block; }
-    .ai-agent-msg.user:hover .ai-agent-user-actions,
-    .ai-agent-msg.user:focus-within .ai-agent-user-actions,
-    .ai-agent-msg.user.is-editing .ai-agent-user-actions {
+    .coding-agent-user-action svg { width: 15px; height: 15px; display: block; }
+    .coding-agent-msg.user:hover .coding-agent-user-actions,
+    .coding-agent-msg.user:focus-within .coding-agent-user-actions,
+    .coding-agent-msg.user.is-editing .coding-agent-user-actions {
       opacity: 1;
     }
-    .ai-agent-msg.user.is-editing .ai-agent-user-action.is-edit {
+    .coding-agent-msg.user.is-editing .coding-agent-user-action.is-edit {
       background: rgba(0,0,0,.06);
       color: var(--ai-text);
     }
-    .ai-agent-edit-textarea {
+    .coding-agent-edit-textarea {
       display: block;
       width: 100%;
       min-width: 160px;
@@ -1696,7 +1696,7 @@
       line-height: 1.45;
       outline: none;
     }
-    .ai-agent-edit-shell {
+    .coding-agent-edit-shell {
       width: 100%;
       box-sizing: border-box;
       background: #fff;
@@ -1709,29 +1709,29 @@
       gap: 8px;
       overflow: visible;
     }
-    .ai-agent-edit-shell.mode-plan {
+    .coding-agent-edit-shell.mode-plan {
       box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.04);
     }
-    .ai-agent-edit-attachments {
+    .coding-agent-edit-attachments {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
     }
-    .ai-agent-edit-attachments:empty { display: none; }
-    .ai-agent-edit-toolbar {
+    .coding-agent-edit-attachments:empty { display: none; }
+    .coding-agent-edit-toolbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
     }
-    .ai-agent-edit-toolbar-left,
-    .ai-agent-edit-toolbar-right {
+    .coding-agent-edit-toolbar-left,
+    .coding-agent-edit-toolbar-right {
       display: flex;
       align-items: center;
       gap: 6px;
       min-width: 0;
     }
-    .ai-agent-edit-mode {
+    .coding-agent-edit-mode {
       appearance: none;
       -webkit-appearance: none;
       border: 0;
@@ -1744,14 +1744,14 @@
       color: var(--ai-muted);
       cursor: pointer;
     }
-    .ai-agent-edit-mode:hover { color: var(--ai-text); }
-    .ai-agent-edit-model-wrap {
+    .coding-agent-edit-mode:hover { color: var(--ai-text); }
+    .coding-agent-edit-model-wrap {
       position: relative;
       flex: 0 0 auto;
       min-width: 0;
       z-index: 5;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-btn {
+    .coding-agent-edit-model-wrap .coding-agent-model-btn {
       appearance: none;
       border: 0;
       outline: none;
@@ -1766,22 +1766,22 @@
       max-width: min(280px, 48vw);
       border-radius: 6px;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-btn:hover { background: rgba(0,0,0,.04); }
-    .ai-agent-edit-model-wrap .ai-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
-    .ai-agent-edit-model-wrap .ai-agent-model-label {
+    .coding-agent-edit-model-wrap .coding-agent-model-btn:hover { background: rgba(0,0,0,.04); }
+    .coding-agent-edit-model-wrap .coding-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
+    .coding-agent-edit-model-wrap .coding-agent-model-label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       max-width: 100%;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-chevron {
+    .coding-agent-edit-model-wrap .coding-agent-model-chevron {
       flex: 0 0 auto;
       width: 12px;
       height: 12px;
       opacity: .55;
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") center / 12px no-repeat;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-menu {
+    .coding-agent-edit-model-wrap .coding-agent-model-menu {
       display: none;
       position: absolute;
       left: 0;
@@ -1798,8 +1798,8 @@
       padding: 8px;
       overflow: hidden;
     }
-    .ai-agent-edit-model-wrap.is-open .ai-agent-model-menu { display: block; }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto-row {
+    .coding-agent-edit-model-wrap.is-open .coding-agent-model-menu { display: block; }
+    .coding-agent-edit-model-wrap .coding-agent-model-auto-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -1807,24 +1807,24 @@
       padding: 8px 10px;
       border-radius: 8px;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto-row:hover { background: #f7f7f7; }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto-row:hover { background: #f7f7f7; }
+    .coding-agent-edit-model-wrap .coding-agent-model-auto-copy {
       display: flex;
       flex-direction: column;
       gap: 2px;
       min-width: 0;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy strong {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto-copy strong {
       font-size: 13px;
       font-weight: 600;
       color: var(--ai-text);
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto-copy span {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto-copy span {
       font-size: 11px;
       color: var(--ai-muted);
       line-height: 1.35;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto {
       appearance: none;
       flex: 0 0 auto;
       width: 36px;
@@ -1836,7 +1836,7 @@
       cursor: pointer;
       transition: background .15s ease;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto::after {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto::after {
       content: "";
       position: absolute;
       top: 2px;
@@ -1848,9 +1848,9 @@
       box-shadow: 0 1px 2px rgba(0,0,0,.18);
       transition: transform .15s ease;
     }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
-    .ai-agent-edit-model-wrap .ai-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
-    .ai-agent-edit-model-wrap .ai-agent-model-list {
+    .coding-agent-edit-model-wrap .coding-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
+    .coding-agent-edit-model-wrap .coding-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
+    .coding-agent-edit-model-wrap .coding-agent-model-list {
       display: none;
       margin-top: 4px;
       padding-top: 4px;
@@ -1858,10 +1858,10 @@
       max-height: 280px;
       overflow-y: auto;
     }
-    .ai-agent-edit-model-wrap:not(.is-auto) .ai-agent-model-list { display: block; }
-    .ai-agent-edit-file-input { display: none; }
-    .ai-agent-edit-pick,
-    .ai-agent-edit-send {
+    .coding-agent-edit-model-wrap:not(.is-auto) .coding-agent-model-list { display: block; }
+    .coding-agent-edit-file-input { display: none; }
+    .coding-agent-edit-pick,
+    .coding-agent-edit-send {
       width: 32px;
       height: 32px;
       border: 0;
@@ -1872,131 +1872,131 @@
       place-items: center;
       padding: 0;
     }
-    .ai-agent-edit-pick {
+    .coding-agent-edit-pick {
       background: transparent;
       color: #555;
       font-size: 16px;
     }
-    .ai-agent-edit-pick:hover { background: #f3f3f3; }
-    .ai-agent-edit-send {
+    .coding-agent-edit-pick:hover { background: #f3f3f3; }
+    .coding-agent-edit-send {
       background: #0d0d0d;
       color: #fff;
     }
-    .ai-agent-edit-send:hover { background: #2a2a2a; }
-    .ai-agent-edit-send svg { width: 14px; height: 14px; display: block; }
-    .ai-agent-msg.user.is-editing .body,
-    .ai-agent-msg.user.is-editing .ai-agent-user-actions { display: none !important; }
-    /* Edit composer: same full width as #ai-agent-compose-shell (not 88% bubble). */
-    .ai-agent-msg.user.is-editing {
+    .coding-agent-edit-send:hover { background: #2a2a2a; }
+    .coding-agent-edit-send svg { width: 14px; height: 14px; display: block; }
+    .coding-agent-msg.user.is-editing .body,
+    .coding-agent-msg.user.is-editing .coding-agent-user-actions { display: none !important; }
+    /* Edit composer: same full width as #coding-agent-compose-shell (not 88% bubble). */
+    .coding-agent-msg.user.is-editing {
       width: 100%;
       justify-content: stretch;
     }
-    .ai-agent-msg.user.is-editing .ai-agent-msg-main {
+    .coding-agent-msg.user.is-editing .coding-agent-msg-main {
       max-width: 100%;
       width: 100%;
       align-items: stretch;
     }
-    .ai-agent-msg.user .body { cursor: text; }
-    .ai-agent-user-action:hover {
+    .coding-agent-msg.user .body { cursor: text; }
+    .coding-agent-user-action:hover {
       background: rgba(0,0,0,.05);
       color: var(--ai-text);
     }
     @media (hover: none) {
-      .ai-agent-user-actions { opacity: 1; }
+      .coding-agent-user-actions { opacity: 1; }
     }
-    .ai-agent-avatar {
+    .coding-agent-avatar {
       width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto; margin-top: 2px;
       display: grid; place-items: center; font: 700 11px/1 -apple-system, sans-serif; color: #fff;
     }
-    .ai-agent-msg.agent .ai-agent-avatar { background: #10a37f; }
-    .ai-agent-msg.user .ai-agent-avatar { display: none; }
-    .ai-agent-msg-main { min-width: 0; max-width: 100%; }
-    .ai-agent-msg.user .ai-agent-msg-main { max-width: 88%; }
-    .ai-agent-msg .body {
+    .coding-agent-msg.agent .coding-agent-avatar { background: #10a37f; }
+    .coding-agent-msg.user .coding-agent-avatar { display: none; }
+    .coding-agent-msg-main { min-width: 0; max-width: 100%; }
+    .coding-agent-msg.user .coding-agent-msg-main { max-width: 88%; }
+    .coding-agent-msg .body {
       white-space: pre-wrap; word-break: break-word;
       font: inherit; color: var(--ai-text);
       background: transparent; border: 0; border-radius: 0;
       padding: 2px 0; line-height: 1.7;
       -webkit-user-select: text; user-select: text;
     }
-    .ai-agent-msg.agent .body {
+    .coding-agent-msg.agent .body {
       white-space: normal;
     }
-    .ai-agent-msg.user .body {
+    .coding-agent-msg.user .body {
       background: var(--ai-user-bg); border-radius: 22px; padding: 10px 16px;
     }
-    .ai-agent-msg.agent .body { padding-top: 4px; }
-    .ai-agent-msg.system .body {
+    .coding-agent-msg.agent .body { padding-top: 4px; }
+    .coding-agent-msg.system .body {
       background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
       border-radius: 14px; padding: 10px 14px;
     }
-    .ai-agent-msg .body > :first-child { margin-top: 0; }
-    .ai-agent-msg .body > :last-child { margin-bottom: 0; }
-    .ai-agent-msg .body p,
-    .ai-agent-msg .body ul,
-    .ai-agent-msg .body ol,
-    .ai-agent-msg .body .ai-agent-codeblock,
-    .ai-agent-msg .body blockquote,
-    .ai-agent-msg .body h1,
-    .ai-agent-msg .body h2,
-    .ai-agent-msg .body h3,
-    .ai-agent-msg .body h4 { margin: 0 0 12px; }
-    .ai-agent-msg .body ul,
-    .ai-agent-msg .body ol { padding-left: 22px; }
-    .ai-agent-msg .body li + li { margin-top: 4px; }
-    .ai-agent-msg .body li input[type="checkbox"] {
+    .coding-agent-msg .body > :first-child { margin-top: 0; }
+    .coding-agent-msg .body > :last-child { margin-bottom: 0; }
+    .coding-agent-msg .body p,
+    .coding-agent-msg .body ul,
+    .coding-agent-msg .body ol,
+    .coding-agent-msg .body .coding-agent-codeblock,
+    .coding-agent-msg .body blockquote,
+    .coding-agent-msg .body h1,
+    .coding-agent-msg .body h2,
+    .coding-agent-msg .body h3,
+    .coding-agent-msg .body h4 { margin: 0 0 12px; }
+    .coding-agent-msg .body ul,
+    .coding-agent-msg .body ol { padding-left: 22px; }
+    .coding-agent-msg .body li + li { margin-top: 4px; }
+    .coding-agent-msg .body li input[type="checkbox"] {
       margin-right: 6px; vertical-align: middle; pointer-events: none;
     }
-    .ai-agent-msg .body h1,
-    .ai-agent-msg .body h2,
-    .ai-agent-msg .body h3,
-    .ai-agent-msg .body h4 { line-height: 1.35; font-weight: 650; }
-    .ai-agent-msg .body h1 { font-size: 22px; }
-    .ai-agent-msg .body h2 { font-size: 19px; }
-    .ai-agent-msg .body h3 { font-size: 17px; }
-    .ai-agent-msg .body h4 { font-size: 15px; }
-    .ai-agent-msg .body strong { font-weight: 650; }
-    .ai-agent-msg .body em { font-style: italic; }
-    .ai-agent-msg .body del { text-decoration: line-through; color: var(--ai-muted); }
+    .coding-agent-msg .body h1,
+    .coding-agent-msg .body h2,
+    .coding-agent-msg .body h3,
+    .coding-agent-msg .body h4 { line-height: 1.35; font-weight: 650; }
+    .coding-agent-msg .body h1 { font-size: 22px; }
+    .coding-agent-msg .body h2 { font-size: 19px; }
+    .coding-agent-msg .body h3 { font-size: 17px; }
+    .coding-agent-msg .body h4 { font-size: 15px; }
+    .coding-agent-msg .body strong { font-weight: 650; }
+    .coding-agent-msg .body em { font-style: italic; }
+    .coding-agent-msg .body del { text-decoration: line-through; color: var(--ai-muted); }
     /* Beat host CSS (e.g. layui a{color:#333}) so links stay visibly blue. */
-    #ai-agent-sidebar .ai-agent-msg a,
-    #ai-agent-sidebar .ai-agent-msg .body a,
-    #ai-agent-sidebar .ai-agent-segment-text a {
+    #coding-agent-sidebar .coding-agent-msg a,
+    #coding-agent-sidebar .coding-agent-msg .body a,
+    #coding-agent-sidebar .coding-agent-segment-text a {
       color: #2563eb !important;
       text-decoration: underline !important;
       text-underline-offset: 2px;
       word-break: break-word;
       cursor: pointer;
     }
-    #ai-agent-sidebar .ai-agent-msg a:visited,
-    #ai-agent-sidebar .ai-agent-msg .body a:visited,
-    #ai-agent-sidebar .ai-agent-segment-text a:visited {
+    #coding-agent-sidebar .coding-agent-msg a:visited,
+    #coding-agent-sidebar .coding-agent-msg .body a:visited,
+    #coding-agent-sidebar .coding-agent-segment-text a:visited {
       color: #2563eb !important;
     }
-    #ai-agent-sidebar .ai-agent-msg a:hover,
-    #ai-agent-sidebar .ai-agent-msg .body a:hover,
-    #ai-agent-sidebar .ai-agent-segment-text a:hover {
+    #coding-agent-sidebar .coding-agent-msg a:hover,
+    #coding-agent-sidebar .coding-agent-msg .body a:hover,
+    #coding-agent-sidebar .coding-agent-segment-text a:hover {
       color: #1d4ed8 !important;
     }
-    .ai-agent-msg .body hr {
+    .coding-agent-msg .body hr {
       border: 0; border-top: 1px solid var(--ai-border); margin: 12px 0;
     }
-    .ai-agent-msg .body .katex-display {
+    .coding-agent-msg .body .katex-display {
       margin: 10px 0; overflow-x: auto; overflow-y: hidden;
       padding: 2px 0;
     }
-    .ai-agent-msg .body .ai-agent-math {
+    .coding-agent-msg .body .coding-agent-math {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.92em; color: var(--ai-muted);
       white-space: pre-wrap;
     }
-    .ai-agent-msg .body .ai-agent-math.is-display {
+    .coding-agent-msg .body .coding-agent-math.is-display {
       display: block;
       margin: 10px 0;
       overflow-x: auto;
       text-align: center;
     }
-    .ai-agent-msg .body .md-table-fallback {
+    .coding-agent-msg .body .md-table-fallback {
       margin: 0 0 12px;
       padding: 10px 12px;
       border-radius: 10px;
@@ -2005,13 +2005,13 @@
       white-space: pre-wrap;
       overflow-x: auto;
     }
-    .ai-agent-msg .body .md-table-wrap {
+    .coding-agent-msg .body .md-table-wrap {
       overflow-x: auto;
       margin: 0 0 12px;
       -webkit-overflow-scrolling: touch;
       max-width: 100%;
     }
-    .ai-agent-msg .body table {
+    .coding-agent-msg .body table {
       /* Grow with columns; wrap scrolls horizontally — don't squeeze cells. */
       width: max-content;
       min-width: 100%;
@@ -2021,9 +2021,9 @@
       line-height: 1.4;
       table-layout: auto;
     }
-    .ai-agent-msg .body .md-table-wrap table { margin: 0; }
-    .ai-agent-msg .body th,
-    .ai-agent-msg .body td {
+    .coding-agent-msg .body .md-table-wrap table { margin: 0; }
+    .coding-agent-msg .body th,
+    .coding-agent-msg .body td {
       border: 1px solid var(--ai-border);
       padding: 7px 10px;
       text-align: left;
@@ -2033,13 +2033,13 @@
       word-break: normal;
       overflow-wrap: normal;
     }
-    .ai-agent-msg .body th { background: var(--ai-surface); font-weight: 600; }
-    .ai-agent-msg .body tr:nth-child(even) td { background: #fafafa; }
-    .ai-agent-msg .body code {
+    .coding-agent-msg .body th { background: var(--ai-surface); font-weight: 600; }
+    .coding-agent-msg .body tr:nth-child(even) td { background: #fafafa; }
+    .coding-agent-msg .body code {
       padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.06);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;
     }
-    .ai-agent-codeblock {
+    .coding-agent-codeblock {
       border: 1px solid #2a2a2a;
       border-radius: 12px;
       overflow: hidden;
@@ -2047,7 +2047,7 @@
       -webkit-user-select: text;
       user-select: text;
     }
-    .ai-agent-codeblock-header {
+    .coding-agent-codeblock-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -2058,12 +2058,12 @@
       -webkit-user-select: none;
       user-select: none;
     }
-    .ai-agent-codeblock-lang {
+    .coding-agent-codeblock-lang {
       color: #b4b4b4;
       font: 500 12px/1.2 ui-sans-serif, system-ui, sans-serif;
       text-transform: lowercase;
     }
-    .ai-agent-codeblock-copy {
+    .coding-agent-codeblock-copy {
       appearance: none;
       border: 0;
       background: transparent;
@@ -2073,9 +2073,9 @@
       padding: 4px 8px;
       border-radius: 6px;
     }
-    .ai-agent-codeblock-copy:hover { background: rgba(255,255,255,.08); color: #fff; }
-    .ai-agent-codeblock-copy.is-copied { color: #86efac; }
-    .ai-agent-msg .body .ai-agent-codeblock pre {
+    .coding-agent-codeblock-copy:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .coding-agent-codeblock-copy.is-copied { color: #86efac; }
+    .coding-agent-msg .body .coding-agent-codeblock pre {
       margin: 0;
       padding: 14px 16px;
       border-radius: 0;
@@ -2091,7 +2091,7 @@
       user-select: text;
       cursor: text;
     }
-    .ai-agent-msg .body .ai-agent-codeblock pre code {
+    .coding-agent-msg .body .coding-agent-codeblock pre code {
       background: transparent;
       padding: 0;
       color: inherit;
@@ -2100,57 +2100,57 @@
       -webkit-user-select: text;
       user-select: text;
     }
-    .ai-agent-msg .body pre .tok-kw { color: #c792ea; }
-    .ai-agent-msg .body pre .tok-type { color: #ffcb6b; }
-    .ai-agent-msg .body pre .tok-fn { color: #82aaff; }
-    .ai-agent-msg .body pre .tok-str { color: #c3e88d; }
-    .ai-agent-msg .body pre .tok-cmt { color: #6a7386; font-style: italic; }
-    .ai-agent-msg .body pre .tok-num { color: #f78c6c; }
-    .ai-agent-msg .body pre .tok-pp { color: #89ddff; }
-    .ai-agent-msg .body pre .tok-op { color: #89ddff; }
-    .ai-agent-msg .body pre .tok-punct { color: #a6accd; }
-    .ai-agent-msg .body blockquote {
+    .coding-agent-msg .body pre .tok-kw { color: #c792ea; }
+    .coding-agent-msg .body pre .tok-type { color: #ffcb6b; }
+    .coding-agent-msg .body pre .tok-fn { color: #82aaff; }
+    .coding-agent-msg .body pre .tok-str { color: #c3e88d; }
+    .coding-agent-msg .body pre .tok-cmt { color: #6a7386; font-style: italic; }
+    .coding-agent-msg .body pre .tok-num { color: #f78c6c; }
+    .coding-agent-msg .body pre .tok-pp { color: #89ddff; }
+    .coding-agent-msg .body pre .tok-op { color: #89ddff; }
+    .coding-agent-msg .body pre .tok-punct { color: #a6accd; }
+    .coding-agent-msg .body blockquote {
       padding-left: 12px; border-left: 3px solid rgba(0,0,0,.15); color: var(--ai-muted);
     }
-    .ai-agent-msg-images {
+    .coding-agent-msg-images {
       display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; justify-content: flex-end;
     }
-    .ai-agent-msg.agent .ai-agent-msg-images { justify-content: flex-start; }
-    .ai-agent-msg-images img {
+    .coding-agent-msg.agent .coding-agent-msg-images { justify-content: flex-start; }
+    .coding-agent-msg-images img {
       width: 96px; height: 96px; object-fit: cover;
       border-radius: 14px; border: 1px solid var(--ai-border); background: #fff;
     }
-    .ai-agent-msg-files {
+    .coding-agent-msg-files {
       display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end;
     }
-    .ai-agent-msg.agent .ai-agent-msg-files { justify-content: flex-start; }
-    .ai-agent-file-chip {
+    .coding-agent-msg.agent .coding-agent-msg-files { justify-content: flex-start; }
+    .coding-agent-file-chip {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 5px 10px 5px 6px; border-radius: 10px; border: 1px solid var(--ai-border);
       background: #fff; color: #333; font-size: 12px; max-width: 240px;
     }
-    .ai-agent-file-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .ai-agent-file-icon {
+    .coding-agent-file-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .coding-agent-file-icon {
       min-width: 22px; height: 22px; padding: 0 6px; border-radius: 5px; flex: 0 0 auto;
       display: grid; place-items: center;
       font: 700 9px/1 system-ui, -apple-system, sans-serif; color: #fff;
       letter-spacing: -0.01em; white-space: nowrap;
     }
-    #ai-agent-footer {
+    #coding-agent-footer {
       flex: 0 0 auto; padding: 8px 14px 16px;
       background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28%);
       display: flex; flex-direction: column; gap: 8px;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-footer { padding: 8px 16px 18px; }
-    #ai-agent-composer-wrap {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-footer { padding: 8px 16px 18px; }
+    #coding-agent-composer-wrap {
       width: 100%;
       display: flex; flex-direction: column; gap: 8px;
     }
-    #ai-agent-sidebar.is-fullscreen #ai-agent-composer-wrap {
+    #coding-agent-sidebar.is-fullscreen #coding-agent-composer-wrap {
       width: min(var(--ai-content-width), 100%);
       margin: 0 auto;
     }
-    #ai-agent-queue {
+    #coding-agent-queue {
       display: none;
       flex-direction: column;
       border-radius: 12px;
@@ -2160,62 +2160,62 @@
       overflow: hidden;
       font-size: 13px;
     }
-    #ai-agent-queue.has-items { display: flex; }
-    .ai-agent-queue-toggle {
+    #coding-agent-queue.has-items { display: flex; }
+    .coding-agent-queue-toggle {
       display: flex; align-items: center; gap: 8px;
       width: 100%; border: 0; background: transparent; color: var(--ai-muted);
       padding: 10px 12px; cursor: pointer; font: inherit; text-align: left;
     }
-    .ai-agent-queue-toggle:hover { color: var(--ai-text); }
-    .ai-agent-queue-chevron {
+    .coding-agent-queue-toggle:hover { color: var(--ai-text); }
+    .coding-agent-queue-chevron {
       width: 10px; height: 10px; flex: 0 0 10px;
       border-right: 1.5px solid currentColor;
       border-bottom: 1.5px solid currentColor;
       transform: rotate(45deg) translate(-1px, -1px);
       transition: transform .15s ease;
     }
-    #ai-agent-queue.is-collapsed .ai-agent-queue-chevron {
+    #coding-agent-queue.is-collapsed .coding-agent-queue-chevron {
       transform: rotate(-45deg) translate(-1px, 1px);
     }
-    .ai-agent-queue-count { font-weight: 500; color: var(--ai-text); }
-    .ai-agent-queue-list {
+    .coding-agent-queue-count { font-weight: 500; color: var(--ai-text); }
+    .coding-agent-queue-list {
       display: flex; flex-direction: column;
       border-top: 1px solid var(--ai-border);
     }
-    #ai-agent-queue.is-collapsed .ai-agent-queue-list { display: none; }
-    .ai-agent-queue-item {
+    #coding-agent-queue.is-collapsed .coding-agent-queue-list { display: none; }
+    .coding-agent-queue-item {
       display: flex; align-items: center; gap: 10px;
       padding: 8px 10px 8px 12px; min-height: 36px;
     }
-    .ai-agent-queue-item + .ai-agent-queue-item {
+    .coding-agent-queue-item + .coding-agent-queue-item {
       border-top: 1px solid var(--ai-border);
     }
-    .ai-agent-queue-dot {
+    .coding-agent-queue-dot {
       flex: 0 0 8px; width: 8px; height: 8px;
       border: 1.5px solid var(--ai-muted); border-radius: 50%;
     }
-    .ai-agent-queue-text {
+    .coding-agent-queue-text {
       flex: 1 1 auto; min-width: 0; border: 0; background: transparent;
       color: var(--ai-text); font: inherit; text-align: left; cursor: pointer;
       padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .ai-agent-queue-text:hover { color: #111; }
-    .ai-agent-queue-actions {
+    .coding-agent-queue-text:hover { color: #111; }
+    .coding-agent-queue-actions {
       display: flex; align-items: center; gap: 2px; flex: 0 0 auto;
     }
-    .ai-agent-queue-actions button {
+    .coding-agent-queue-actions button {
       width: 26px; height: 26px; border: 0; border-radius: 6px;
       background: transparent; color: var(--ai-muted); cursor: pointer;
       display: grid; place-items: center; padding: 0;
     }
-    .ai-agent-queue-actions button svg {
+    .coding-agent-queue-actions button svg {
       width: 14px; height: 14px; display: block;
     }
-    .ai-agent-queue-actions button:hover {
+    .coding-agent-queue-actions button:hover {
       background: rgba(0,0,0,.05); color: var(--ai-text);
     }
-    .ai-agent-queue-actions button.delete:hover { color: #b91c1c; }
-    #ai-agent-compose-shell {
+    .coding-agent-queue-actions button.delete:hover { color: #b91c1c; }
+    #coding-agent-compose-shell {
       position: relative;
       border-radius: 16px;
       background: #fff;
@@ -2225,22 +2225,22 @@
       flex-direction: column;
       gap: 8px;
     }
-    #ai-agent-compose-shell.mode-plan {
+    #coding-agent-compose-shell.mode-plan {
       box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.04);
       background: #fff;
     }
-    #ai-agent-mode-wrap {
+    #coding-agent-mode-wrap {
       position: relative;
       flex: 0 0 auto;
     }
-    #ai-agent-think-wrap {
+    #coding-agent-think-wrap {
       display: none;
       align-items: center;
       gap: 6px;
       flex: 0 0 auto;
     }
-    #ai-agent-think-wrap.is-visible { display: inline-flex; }
-    .ai-agent-pill {
+    #coding-agent-think-wrap.is-visible { display: inline-flex; }
+    .coding-agent-pill {
       appearance: none;
       border: 0;
       background: #f4f4f4;
@@ -2251,50 +2251,50 @@
       cursor: pointer;
       line-height: 1.2;
     }
-    .ai-agent-pill:hover { color: var(--ai-text); }
-    .ai-agent-pill.is-on {
+    .coding-agent-pill:hover { color: var(--ai-text); }
+    .coding-agent-pill.is-on {
       color: var(--ai-text);
       font-weight: 600;
       background: #ebebeb;
     }
-    .ai-agent-pill.is-select {
+    .coding-agent-pill.is-select {
       padding-right: 20px;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 8px center;
     }
-    #ai-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
-    #ai-agent-attachments:empty { display: none; }
-    .ai-agent-thumb { position: relative; width: 56px; height: 56px; }
-    .ai-agent-thumb img {
+    #coding-agent-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
+    #coding-agent-attachments:empty { display: none; }
+    .coding-agent-thumb { position: relative; width: 56px; height: 56px; }
+    .coding-agent-thumb img {
       width: 100%; height: 100%; object-fit: cover;
       border-radius: 10px; border: 1px solid var(--ai-border); background: #fff;
     }
-    .ai-agent-thumb.file {
+    .coding-agent-thumb.file {
       display: inline-flex; align-items: center; gap: 8px;
       width: auto; min-width: 110px; height: auto;
       padding: 8px 26px 8px 8px; border: 1px solid var(--ai-border);
       border-radius: 10px; background: #fafafa; color: #333; font-size: 12px;
     }
-    .ai-agent-thumb.file .meta { min-width: 0; }
-    .ai-agent-thumb.file .name {
+    .coding-agent-thumb.file .meta { min-width: 0; }
+    .coding-agent-thumb.file .name {
       display: block; max-width: 150px; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; font-weight: 650;
     }
-    .ai-agent-thumb.file .kind { display: none; }
-    .ai-agent-thumb button {
+    .coding-agent-thumb.file .kind { display: none; }
+    .coding-agent-thumb button {
       position: absolute; top: -6px; right: -6px;
       width: 20px; height: 20px; border: 0; border-radius: 50%;
       background: #111; color: #fff; cursor: pointer;
       font: 700 12px/1 system-ui, sans-serif;
     }
-    #ai-agent-input {
+    #coding-agent-input {
       width: 100%; border: 0; outline: none; background: transparent; resize: none;
       min-height: 24px; max-height: 140px;
       padding: 2px 2px 0; font: inherit; line-height: 1.45; color: var(--ai-text);
     }
-    #ai-agent-input::placeholder { color: #8e8e8e; }
-    #ai-agent-slash-menu {
+    #coding-agent-input::placeholder { color: #8e8e8e; }
+    #coding-agent-slash-menu {
       display: none;
       position: absolute;
       left: 10px; right: 10px;
@@ -2308,41 +2308,41 @@
       box-shadow: 0 12px 32px rgba(0,0,0,.12);
       padding: 6px;
     }
-    #ai-agent-slash-menu.is-open { display: block; }
-    .ai-agent-slash-item {
+    #coding-agent-slash-menu.is-open { display: block; }
+    .coding-agent-slash-item {
       display: flex; flex-direction: column; gap: 2px;
       width: 100%; border: 0; background: transparent; text-align: left;
       padding: 8px 10px; border-radius: 8px; cursor: pointer;
       font: inherit; color: var(--ai-text);
     }
-    .ai-agent-slash-item:hover,
-    .ai-agent-slash-item.is-active { background: #f4f4f4; }
-    .ai-agent-slash-item .name {
+    .coding-agent-slash-item:hover,
+    .coding-agent-slash-item.is-active { background: #f4f4f4; }
+    .coding-agent-slash-item .name {
       font: 600 13px/1.3 inherit;
     }
-    .ai-agent-slash-item .name::before { content: "/"; color: var(--ai-muted); font-weight: 500; }
-    .ai-agent-slash-item .desc {
+    .coding-agent-slash-item .name::before { content: "/"; color: var(--ai-muted); font-weight: 500; }
+    .coding-agent-slash-item .desc {
       font: 12px/1.35 inherit; color: var(--ai-muted);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .ai-agent-slash-empty {
+    .coding-agent-slash-empty {
       padding: 10px; font: 12px/1.4 inherit; color: var(--ai-muted);
     }
-    #ai-agent-compose-toolbar {
+    #coding-agent-compose-toolbar {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
-    #ai-agent-compose-left, #ai-agent-compose-right {
+    #coding-agent-compose-left, #coding-agent-compose-right {
       display: flex; align-items: center; gap: 6px; min-width: 0;
     }
-    #ai-agent-mode {
+    #coding-agent-mode {
       max-width: 82px;
     }
-    #ai-agent-model-wrap {
+    #coding-agent-model-wrap {
       position: relative;
       flex: 0 0 auto;
       min-width: 0;
     }
-    #ai-agent-model-btn {
+    #coding-agent-model-btn {
       appearance: none;
       border: 0;
       background: transparent;
@@ -2357,22 +2357,22 @@
       max-width: min(280px, 48vw);
       border-radius: 6px;
     }
-    #ai-agent-model-btn:hover { background: rgba(0,0,0,.04); }
-    #ai-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
-    #ai-agent-model-label {
+    #coding-agent-model-btn:hover { background: rgba(0,0,0,.04); }
+    #coding-agent-model-btn.is-open { background: rgba(0,0,0,.06); }
+    #coding-agent-model-label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       max-width: 100%;
     }
-    #ai-agent-model-chevron {
+    #coding-agent-model-chevron {
       flex: 0 0 auto;
       width: 12px;
       height: 12px;
       opacity: .55;
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b6b' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E") center / 12px no-repeat;
     }
-    #ai-agent-model-menu {
+    #coding-agent-model-menu {
       display: none;
       position: absolute;
       left: 0;
@@ -2388,8 +2388,8 @@
       padding: 8px;
       overflow: hidden;
     }
-    #ai-agent-model-wrap.is-open #ai-agent-model-menu { display: block; }
-    #ai-agent-model-auto-row {
+    #coding-agent-model-wrap.is-open #coding-agent-model-menu { display: block; }
+    #coding-agent-model-auto-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -2397,31 +2397,31 @@
       padding: 8px 10px;
       border-radius: 8px;
     }
-    #ai-agent-model-auto-row:hover { background: #f7f7f7; }
-    #ai-agent-model-auto-copy {
+    #coding-agent-model-auto-row:hover { background: #f7f7f7; }
+    #coding-agent-model-auto-copy {
       display: flex;
       flex-direction: column;
       gap: 2px;
       min-width: 0;
     }
-    #ai-agent-model-auto-copy strong {
+    #coding-agent-model-auto-copy strong {
       font-size: 13px;
       font-weight: 600;
       color: var(--ai-text);
     }
-    #ai-agent-model-auto-copy span {
+    #coding-agent-model-auto-copy span {
       font-size: 11px;
       color: var(--ai-muted);
       line-height: 1.35;
     }
-    #ai-agent-model-auto-resolved {
+    #coding-agent-model-auto-resolved {
       font-size: 11px;
       color: #10a37f;
       line-height: 1.35;
       margin-top: 2px;
     }
-    #ai-agent-model-auto-resolved:empty { display: none; }
-    #ai-agent-model-auto {
+    #coding-agent-model-auto-resolved:empty { display: none; }
+    #coding-agent-model-auto {
       appearance: none;
       flex: 0 0 auto;
       width: 36px;
@@ -2433,7 +2433,7 @@
       cursor: pointer;
       transition: background .15s ease;
     }
-    #ai-agent-model-auto::after {
+    #coding-agent-model-auto::after {
       content: "";
       position: absolute;
       top: 2px;
@@ -2445,9 +2445,9 @@
       box-shadow: 0 1px 2px rgba(0,0,0,.18);
       transition: transform .15s ease;
     }
-    #ai-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
-    #ai-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
-    #ai-agent-model-list {
+    #coding-agent-model-auto[aria-checked="true"] { background: #0d0d0d; }
+    #coding-agent-model-auto[aria-checked="true"]::after { transform: translateX(16px); }
+    #coding-agent-model-list {
       display: none;
       margin-top: 4px;
       padding-top: 4px;
@@ -2455,8 +2455,8 @@
       max-height: 280px;
       overflow-y: auto;
     }
-    #ai-agent-model-wrap:not(.is-auto) #ai-agent-model-list { display: block; }
-    .ai-agent-model-option {
+    #coding-agent-model-wrap:not(.is-auto) #coding-agent-model-list { display: block; }
+    .coding-agent-model-option {
       display: flex;
       align-items: center;
       width: 100%;
@@ -2469,24 +2469,24 @@
       color: var(--ai-text);
       cursor: pointer;
     }
-    .ai-agent-model-option:hover { background: #f4f4f4; }
-    .ai-agent-model-option.is-selected {
+    .coding-agent-model-option:hover { background: #f4f4f4; }
+    .coding-agent-model-option.is-selected {
       background: #f0f0f0;
       font-weight: 600;
     }
-    #ai-agent-model { display: none; }
-    #ai-agent-file-input { display: none; }
-    #ai-agent-pick-file, #ai-agent-send {
+    #coding-agent-model { display: none; }
+    #coding-agent-file-input { display: none; }
+    #coding-agent-pick-file, #coding-agent-send {
       width: 32px; height: 32px; border-radius: 999px; border: 0; cursor: pointer;
       flex: 0 0 auto; display: grid; place-items: center;
     }
-    #ai-agent-pick-file { background: transparent; color: #555; font-size: 16px; }
-    #ai-agent-pick-file:hover { background: #f3f3f3; }
-    #ai-agent-send { background: #0d0d0d; color: #fff; font-size: 15px; }
-    #ai-agent-send:hover { background: #2a2a2a; }
-    #ai-agent-send.is-queue { font-size: 11px; font-weight: 700; }
-    #ai-agent-send.hidden { display: none; }
-    body.ai-agent-page-locked { overflow: hidden !important; }
+    #coding-agent-pick-file { background: transparent; color: #555; font-size: 16px; }
+    #coding-agent-pick-file:hover { background: #f3f3f3; }
+    #coding-agent-send { background: #0d0d0d; color: #fff; font-size: 15px; }
+    #coding-agent-send:hover { background: #2a2a2a; }
+    #coding-agent-send.is-queue { font-size: 11px; font-weight: 700; }
+    #coding-agent-send.hidden { display: none; }
+    body.coding-agent-page-locked { overflow: hidden !important; }
   `;
 
   var styleEl = document.createElement("style");
@@ -2495,55 +2495,55 @@
 
   var container = document.createElement("div");
   container.innerHTML = `
-    <div id="ai-agent-backdrop"></div>
-    <div id="ai-agent-trigger" title="${providerUi.name}">${providerUi.markHtml}</div>
-    <div id="ai-agent-sidebar">
-      <div id="ai-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
-      <div id="ai-agent-workspace">
-      <button id="ai-agent-toggle-ide" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="false">
+    <div id="coding-agent-backdrop"></div>
+    <div id="coding-agent-trigger" title="${providerUi.name}">${providerUi.markHtml}</div>
+    <div id="coding-agent-sidebar">
+      <div id="coding-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
+      <div id="coding-agent-workspace">
+      <button id="coding-agent-toggle-ide" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="false">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
           <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
           <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" opacity=".22"/>
         </svg>
       </button>
-      <div id="ai-agent-nav-shell">
-      <div id="ai-agent-nav-pins">
-        <button type="button" id="ai-agent-nav-rail-brand" title="展开边栏 (Ctrl+B)" aria-label="展开边栏">
+      <div id="coding-agent-nav-shell">
+      <div id="coding-agent-nav-pins">
+        <button type="button" id="coding-agent-nav-rail-brand" title="展开边栏 (Ctrl+B)" aria-label="展开边栏">
           ${providerUi.markHtml}
         </button>
-        <button type="button" id="ai-agent-nav-rail-avatar" title="账户" aria-label="账户">A</button>
+        <button type="button" id="coding-agent-nav-rail-avatar" title="账户" aria-label="账户">A</button>
       </div>
-      <aside id="ai-agent-nav-rail" aria-label="收起的边栏">
-        <div id="ai-agent-nav-rail-top">
-          <button type="button" id="ai-agent-nav-rail-new" class="ai-agent-nav-rail-btn" title="新建 Agent" aria-label="新建 Agent">
+      <aside id="coding-agent-nav-rail" aria-label="收起的边栏">
+        <div id="coding-agent-nav-rail-top">
+          <button type="button" id="coding-agent-nav-rail-new" class="coding-agent-nav-rail-btn" title="新建 Agent" aria-label="新建 Agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
             </svg>
           </button>
-          <button type="button" id="ai-agent-nav-rail-chats" class="ai-agent-nav-rail-btn" title="最近聊天" aria-label="最近聊天" aria-expanded="false" aria-haspopup="dialog">
+          <button type="button" id="coding-agent-nav-rail-chats" class="coding-agent-nav-rail-btn" title="最近聊天" aria-label="最近聊天" aria-expanded="false" aria-haspopup="dialog">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
           </button>
         </div>
-        <div id="ai-agent-nav-rail-spacer" aria-hidden="true"></div>
-        <div id="ai-agent-nav-rail-bottom" aria-hidden="true"></div>
+        <div id="coding-agent-nav-rail-spacer" aria-hidden="true"></div>
+        <div id="coding-agent-nav-rail-bottom" aria-hidden="true"></div>
       </aside>
-      <div id="ai-agent-nav-rail-flyout" role="dialog" aria-label="最近聊天">
-        <div id="ai-agent-nav-rail-flyout-title">最近聊天</div>
-        <div id="ai-agent-nav-rail-flyout-list"></div>
-        <div id="ai-agent-nav-rail-flyout-empty" hidden></div>
+      <div id="coding-agent-nav-rail-flyout" role="dialog" aria-label="最近聊天">
+        <div id="coding-agent-nav-rail-flyout-title">最近聊天</div>
+        <div id="coding-agent-nav-rail-flyout-list"></div>
+        <div id="coding-agent-nav-rail-flyout-empty" hidden></div>
       </div>
-      <aside id="ai-agent-nav" aria-label="历史对话">
-        <div id="ai-agent-nav-resize" title="拖动调整宽度" aria-hidden="true"></div>
-        <div id="ai-agent-nav-head">
-          <div id="ai-agent-nav-brand">
-            <span class="ai-agent-nav-pin-slot" aria-hidden="true"></span>
-            <span id="ai-agent-run-state" class="ai-agent-run-state">就绪</span>
+      <aside id="coding-agent-nav" aria-label="历史对话">
+        <div id="coding-agent-nav-resize" title="拖动调整宽度" aria-hidden="true"></div>
+        <div id="coding-agent-nav-head">
+          <div id="coding-agent-nav-brand">
+            <span class="coding-agent-nav-pin-slot" aria-hidden="true"></span>
+            <span id="coding-agent-run-state" class="coding-agent-run-state">就绪</span>
           </div>
-          <button id="ai-agent-toggle-nav" type="button" title="收起边栏 (Ctrl+B)" aria-label="收起边栏" aria-pressed="true">
+          <button id="coding-agent-toggle-nav" type="button" title="收起边栏 (Ctrl+B)" aria-label="收起边栏" aria-pressed="true">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
               <path d="M5.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
@@ -2551,27 +2551,27 @@
             </svg>
           </button>
         </div>
-        <div id="ai-agent-nav-top">
-          <button id="ai-agent-nav-new" type="button" title="新建 Agent">
+        <div id="coding-agent-nav-top">
+          <button id="coding-agent-nav-new" type="button" title="新建 Agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 5v14"></path><path d="M5 12h14"></path>
             </svg>
             <span>新建 Agent</span>
           </button>
         </div>
-        <div id="ai-agent-nav-scroll">
-          <div id="ai-agent-nav-label-row">
-            <button type="button" id="ai-agent-nav-label" title="折叠仓库列表" aria-expanded="true">
-              <span class="ai-agent-nav-label-chevron" aria-hidden="true"></span>
+        <div id="coding-agent-nav-scroll">
+          <div id="coding-agent-nav-label-row">
+            <button type="button" id="coding-agent-nav-label" title="折叠仓库列表" aria-expanded="true">
+              <span class="coding-agent-nav-label-chevron" aria-hidden="true"></span>
               <span>仓库</span>
             </button>
-            <div id="ai-agent-nav-label-actions">
-              <button type="button" id="ai-agent-nav-filter" class="ai-agent-nav-mini-btn" title="隐藏空仓库" aria-label="隐藏空仓库" aria-pressed="false">
+            <div id="coding-agent-nav-label-actions">
+              <button type="button" id="coding-agent-nav-filter" class="coding-agent-nav-mini-btn" title="隐藏空仓库" aria-label="隐藏空仓库" aria-pressed="false">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                   <path d="M2.5 3.5h11l-4 5v3.5l-3 1.5v-5z"/>
                 </svg>
               </button>
-              <button type="button" id="ai-agent-nav-add-repo" class="ai-agent-nav-mini-btn" title="添加仓库" aria-label="添加仓库">
+              <button type="button" id="coding-agent-nav-add-repo" class="coding-agent-nav-mini-btn" title="添加仓库" aria-label="添加仓库">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M2.5 4.5h4l1.2 1.3H13.5v6.7H2.5z"/>
                   <path d="M8 8v4"/><path d="M6 10h4"/>
@@ -2579,34 +2579,34 @@
               </button>
             </div>
           </div>
-          <div id="ai-agent-nav-list"></div>
-          <div id="ai-agent-nav-empty" style="display:none" hidden></div>
+          <div id="coding-agent-nav-list"></div>
+          <div id="coding-agent-nav-empty" style="display:none" hidden></div>
         </div>
-        <div id="ai-agent-nav-footer">
-          <div id="ai-agent-nav-user">
-            <span class="ai-agent-nav-pin-slot" aria-hidden="true"></span>
-            <span id="ai-agent-nav-user-name"></span>
+        <div id="coding-agent-nav-footer">
+          <div id="coding-agent-nav-user">
+            <span class="coding-agent-nav-pin-slot" aria-hidden="true"></span>
+            <span id="coding-agent-nav-user-name"></span>
           </div>
-          <button id="ai-agent-logout" type="button" title="退出登录">退出</button>
+          <button id="coding-agent-logout" type="button" title="退出登录">退出</button>
         </div>
       </aside>
       </div>
-      <div id="ai-agent-main">
-      <div id="ai-agent-topbar">
-        <div id="ai-agent-brand">
-          <div id="ai-agent-brand-mark-main">${providerUi.markHtml}</div>
-          <div id="ai-agent-brand-text">
-            <span id="ai-agent-run-state-main" class="ai-agent-run-state">就绪</span>
-            <strong id="ai-agent-chat-title"></strong>
+      <div id="coding-agent-main">
+      <div id="coding-agent-topbar">
+        <div id="coding-agent-brand">
+          <div id="coding-agent-brand-mark-main">${providerUi.markHtml}</div>
+          <div id="coding-agent-brand-text">
+            <span id="coding-agent-run-state-main" class="coding-agent-run-state">就绪</span>
+            <strong id="coding-agent-chat-title"></strong>
           </div>
         </div>
-        <div id="ai-agent-top-actions">
-          <div id="ai-agent-user-chip" aria-live="polite">
-            <span id="ai-agent-user-name"></span>
+        <div id="coding-agent-top-actions">
+          <div id="coding-agent-user-chip" aria-live="polite">
+            <span id="coding-agent-user-name"></span>
           </div>
-          <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
-          <button id="ai-agent-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false">
-            <span class="ai-agent-icon-expand" aria-hidden="true">
+          <button id="coding-agent-new-chat" type="button" title="新对话">新对话</button>
+          <button id="coding-agent-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false">
+            <span class="coding-agent-icon-expand" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M15 3h6v6"></path>
                 <path d="M9 21H3v-6"></path>
@@ -2614,7 +2614,7 @@
                 <path d="M3 21l7-7"></path>
               </svg>
             </span>
-            <span class="ai-agent-icon-shrink" aria-hidden="true">
+            <span class="coding-agent-icon-shrink" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 14h6v6"></path>
                 <path d="M20 10h-6V4"></path>
@@ -2625,109 +2625,109 @@
           </button>
         </div>
       </div>
-      <div id="ai-agent-scroll-wrap">
-        <div id="ai-agent-messages">
-          <div id="ai-agent-empty" aria-hidden="true">
+      <div id="coding-agent-scroll-wrap">
+        <div id="coding-agent-messages">
+          <div id="coding-agent-empty" aria-hidden="true">
             <h1>${providerUi.emptyTitle}</h1>
             <p>${providerUi.emptySub}</p>
           </div>
-          <div id="ai-agent-thread"></div>
+          <div id="coding-agent-thread"></div>
         </div>
-        <button id="ai-agent-jump-bottom" type="button" title="回到底部">↓ 回到底部</button>
+        <button id="coding-agent-jump-bottom" type="button" title="回到底部">↓ 回到底部</button>
       </div>
-      <div id="ai-agent-footer">
-        <div id="ai-agent-composer-wrap">
-          <div id="ai-agent-queue"></div>
-          <div id="ai-agent-ctx-bar">
-            <button type="button" id="ai-agent-ctx-ws" class="ai-agent-ctx-chip" title="选择仓库" aria-haspopup="listbox" aria-expanded="false">
-              <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <div id="coding-agent-footer">
+        <div id="coding-agent-composer-wrap">
+          <div id="coding-agent-queue"></div>
+          <div id="coding-agent-ctx-bar">
+            <button type="button" id="coding-agent-ctx-ws" class="coding-agent-ctx-chip" title="选择仓库" aria-haspopup="listbox" aria-expanded="false">
+              <svg class="coding-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path>
               </svg>
-              <span id="ai-agent-ctx-ws-label" class="ai-agent-ctx-chip-label">No Repo</span>
-              <span class="ai-agent-ctx-chevron" aria-hidden="true"></span>
+              <span id="coding-agent-ctx-ws-label" class="coding-agent-ctx-chip-label">No Repo</span>
+              <span class="coding-agent-ctx-chevron" aria-hidden="true"></span>
             </button>
-            <button type="button" id="ai-agent-ctx-branch" class="ai-agent-ctx-chip" disabled title="当前分支" hidden>
-              <span id="ai-agent-ctx-branch-label" class="ai-agent-ctx-chip-label"></span>
+            <button type="button" id="coding-agent-ctx-branch" class="coding-agent-ctx-chip" disabled title="当前分支" hidden>
+              <span id="coding-agent-ctx-branch-label" class="coding-agent-ctx-chip-label"></span>
             </button>
-            <div id="ai-agent-ws-picker" role="listbox" aria-label="选择仓库" aria-hidden="true">
-              <input id="ai-agent-ws-search" type="search" placeholder="Search folders, repos..." autocomplete="off">
-              <div class="ai-agent-ws-section-label">Recents</div>
-              <div id="ai-agent-ws-recents" class="ai-agent-ws-list"></div>
-              <div class="ai-agent-ws-section-label">Repos</div>
-              <div id="ai-agent-ws-repos" class="ai-agent-ws-list"></div>
-              <div id="ai-agent-ws-path-row">
-                <input id="ai-agent-ws-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
-                <button type="button" id="ai-agent-ws-path-go">打开</button>
+            <div id="coding-agent-ws-picker" role="listbox" aria-label="选择仓库" aria-hidden="true">
+              <input id="coding-agent-ws-search" type="search" placeholder="Search folders, repos..." autocomplete="off">
+              <div class="coding-agent-ws-section-label">Recents</div>
+              <div id="coding-agent-ws-recents" class="coding-agent-ws-list"></div>
+              <div class="coding-agent-ws-section-label">Repos</div>
+              <div id="coding-agent-ws-repos" class="coding-agent-ws-list"></div>
+              <div id="coding-agent-ws-path-row">
+                <input id="coding-agent-ws-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                <button type="button" id="coding-agent-ws-path-go">打开</button>
               </div>
-              <div class="ai-agent-ws-foot">
-                <button type="button" id="ai-agent-ws-use-existing">
-                  <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
-                  <span class="ai-agent-ws-item-main">Use Existing...</span>
-                  <span class="ai-agent-ws-chevron-r" aria-hidden="true"></span>
+              <div class="coding-agent-ws-foot">
+                <button type="button" id="coding-agent-ws-use-existing">
+                  <svg class="coding-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                  <span class="coding-agent-ws-item-main">Use Existing...</span>
+                  <span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>
                 </button>
-                <button type="button" id="ai-agent-ws-new-folder">
-                  <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <button type="button" id="coding-agent-ws-new-folder">
+                  <svg class="coding-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path>
                     <path d="M12 11v6"></path><path d="M9 14h6"></path>
                   </svg>
                   New Folder
                 </button>
               </div>
-              <div id="ai-agent-ws-flyout" aria-hidden="true">
-                <div id="ai-agent-ws-flyout-panels">
-                  <div data-flyout-panel="pc" id="ai-agent-ws-flyout-pc">
-                    <input id="ai-agent-ws-flyout-search" type="search" placeholder="Search This PC..." autocomplete="off">
-                    <div id="ai-agent-ws-flyout-list" class="ai-agent-ws-list"></div>
-                    <button type="button" id="ai-agent-ws-open-folder" class="ai-agent-ws-item">
-                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
-                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Open Folder</span></span>
+              <div id="coding-agent-ws-flyout" aria-hidden="true">
+                <div id="coding-agent-ws-flyout-panels">
+                  <div data-flyout-panel="pc" id="coding-agent-ws-flyout-pc">
+                    <input id="coding-agent-ws-flyout-search" type="search" placeholder="Search This PC..." autocomplete="off">
+                    <div id="coding-agent-ws-flyout-list" class="coding-agent-ws-list"></div>
+                    <button type="button" id="coding-agent-ws-open-folder" class="coding-agent-ws-item">
+                      <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Open Folder</span></span>
                     </button>
-                    <div id="ai-agent-ws-flyout-path">
-                      <input id="ai-agent-ws-flyout-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
-                      <button type="button" id="ai-agent-ws-flyout-go">打开</button>
+                    <div id="coding-agent-ws-flyout-path">
+                      <input id="coding-agent-ws-flyout-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                      <button type="button" id="coding-agent-ws-flyout-go">打开</button>
                     </div>
                   </div>
-                  <div data-flyout-panel="use-existing" id="ai-agent-ws-flyout-use">
-                    <button type="button" id="ai-agent-ws-ue-open-folder" class="ai-agent-ws-item">
-                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
-                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Open Folder</span></span>
+                  <div data-flyout-panel="use-existing" id="coding-agent-ws-flyout-use">
+                    <button type="button" id="coding-agent-ws-ue-open-folder" class="coding-agent-ws-item">
+                      <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Open Folder</span></span>
                     </button>
-                    <button type="button" id="ai-agent-ws-ue-ssh" class="ai-agent-ws-item">
-                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>
-                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Connect via SSH</span></span>
+                    <button type="button" id="coding-agent-ws-ue-ssh" class="coding-agent-ws-item">
+                      <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>
+                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Connect via SSH</span></span>
                     </button>
-                    <div id="ai-agent-ws-flyout-path-ue">
-                      <input id="ai-agent-ws-ue-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
-                      <button type="button" id="ai-agent-ws-ue-path-go">打开</button>
+                    <div id="coding-agent-ws-flyout-path-ue">
+                      <input id="coding-agent-ws-ue-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                      <button type="button" id="coding-agent-ws-ue-path-go">打开</button>
                     </div>
                   </div>
-                  <div data-flyout-panel="ssh-tree" id="ai-agent-ws-flyout-ssh-tree">
-                    <div id="ai-agent-ws-ssh-tree-head" class="ai-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
-                    <div id="ai-agent-ws-ssh-tree-list" class="ai-agent-ws-list"></div>
-                    <button type="button" id="ai-agent-ws-ssh-use-here" class="ai-agent-ws-item">
-                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Use this folder</span></span>
+                  <div data-flyout-panel="ssh-tree" id="coding-agent-ws-flyout-ssh-tree">
+                    <div id="coding-agent-ws-ssh-tree-head" class="coding-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
+                    <div id="coding-agent-ws-ssh-tree-list" class="coding-agent-ws-list"></div>
+                    <button type="button" id="coding-agent-ws-ssh-use-here" class="coding-agent-ws-item">
+                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Use this folder</span></span>
                     </button>
                   </div>
-                  <div data-flyout-panel="ssh-form" id="ai-agent-ws-flyout-ssh-form">
-                    <div id="ai-agent-ws-ssh-form" class="is-on">
-                      <label>ID<input id="ai-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
-                      <label>Label<input id="ai-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
-                      <label>Host<input id="ai-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
-                      <label>Port<input id="ai-agent-ws-ssh-port" type="number" value="22" min="1" max="65535"></label>
-                      <label>User<input id="ai-agent-ws-ssh-user" type="text" placeholder="wxj" autocomplete="off"></label>
+                  <div data-flyout-panel="ssh-form" id="coding-agent-ws-flyout-ssh-form">
+                    <div id="coding-agent-ws-ssh-form" class="is-on">
+                      <label>ID<input id="coding-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                      <label>Label<input id="coding-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                      <label>Host<input id="coding-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
+                      <label>Port<input id="coding-agent-ws-ssh-port" type="number" value="22" min="1" max="65535"></label>
+                      <label>User<input id="coding-agent-ws-ssh-user" type="text" placeholder="wxj" autocomplete="off"></label>
                       <label>Auth
-                        <select id="ai-agent-ws-ssh-auth">
+                        <select id="coding-agent-ws-ssh-auth">
                           <option value="key">SSH Key</option>
                           <option value="password">Password</option>
                         </select>
                       </label>
-                      <label id="ai-agent-ws-ssh-key-wrap">Key path<input id="ai-agent-ws-ssh-key" type="text" placeholder="~/.ssh/id_rsa" autocomplete="off"></label>
-                      <label id="ai-agent-ws-ssh-pass-wrap" style="display:none;">Password<input id="ai-agent-ws-ssh-pass" type="password" autocomplete="new-password"></label>
-                      <label>Default path<input id="ai-agent-ws-ssh-default" type="text" placeholder="/home/user" autocomplete="off"></label>
-                      <div id="ai-agent-ws-ssh-status"></div>
-                      <div id="ai-agent-ws-ssh-form-actions">
-                        <button type="button" id="ai-agent-ws-ssh-test">测试连接</button>
-                        <button type="button" id="ai-agent-ws-ssh-save">保存</button>
+                      <label id="coding-agent-ws-ssh-key-wrap">Key path<input id="coding-agent-ws-ssh-key" type="text" placeholder="~/.ssh/id_rsa" autocomplete="off"></label>
+                      <label id="coding-agent-ws-ssh-pass-wrap" style="display:none;">Password<input id="coding-agent-ws-ssh-pass" type="password" autocomplete="new-password"></label>
+                      <label>Default path<input id="coding-agent-ws-ssh-default" type="text" placeholder="/home/user" autocomplete="off"></label>
+                      <div id="coding-agent-ws-ssh-status"></div>
+                      <div id="coding-agent-ws-ssh-form-actions">
+                        <button type="button" id="coding-agent-ws-ssh-test">测试连接</button>
+                        <button type="button" id="coding-agent-ws-ssh-save">保存</button>
                       </div>
                     </div>
                   </div>
@@ -2735,111 +2735,111 @@
               </div>
             </div>
           </div>
-          <div id="ai-agent-compose-shell">
-          <div id="ai-agent-slash-menu" role="listbox" aria-label="Skills"></div>
-          <div id="ai-agent-attachments"></div>
-          <textarea id="ai-agent-input" rows="1" placeholder="${providerUi.placeholder}"></textarea>
-          <div id="ai-agent-compose-toolbar">
-            <div id="ai-agent-compose-left">
-              <div id="ai-agent-mode-wrap">
-                <select id="ai-agent-mode" class="ai-agent-pill is-select" title="模式">
+          <div id="coding-agent-compose-shell">
+          <div id="coding-agent-slash-menu" role="listbox" aria-label="Skills"></div>
+          <div id="coding-agent-attachments"></div>
+          <textarea id="coding-agent-input" rows="1" placeholder="${providerUi.placeholder}"></textarea>
+          <div id="coding-agent-compose-toolbar">
+            <div id="coding-agent-compose-left">
+              <div id="coding-agent-mode-wrap">
+                <select id="coding-agent-mode" class="coding-agent-pill is-select" title="模式">
                   <option value="agent">Agent</option>
                   <option value="plan">Plan</option>
                 </select>
               </div>
-              <div id="ai-agent-think-wrap" title="DeepSeek 深度思考">
-                <button type="button" id="ai-agent-thinking" class="ai-agent-pill" aria-pressed="false">
+              <div id="coding-agent-think-wrap" title="DeepSeek 深度思考">
+                <button type="button" id="coding-agent-thinking" class="coding-agent-pill" aria-pressed="false">
                   深度思考
                 </button>
               </div>
-              <div id="ai-agent-model-wrap">
-                <button id="ai-agent-model-btn" type="button" title="模型" aria-haspopup="listbox" aria-expanded="false">
-                  <span id="ai-agent-model-label"></span>
-                  <span id="ai-agent-model-chevron" aria-hidden="true"></span>
+              <div id="coding-agent-model-wrap">
+                <button id="coding-agent-model-btn" type="button" title="模型" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="coding-agent-model-label"></span>
+                  <span id="coding-agent-model-chevron" aria-hidden="true"></span>
                 </button>
-                <div id="ai-agent-model-menu" role="listbox" aria-label="选择模型">
-                  <div id="ai-agent-model-auto-row">
-                    <div id="ai-agent-model-auto-copy">
+                <div id="coding-agent-model-menu" role="listbox" aria-label="选择模型">
+                  <div id="coding-agent-model-auto-row">
+                    <div id="coding-agent-model-auto-copy">
                       <strong>Auto</strong>
                       <span>自动选择适合当前任务的模型</span>
-                      <span id="ai-agent-model-auto-resolved"></span>
+                      <span id="coding-agent-model-auto-resolved"></span>
                     </div>
-                    <button id="ai-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>
+                    <button id="coding-agent-model-auto" type="button" role="switch" aria-checked="false" title="Auto"></button>
                   </div>
-                  <div id="ai-agent-model-list"></div>
+                  <div id="coding-agent-model-list"></div>
                 </div>
-                <input id="ai-agent-model" type="hidden" value="${defaultModel}" />
+                <input id="coding-agent-model" type="hidden" value="${defaultModel}" />
               </div>
             </div>
-            <div id="ai-agent-compose-right">
-              <input id="ai-agent-file-input" type="file" multiple />
-              <button id="ai-agent-pick-file" type="button" title="添加文件">📎</button>
-              <button id="ai-agent-send" type="button" title="发送">↑</button>
-              <button id="ai-agent-stop" type="button" title="终止对话"><span id="ai-agent-stop-square"></span></button>
+            <div id="coding-agent-compose-right">
+              <input id="coding-agent-file-input" type="file" multiple />
+              <button id="coding-agent-pick-file" type="button" title="添加文件">📎</button>
+              <button id="coding-agent-send" type="button" title="发送">↑</button>
+              <button id="coding-agent-stop" type="button" title="终止对话"><span id="coding-agent-stop-square"></span></button>
             </div>
           </div>
         </div>
         </div>
       </div>
       </div>
-      <aside id="ai-agent-ide-rail" aria-label="侧栏工具">
-        <button type="button" id="ai-agent-ide-rail-terminal" class="ai-agent-ide-rail-btn" title="终端" aria-label="终端">
+      <aside id="coding-agent-ide-rail" aria-label="侧栏工具">
+        <button type="button" id="coding-agent-ide-rail-terminal" class="coding-agent-ide-rail-btn" title="终端" aria-label="终端">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3.5 5.5L7 8l-3.5 2.5"/>
             <path d="M8 11.5h4.5"/>
           </svg>
-          <span class="ai-agent-ide-rail-label">终端</span>
+          <span class="coding-agent-ide-rail-label">终端</span>
         </button>
-        <button type="button" id="ai-agent-ide-rail-files" class="ai-agent-ide-rail-btn" title="文件" aria-label="文件">
+        <button type="button" id="coding-agent-ide-rail-files" class="coding-agent-ide-rail-btn" title="文件" aria-label="文件">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M4 2.5h5.5L12 5v8.5H4z"/>
             <path d="M9.5 2.5V5H12"/>
           </svg>
-          <span class="ai-agent-ide-rail-label">文件</span>
+          <span class="coding-agent-ide-rail-label">文件</span>
         </button>
-        <button type="button" id="ai-agent-ide-rail-expand" class="ai-agent-ide-rail-btn" title="展开" aria-label="展开" aria-expanded="false">
-          <svg class="ai-agent-ide-rail-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <button type="button" id="coding-agent-ide-rail-expand" class="coding-agent-ide-rail-btn" title="展开" aria-label="展开" aria-expanded="false">
+          <svg class="coding-agent-ide-rail-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 4L5 8l4 4"/>
             <path d="M12 4L8 8l4 4"/>
           </svg>
-          <span class="ai-agent-ide-rail-label">收起</span>
+          <span class="coding-agent-ide-rail-label">收起</span>
         </button>
       </aside>
-      <aside id="ai-agent-ide" aria-label="代码编辑" data-panel="files">
-        <div id="ai-agent-ide-resize" title="拖动调整宽度" aria-hidden="true"></div>
-        <div id="ai-agent-ide-topbar">
-          <div id="ai-agent-ide-tabs">
-            <div id="ai-agent-ide-tabs-scroll"></div>
+      <aside id="coding-agent-ide" aria-label="代码编辑" data-panel="files">
+        <div id="coding-agent-ide-resize" title="拖动调整宽度" aria-hidden="true"></div>
+        <div id="coding-agent-ide-topbar">
+          <div id="coding-agent-ide-tabs">
+            <div id="coding-agent-ide-tabs-scroll"></div>
             <div style="position:relative;flex:0 0 auto;">
-              <button type="button" id="ai-agent-ide-tab-add" title="新建页签" aria-label="新建页签" aria-haspopup="menu" aria-expanded="false">+</button>
-              <div id="ai-agent-ide-new-menu" role="menu" aria-hidden="true">
+              <button type="button" id="coding-agent-ide-tab-add" title="新建页签" aria-label="新建页签" aria-haspopup="menu" aria-expanded="false">+</button>
+              <div id="coding-agent-ide-new-menu" role="menu" aria-hidden="true">
                 <button type="button" data-ide-new="file" role="menuitem">
-                  <svg class="ai-agent-ide-new-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 2.5h5.5L12 5v8.5H4z"/><path d="M9.5 2.5V5H12"/></svg>
+                  <svg class="coding-agent-ide-new-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 2.5h5.5L12 5v8.5H4z"/><path d="M9.5 2.5V5H12"/></svg>
                   <span>File</span>
-                  <span class="ai-agent-ide-new-kbd">Ctrl+G</span>
+                  <span class="coding-agent-ide-new-kbd">Ctrl+G</span>
                 </button>
                 <button type="button" data-ide-new="terminal" role="menuitem">
-                  <svg class="ai-agent-ide-new-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3.5 5.5L7 8l-3.5 2.5"/><path d="M8 11.5h4.5"/></svg>
+                  <svg class="coding-agent-ide-new-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3.5 5.5L7 8l-3.5 2.5"/><path d="M8 11.5h4.5"/></svg>
                   <span>Terminal</span>
-                  <span class="ai-agent-ide-new-kbd">Ctrl+J</span>
+                  <span class="coding-agent-ide-new-kbd">Ctrl+J</span>
                 </button>
               </div>
             </div>
-            <button type="button" id="ai-agent-ide-maximize" title="全屏编辑器" aria-label="全屏编辑器" aria-pressed="false">
-              <span class="ai-agent-icon-expand" aria-hidden="true">
+            <button type="button" id="coding-agent-ide-maximize" title="全屏编辑器" aria-label="全屏编辑器" aria-pressed="false">
+              <span class="coding-agent-icon-expand" aria-hidden="true">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 6V3h3"/><path d="M13 6V3h-3"/><path d="M3 10v3h3"/><path d="M13 10v3h-3"/>
                 </svg>
               </span>
-              <span class="ai-agent-icon-shrink" aria-hidden="true">
+              <span class="coding-agent-icon-shrink" aria-hidden="true">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M6 3v3H3"/><path d="M10 3v3h3"/><path d="M6 13v-3H3"/><path d="M10 13v-3h3"/>
                 </svg>
               </span>
             </button>
           </div>
-          <div id="ai-agent-ide-top-actions">
-            <button id="ai-agent-toggle-ide-dock" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="true">
+          <div id="coding-agent-ide-top-actions">
+            <button id="coding-agent-toggle-ide-dock" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="true">
               <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
                 <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
@@ -2848,37 +2848,37 @@
             </button>
           </div>
         </div>
-        <div id="ai-agent-ide-body">
-          <div id="ai-agent-ide-editor">
-            <div id="ai-agent-ide-crumb">
-              <button type="button" id="ai-agent-ide-back" class="ai-agent-ide-icon-btn" title="上一个文件" aria-label="上一个文件" disabled>
+        <div id="coding-agent-ide-body">
+          <div id="coding-agent-ide-editor">
+            <div id="coding-agent-ide-crumb">
+              <button type="button" id="coding-agent-ide-back" class="coding-agent-ide-icon-btn" title="上一个文件" aria-label="上一个文件" disabled>
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M10 3L5 8l5 5"/>
                 </svg>
               </button>
-              <button type="button" id="ai-agent-ide-forward" class="ai-agent-ide-icon-btn" title="下一个文件" aria-label="下一个文件" disabled>
+              <button type="button" id="coding-agent-ide-forward" class="coding-agent-ide-icon-btn" title="下一个文件" aria-label="下一个文件" disabled>
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M6 3l5 5-5 5"/>
                 </svg>
               </button>
-              <span id="ai-agent-ide-crumb-name"></span>
-              <span id="ai-agent-ide-crumb-spacer"></span>
-              <div id="ai-agent-ide-view-tools">
-                <button type="button" id="ai-agent-ide-view-preview" class="ai-agent-ide-view-btn" title="预览">预览</button>
-                <button type="button" id="ai-agent-ide-view-source" class="ai-agent-ide-view-btn is-on" title="源码">源码</button>
+              <span id="coding-agent-ide-crumb-name"></span>
+              <span id="coding-agent-ide-crumb-spacer"></span>
+              <div id="coding-agent-ide-view-tools">
+                <button type="button" id="coding-agent-ide-view-preview" class="coding-agent-ide-view-btn" title="预览">预览</button>
+                <button type="button" id="coding-agent-ide-view-source" class="coding-agent-ide-view-btn is-on" title="源码">源码</button>
               </div>
-              <button type="button" id="ai-agent-ide-find-toggle" class="ai-agent-ide-icon-btn" title="查找 (Ctrl+F)" aria-label="查找">
+              <button type="button" id="coding-agent-ide-find-toggle" class="coding-agent-ide-icon-btn" title="查找 (Ctrl+F)" aria-label="查找">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                   <circle cx="7" cy="7" r="4.2"/>
                   <path d="M10.2 10.2L13.5 13.5" stroke-linecap="round"/>
                 </svg>
               </button>
-              <button type="button" id="ai-agent-ide-outline-toggle" class="ai-agent-ide-icon-btn" title="大纲" aria-label="大纲">
+              <button type="button" id="coding-agent-ide-outline-toggle" class="coding-agent-ide-icon-btn" title="大纲" aria-label="大纲">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
                   <path d="M3 4h10"/><path d="M3 8h7"/><path d="M3 12h10"/>
                 </svg>
               </button>
-              <button type="button" id="ai-agent-ide-save" class="ai-agent-ide-icon-btn" title="保存 (Ctrl+S)" aria-label="保存">
+              <button type="button" id="coding-agent-ide-save" class="coding-agent-ide-icon-btn" title="保存 (Ctrl+S)" aria-label="保存">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3.5 2.5h7.2L13 4.8V13.5H3.5z"/>
                   <path d="M5 2.5v3.5h5.5V2.5"/>
@@ -2886,43 +2886,43 @@
                 </svg>
               </button>
             </div>
-            <div id="ai-agent-ide-find">
-              <input id="ai-agent-ide-find-input" type="text" placeholder="在文件中查找">
-              <span id="ai-agent-ide-find-count"></span>
-              <button type="button" id="ai-agent-ide-find-prev" class="ai-agent-ide-icon-btn" title="上一个" aria-label="上一个">↑</button>
-              <button type="button" id="ai-agent-ide-find-next" class="ai-agent-ide-icon-btn" title="下一个" aria-label="下一个">↓</button>
-              <button type="button" id="ai-agent-ide-find-close" class="ai-agent-ide-icon-btn" title="关闭" aria-label="关闭">×</button>
+            <div id="coding-agent-ide-find">
+              <input id="coding-agent-ide-find-input" type="text" placeholder="在文件中查找">
+              <span id="coding-agent-ide-find-count"></span>
+              <button type="button" id="coding-agent-ide-find-prev" class="coding-agent-ide-icon-btn" title="上一个" aria-label="上一个">↑</button>
+              <button type="button" id="coding-agent-ide-find-next" class="coding-agent-ide-icon-btn" title="下一个" aria-label="下一个">↓</button>
+              <button type="button" id="coding-agent-ide-find-close" class="coding-agent-ide-icon-btn" title="关闭" aria-label="关闭">×</button>
             </div>
-            <div id="ai-agent-ide-stage">
-              <div id="ai-agent-ide-code-wrap" style="display:none">
-                <div id="ai-agent-ide-gutter" aria-hidden="true"></div>
-                <div id="ai-agent-ide-code-pane">
-                  <pre id="ai-agent-ide-highlight" aria-hidden="true"><code></code></pre>
-                  <textarea id="ai-agent-ide-code" spellcheck="false"></textarea>
+            <div id="coding-agent-ide-stage">
+              <div id="coding-agent-ide-code-wrap" style="display:none">
+                <div id="coding-agent-ide-gutter" aria-hidden="true"></div>
+                <div id="coding-agent-ide-code-pane">
+                  <pre id="coding-agent-ide-highlight" aria-hidden="true"><code></code></pre>
+                  <textarea id="coding-agent-ide-code" spellcheck="false"></textarea>
                 </div>
               </div>
-              <div id="ai-agent-ide-preview" aria-label="Markdown 预览"></div>
-              <div id="ai-agent-ide-empty">
-                <div id="ai-agent-ide-empty-cards">
-                  <button type="button" class="ai-agent-ide-empty-card" data-ide-empty="file" title="打开文件" aria-label="打开文件">
+              <div id="coding-agent-ide-preview" aria-label="Markdown 预览"></div>
+              <div id="coding-agent-ide-empty">
+                <div id="coding-agent-ide-empty-cards">
+                  <button type="button" class="coding-agent-ide-empty-card" data-ide-empty="file" title="打开文件" aria-label="打开文件">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3.5h7l5 5V20.5H6z"/><path d="M13 3.5V8.5h5"/></svg>
                     File
                   </button>
-                  <button type="button" class="ai-agent-ide-empty-card" data-ide-empty="terminal" title="新建终端" aria-label="新建终端">
+                  <button type="button" class="coding-agent-ide-empty-card" data-ide-empty="terminal" title="新建终端" aria-label="新建终端">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 8l5 4-5 4"/><path d="M12 16h7"/></svg>
                     Terminal
                   </button>
                 </div>
               </div>
-              <div id="ai-agent-ide-outline" aria-label="文档大纲"></div>
+              <div id="coding-agent-ide-outline" aria-label="文档大纲"></div>
             </div>
           </div>
-          <div id="ai-agent-ide-explorer">
-            <div id="ai-agent-ide-tree-resize" title="拖动调整资源管理器宽度" aria-hidden="true"></div>
-            <div id="ai-agent-ide-explorer-head">
-              <strong id="ai-agent-ide-root-name">资源管理器</strong>
-              <div id="ai-agent-ide-explorer-actions">
-                <button type="button" id="ai-agent-ide-new-file" class="ai-agent-ide-icon-btn" title="新建文件" aria-label="新建文件">
+          <div id="coding-agent-ide-explorer">
+            <div id="coding-agent-ide-tree-resize" title="拖动调整资源管理器宽度" aria-hidden="true"></div>
+            <div id="coding-agent-ide-explorer-head">
+              <strong id="coding-agent-ide-root-name">资源管理器</strong>
+              <div id="coding-agent-ide-explorer-actions">
+                <button type="button" id="coding-agent-ide-new-file" class="coding-agent-ide-icon-btn" title="新建文件" aria-label="新建文件">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M4 2.5h5.5L12 5v8.5H4z"/>
                     <path d="M9.5 2.5V5H12"/>
@@ -2930,20 +2930,20 @@
                     <path d="M6 9.5h4"/>
                   </svg>
                 </button>
-                <button type="button" id="ai-agent-ide-new-folder" class="ai-agent-ide-icon-btn" title="新建文件夹" aria-label="新建文件夹">
+                <button type="button" id="coding-agent-ide-new-folder" class="coding-agent-ide-icon-btn" title="新建文件夹" aria-label="新建文件夹">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M2.5 4.5h4l1.2 1.3H13.5v6.7H2.5z"/>
                     <path d="M8 8v4"/>
                     <path d="M6 10h4"/>
                   </svg>
                 </button>
-                <button type="button" id="ai-agent-ide-refresh" class="ai-agent-ide-icon-btn" title="刷新" aria-label="刷新">
+                <button type="button" id="coding-agent-ide-refresh" class="coding-agent-ide-icon-btn" title="刷新" aria-label="刷新">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M13 8a5 5 0 1 1-1.3-3.4"/>
                     <path d="M13 2.5V5.5H10"/>
                   </svg>
                 </button>
-                <button type="button" id="ai-agent-ide-collapse-all" class="ai-agent-ide-icon-btn" title="全部折叠" aria-label="全部折叠">
+                <button type="button" id="coding-agent-ide-collapse-all" class="coding-agent-ide-icon-btn" title="全部折叠" aria-label="全部折叠">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M3 4.5h10"/>
                     <path d="M5 8h8"/>
@@ -2952,36 +2952,36 @@
                 </button>
               </div>
             </div>
-            <div id="ai-agent-ide-tree"></div>
+            <div id="coding-agent-ide-tree"></div>
           </div>
-          <div id="ai-agent-ide-panel-terminal">
-            <div id="ai-agent-ide-term-mount" aria-label="终端"></div>
+          <div id="coding-agent-ide-panel-terminal">
+            <div id="coding-agent-ide-term-mount" aria-label="终端"></div>
           </div>
         </div>
       </aside>
       </div>
-      <div id="ai-agent-ide-ctx" role="menu" aria-hidden="true"></div>
-      <div id="ai-agent-nav-item-menu" role="menu" aria-hidden="true"></div>
+      <div id="coding-agent-ide-ctx" role="menu" aria-hidden="true"></div>
+      <div id="coding-agent-nav-item-menu" role="menu" aria-hidden="true"></div>
     </div>
-    <div id="ai-agent-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="ai-agent-confirm-title" aria-hidden="true">
-      <div id="ai-agent-confirm-card">
-        <h2 id="ai-agent-confirm-title">确认</h2>
-        <p id="ai-agent-confirm-message"></p>
-        <div id="ai-agent-confirm-actions">
-          <button type="button" id="ai-agent-confirm-cancel">取消</button>
-          <button type="button" class="danger" id="ai-agent-confirm-ok">确定</button>
+    <div id="coding-agent-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="coding-agent-confirm-title" aria-hidden="true">
+      <div id="coding-agent-confirm-card">
+        <h2 id="coding-agent-confirm-title">确认</h2>
+        <p id="coding-agent-confirm-message"></p>
+        <div id="coding-agent-confirm-actions">
+          <button type="button" id="coding-agent-confirm-cancel">取消</button>
+          <button type="button" class="danger" id="coding-agent-confirm-ok">确定</button>
         </div>
       </div>
     </div>
   `;
   document.body.appendChild(container);
 
-  var modeField = document.getElementById("ai-agent-mode");
-  var thinkWrap = document.getElementById("ai-agent-think-wrap");
-  var thinkingField = document.getElementById("ai-agent-thinking");
+  var modeField = document.getElementById("coding-agent-mode");
+  var thinkWrap = document.getElementById("coding-agent-think-wrap");
+  var thinkingField = document.getElementById("coding-agent-thinking");
 
   if (!providerUi.showAuto) {
-    var autoRowEl = document.getElementById("ai-agent-model-auto-row");
+    var autoRowEl = document.getElementById("coding-agent-model-auto-row");
     if (autoRowEl) autoRowEl.style.display = "none";
   }
   if (provider === "deepseek" && thinkWrap) {
@@ -3009,39 +3009,39 @@
     return { thinking: thinkingOn() };
   }
 
-  var backdrop = document.getElementById("ai-agent-backdrop");
-  var trigger = document.getElementById("ai-agent-trigger");
-  var sidebar = document.getElementById("ai-agent-sidebar");
-  var resizeHandle = document.getElementById("ai-agent-resize-handle");
-  var closeBtn = document.getElementById("ai-agent-close");
-  var fullscreenBtn = document.getElementById("ai-agent-fullscreen");
-  var sendBtn = document.getElementById("ai-agent-send");
-  var composeShell = document.getElementById("ai-agent-compose-shell");
-  var inputField = document.getElementById("ai-agent-input");
-  var slashMenu = document.getElementById("ai-agent-slash-menu");
-  var modelWrap = document.getElementById("ai-agent-model-wrap");
-  var modelBtn = document.getElementById("ai-agent-model-btn");
-  var modelLabel = document.getElementById("ai-agent-model-label");
-  var modelMenu = document.getElementById("ai-agent-model-menu");
-  var modelList = document.getElementById("ai-agent-model-list");
-  var modelAutoBtn = document.getElementById("ai-agent-model-auto");
-  var modelAutoResolved = document.getElementById("ai-agent-model-auto-resolved");
-  var modelField = document.getElementById("ai-agent-model");
-  var messagesDiv = document.getElementById("ai-agent-messages");
-  var threadDiv = document.getElementById("ai-agent-thread");
-  var emptyEl = document.getElementById("ai-agent-empty");
-  var jumpBottomBtn = document.getElementById("ai-agent-jump-bottom");
+  var backdrop = document.getElementById("coding-agent-backdrop");
+  var trigger = document.getElementById("coding-agent-trigger");
+  var sidebar = document.getElementById("coding-agent-sidebar");
+  var resizeHandle = document.getElementById("coding-agent-resize-handle");
+  var closeBtn = document.getElementById("coding-agent-close");
+  var fullscreenBtn = document.getElementById("coding-agent-fullscreen");
+  var sendBtn = document.getElementById("coding-agent-send");
+  var composeShell = document.getElementById("coding-agent-compose-shell");
+  var inputField = document.getElementById("coding-agent-input");
+  var slashMenu = document.getElementById("coding-agent-slash-menu");
+  var modelWrap = document.getElementById("coding-agent-model-wrap");
+  var modelBtn = document.getElementById("coding-agent-model-btn");
+  var modelLabel = document.getElementById("coding-agent-model-label");
+  var modelMenu = document.getElementById("coding-agent-model-menu");
+  var modelList = document.getElementById("coding-agent-model-list");
+  var modelAutoBtn = document.getElementById("coding-agent-model-auto");
+  var modelAutoResolved = document.getElementById("coding-agent-model-auto-resolved");
+  var modelField = document.getElementById("coding-agent-model");
+  var messagesDiv = document.getElementById("coding-agent-messages");
+  var threadDiv = document.getElementById("coding-agent-thread");
+  var emptyEl = document.getElementById("coding-agent-empty");
+  var jumpBottomBtn = document.getElementById("coding-agent-jump-bottom");
   var stickToBottom = true;
-  var runState = document.getElementById("ai-agent-run-state");
-  var attachmentsDiv = document.getElementById("ai-agent-attachments");
-  var queueDiv = document.getElementById("ai-agent-queue");
-  var pickFileBtn = document.getElementById("ai-agent-pick-file");
-  var fileInput = document.getElementById("ai-agent-file-input");
-  var newChatBtn = document.getElementById("ai-agent-new-chat");
-  var stopBtn = document.getElementById("ai-agent-stop");
-  var SIDEBAR_WIDTH_KEY = "ai-agent-sidebar-width";
-  var SIDEBAR_OPEN_KEY = "ai-agent-sidebar-open";
-  var SIDEBAR_FULLSCREEN_KEY = "ai-agent-fullscreen";
+  var runState = document.getElementById("coding-agent-run-state");
+  var attachmentsDiv = document.getElementById("coding-agent-attachments");
+  var queueDiv = document.getElementById("coding-agent-queue");
+  var pickFileBtn = document.getElementById("coding-agent-pick-file");
+  var fileInput = document.getElementById("coding-agent-file-input");
+  var newChatBtn = document.getElementById("coding-agent-new-chat");
+  var stopBtn = document.getElementById("coding-agent-stop");
+  var SIDEBAR_WIDTH_KEY = "coding-agent-sidebar-width";
+  var SIDEBAR_OPEN_KEY = "coding-agent-sidebar-open";
+  var SIDEBAR_FULLSCREEN_KEY = "coding-agent-fullscreen";
   var MIN_SIDEBAR_WIDTH = 360;
 
   // Restore saved layout immediately; no health or placeholder UI.
@@ -3053,7 +3053,7 @@
         sidebar.classList.add("is-fullscreen", "open");
         trigger.classList.add("is-hidden");
         trigger.style.display = "none";
-        document.body.classList.add("ai-agent-page-locked");
+        document.body.classList.add("coding-agent-page-locked");
         if (fullscreenBtn) fullscreenBtn.style.display = "none";
         requestAnimationFrame(function () {
           requestAnimationFrame(function () { sidebar.style.transition = ""; });
@@ -3073,7 +3073,7 @@
       if (fs) {
         sidebar.classList.add("is-fullscreen");
         trigger.classList.add("is-hidden");
-        document.body.classList.add("ai-agent-page-locked");
+        document.body.classList.add("coding-agent-page-locked");
       } else {
         backdrop.classList.add("open");
       }
@@ -3204,24 +3204,24 @@
   var serverBootId = "";
   // Match backend attachments.MAX_ATTACHMENT_BYTES (Cursor hard limit ≈ 50MB).
   var MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
-  var HISTORY_KEY = "ai-agent-chat-history:" + provider;
+  var HISTORY_KEY = "coding-agent-chat-history:" + provider;
   function historyStorageKey() {
     var uid = currentUser && currentUser.id != null ? String(currentUser.id) : "anon";
-    return "ai-agent-chat-history:" + uid + ":" + provider;
+    return "coding-agent-chat-history:" + uid + ":" + provider;
   }
-  var MODEL_KEY = "ai-agent-selected-model:" + provider;
+  var MODEL_KEY = "coding-agent-selected-model:" + provider;
   var historySaveTimer = null;
-  var logoutBtn = document.getElementById("ai-agent-logout");
-  var userChip = document.getElementById("ai-agent-user-chip");
-  var userNameEl = document.getElementById("ai-agent-user-name");
-  var navUserNameEl = document.getElementById("ai-agent-nav-user-name");
-  var navRailAvatarEl = document.getElementById("ai-agent-nav-rail-avatar");
-  var navNewBtn = document.getElementById("ai-agent-nav-new");
+  var logoutBtn = document.getElementById("coding-agent-logout");
+  var userChip = document.getElementById("coding-agent-user-chip");
+  var userNameEl = document.getElementById("coding-agent-user-name");
+  var navUserNameEl = document.getElementById("coding-agent-nav-user-name");
+  var navRailAvatarEl = document.getElementById("coding-agent-nav-rail-avatar");
+  var navNewBtn = document.getElementById("coding-agent-nav-new");
   var activeConversationId = null;
   var conversationList = [];
   var activeWorkspaceRoot = "";
   var homeWorkspaceRoot = "";
-  var chatTitleEl = document.getElementById("ai-agent-chat-title");
+  var chatTitleEl = document.getElementById("coding-agent-chat-title");
   function setActiveWorkspace(root, title, opts) {
     opts = opts || {};
     activeWorkspaceRoot = (root || "").trim();

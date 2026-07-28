@@ -1,4 +1,4 @@
-# Ai-agent
+# Coding Agent
 
 本地浏览器里的 **Coding Agent 控制台**。首页可选择 Cursor / OpenAI / DeepSeek；支持文本与图片附件，以及 thinking、tool_call、summary 等过程展示。
 
@@ -13,17 +13,18 @@
 ## 快速开始
 
 ```bash
-git clone <this-repo-url> Ai-agent
-cd Ai-agent
+git clone <this-repo-url> Coding-Agent
+cd Coding-Agent
 
-conda create -n ai-agent python=3.10 -y
-conda activate ai-agent
+conda create -n coding-agent python=3.10 -y
+conda activate coding-agent
 pip install -r requirements.txt
 
 cp .env.example .env
 # 编辑 .env，按需填入 CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY
 
 ./run.sh
+# Windows: start_ca.bat / stop_ca.bat
 ```
 
 自检：
@@ -99,7 +100,7 @@ curl -X POST http://127.0.0.1:8765/api/chat \
 ## 目录
 
 ```
-Ai-agent/
+Coding-Agent/
 ├── backend/
 ├── frontend/
 │   ├── index.html
@@ -111,5 +112,7 @@ Ai-agent/
 ├── .env.example
 ├── requirements.txt
 ├── start.py
+├── start_ca.bat
+├── stop_ca.bat
 └── run.sh
 ```

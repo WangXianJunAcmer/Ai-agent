@@ -16,7 +16,7 @@ from backend.safety import policy_prefix
 # Per-file decoded size cap (images + non-images). Oversize → skipped.
 # Matches Cursor's documented request/file hard limit (52_428_800 ≈ 50 MiB).
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
-# Cap how many files we keep under .ai-agent-uploads (oldest mtime first).
+# Cap how many files we keep under .coding-agent-uploads (oldest mtime first).
 MAX_UPLOAD_FILES = 40
 # Also drop uploads older than this even if under the count cap.
 UPLOAD_MAX_AGE_SEC = 7 * 24 * 3600
@@ -74,7 +74,7 @@ def decode_attachment_bytes(raw: str) -> bytes | None:
 
 
 def prune_upload_dir(host_root: str | Path) -> int:
-    """Delete stale/excess files under .ai-agent-uploads. Returns removed count."""
+    """Delete stale/excess files under .coding-agent-uploads. Returns removed count."""
     from backend.ssh_workspace import is_ssh_uri
 
     if is_ssh_uri(str(host_root)):
