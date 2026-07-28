@@ -940,7 +940,7 @@
   function requestTurnUndo(turnId, path) {
     var body = { session_id: sessionId, turn_id: turnId };
     if (path) body.path = path;
-    return fetch(apiBase + "/api/chat/undo", {
+    return apiFetch(apiBase + "/api/chat/undo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

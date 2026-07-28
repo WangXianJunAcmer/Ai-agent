@@ -13,9 +13,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator, Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -23,11 +23,27 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.auth import (
+    TOKEN_COOKIE,
+    create_user,
+    current_user,
+    delete_conversation,
+    extract_token,
+    get_conversation,
+    issue_token,
+    require_user,
+    revoke_token,
+    upsert_conversation,
+    user_public,
+    verify_login,
+)
 from backend.config import load_settings
+from backend.db import init_db
 from backend.model_catalog import get_model_options, resolve_model_selection
 from backend.runtime import SessionManager
 
 settings = load_settings()
+init_db()
 sessions = SessionManager(settings)
 # Changes on every process start so clients can drop stale chat UI after restart.
 # Widget compares this with localStorage bootId: mismatch → session/follow is dead.
@@ -118,11 +134,12 @@ def _resolve_model(model_id: str | None, *, provider: str = "cursor") -> str | d
     from backend.config import cursor_api_key
 
     get_model_options(cursor_api_key(settings))
-    return resolve_model_selection(model_id, settings.get("model", "composer-2.5"))
+    return resolve_model_selection(model_id, settings.get("model", "auto"))
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    init_db()
     _ensure_worker_loop()
     await _worker_await(sessions.start())
     yield
@@ -134,10 +151,36 @@ app = FastAPI(title="Ai-agent", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # * + credentials is invalid CORS
+    allow_credentials=False,  # same-origin cookie auth; * + credentials is invalid CORS
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_PUBLIC_EXACT = frozenset({"/login", "/favicon.ico", "/api/health", "/api/auth/login", "/api/auth/register"})
+_PUBLIC_PREFIXES = ("/static/",)
+
+
+def _is_public_path(path: str) -> bool:
+    if path in _PUBLIC_EXACT:
+        return True
+    return any(path.startswith(p) for p in _PUBLIC_PREFIXES)
+
+
+@app.middleware("http")
+async def require_login_middleware(request: Request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS" or _is_public_path(path):
+        return await call_next(request)
+    user = current_user(request)
+    if user is None:
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "未登录"}, status_code=401)
+        next_url = path
+        if request.url.query:
+            next_url = f"{path}?{request.url.query}"
+        return RedirectResponse(url=f"/login?next={next_url}", status_code=302)
+    request.state.user = user
+    return await call_next(request)
 
 
 class AttachmentPayload(BaseModel):
@@ -206,6 +249,24 @@ class FollowRequest(BaseModel):
     after: int = 0
 
 
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+    remember: bool = False
+
+
+class AuthRegisterRequest(BaseModel):
+    username: str
+    password: str
+    remember: bool = False
+
+
+class HistoryPutRequest(BaseModel):
+    payload: dict = Field(default_factory=dict)
+    session_id: str | None = None
+    model: str | None = None
+
+
 frontend_dir = ROOT / "frontend"
 frontend_dir.mkdir(exist_ok=True)
 
@@ -243,12 +304,38 @@ def _inject_page(name: str, *, provider: str = "cursor") -> Response:
         selected = default_model(provider)
     else:
         options = get_model_options(cursor_api_key(settings))
-        selected = str(settings.get("model", "composer-2.5"))
+        selected = str(settings.get("model", "auto"))
     cache_json = json.dumps(options, ensure_ascii=False).replace("<", "\\u003c")
     page = (frontend_dir / name).read_text(encoding="utf-8")
     page = page.replace("__AI_AGENT_MODEL_CACHE__", cache_json)
     page = page.replace("__AI_AGENT_DEFAULT_MODEL__", html.escape(selected, quote=True))
     page = page.replace("__AI_AGENT_PROVIDER__", html.escape(provider, quote=True))
+    return Response(page, media_type="text/html; charset=utf-8")
+
+
+def _set_auth_cookie(response: Response, token: str, *, remember: bool) -> None:
+    # remember → 30 days; otherwise browser-session cookie (no max_age).
+    kwargs = {
+        "key": TOKEN_COOKIE,
+        "value": token,
+        "httponly": True,
+        "samesite": "lax",
+        "path": "/",
+    }
+    if remember:
+        kwargs["max_age"] = 30 * 24 * 3600
+    response.set_cookie(**kwargs)
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(key=TOKEN_COOKIE, path="/")
+
+
+@app.get("/login")
+async def login_page(request: Request):
+    if current_user(request) is not None:
+        return RedirectResponse(url="/", status_code=302)
+    page = (frontend_dir / "login.html").read_text(encoding="utf-8")
     return Response(page, media_type="text/html; charset=utf-8")
 
 
@@ -286,6 +373,91 @@ async def deepseek_page():
 @app.get("/favicon.ico")
 async def favicon():
     return Response(status_code=204)
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: AuthRegisterRequest):
+    user = create_user(req.username, req.password, is_admin=False)
+    token, _expires = issue_token(int(user["id"]), remember=req.remember)
+    body = {"ok": True, "token": token, "user": user_public(user), "remember": req.remember}
+    response = JSONResponse(body)
+    _set_auth_cookie(response, token, remember=req.remember)
+    return response
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: AuthLoginRequest):
+    user = verify_login(req.username, req.password)
+    token, _expires = issue_token(int(user["id"]), remember=req.remember)
+    body = {"ok": True, "token": token, "user": user_public(user), "remember": req.remember}
+    response = JSONResponse(body)
+    _set_auth_cookie(response, token, remember=req.remember)
+    return response
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    revoke_token(extract_token(request))
+    response = JSONResponse({"ok": True})
+    _clear_auth_cookie(response)
+    return response
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    user = require_user(request)
+    return {"ok": True, "user": user_public(user)}
+
+
+@app.get("/api/history/{provider}")
+async def history_get(provider: str, request: Request):
+    from backend.providers import normalize_provider
+
+    user = require_user(request)
+    prov = normalize_provider(provider)
+    row = get_conversation(int(user["id"]), prov)
+    if row is None:
+        return {"ok": True, "payload": None}
+    try:
+        payload = json.loads(row["payload_json"] or "{}")
+    except json.JSONDecodeError:
+        payload = None
+    return {
+        "ok": True,
+        "payload": payload,
+        "session_id": row.get("agent_session_id") or "",
+        "model": row.get("model") or "",
+        "updated_at": row.get("updated_at") or "",
+    }
+
+
+@app.put("/api/history/{provider}")
+async def history_put(provider: str, req: HistoryPutRequest, request: Request):
+    from backend.providers import normalize_provider
+
+    user = require_user(request)
+    prov = normalize_provider(provider)
+    payload = dict(req.payload or {})
+    session_id = (req.session_id or payload.get("sessionId") or "").strip()
+    model = (req.model or payload.get("model") or "").strip()
+    upsert_conversation(
+        int(user["id"]),
+        prov,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        agent_session_id=session_id,
+        model=model,
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/history/{provider}")
+async def history_delete(provider: str, request: Request):
+    from backend.providers import normalize_provider
+
+    user = require_user(request)
+    prov = normalize_provider(provider)
+    delete_conversation(int(user["id"]), prov)
+    return {"ok": True}
 
 
 @app.get("/api/health")

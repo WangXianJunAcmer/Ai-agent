@@ -234,7 +234,7 @@ class SessionManager:
             from backend.providers.compat_agent import default_model
 
             return default_model(provider)
-        return str(self.settings.get("model") or "composer-2.5")
+        return str(self.settings.get("model") or "auto")
 
     def _agent_options(self, model: str | dict):
         from backend.config import cursor_api_key

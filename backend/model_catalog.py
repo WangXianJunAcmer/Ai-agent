@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
 
-from cursor_sdk import Cursor
+import httpx
+from cursor_sdk.types import SDKModel
 
 DEFAULT_MODEL_OPTIONS = [
-    {"id": "composer-2.5", "display_name": "Composer 2.5", "hint": "Fast", "params": [{"id": "fast", "value": "true"}]},
     {"id": "auto", "display_name": "Auto", "hint": "", "params": []},
+    {"id": "composer-2.5", "display_name": "Composer 2.5", "hint": "Fast", "params": [{"id": "fast", "value": "true"}]},
 ]
+
+_MODELS_URL = "https://api.cursor.com/v1/models"
+_log = logging.getLogger(__name__)
 
 _CACHE_PATH = Path(__file__).with_name("model_options_cache.json")
 _REFRESH_LOCK = threading.Lock()
@@ -95,8 +100,38 @@ def _variant_hint(model) -> tuple[str, list[dict]]:
     return " ".join(hints), params
 
 
+def _fetch_models_http(api_key: str) -> list[SDKModel]:
+    """Cloud catalog via REST — avoids Cursor.models.list bridge launch (fails on some Windows setups)."""
+    key = (api_key or "").strip()
+    if not key:
+        raise RuntimeError("CURSOR_API_KEY is empty")
+    response = httpx.get(
+        _MODELS_URL,
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if isinstance(data, list):
+        raw_items = data
+    elif isinstance(data, dict):
+        raw_items = data.get("items") or data.get("models") or data.get("data") or []
+    else:
+        raw_items = []
+    models: list[SDKModel] = []
+    for item in raw_items:
+        if isinstance(item, str):
+            mid = normalize_model_id(item)
+            if mid:
+                models.append(SDKModel(id=mid, display_name=_pretty_model_id(mid)))
+            continue
+        if isinstance(item, dict):
+            models.append(SDKModel.from_json(item))
+    return models
+
+
 def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
-    """Return disk/memory cache; refresh=True hits Cursor.models.list and rewrites file if changed."""
+    """Return disk/memory cache; refresh=True hits api.cursor.com/v1/models and rewrites file if changed."""
     global _MODEL_CATALOG, _MODEL_OPTIONS
     if _MODEL_OPTIONS and not refresh:
         return list(_MODEL_OPTIONS)
@@ -104,7 +139,7 @@ def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
         if _MODEL_OPTIONS and not refresh:
             return list(_MODEL_OPTIONS)
         try:
-            models = Cursor.models.list(api_key=api_key)
+            models = _fetch_models_http(api_key)
             options: list[dict] = []
             catalog: dict[str, dict] = {}
             seen: set[str] = set()
@@ -115,7 +150,7 @@ def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
                 seen.add(mid)
                 hint, params = _variant_hint(model)
                 display = (getattr(model, "display_name", "") or mid).strip() or mid
-                # SDK uses id=default for Auto.
+                # SDK / API uses id=default for Auto.
                 if mid == "auto":
                     display = "Auto"
                 item = {"id": mid, "display_name": display, "hint": hint, "params": params}
@@ -132,8 +167,8 @@ def get_model_options(api_key: str, *, refresh: bool = False) -> list[dict]:
                 _write_cache(options)
             _MODEL_CATALOG = {str(item["id"]): item for item in options}
             _MODEL_OPTIONS = options
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("model catalog refresh failed: %s", exc)
         return list(_MODEL_OPTIONS)
 
 
@@ -147,9 +182,9 @@ def model_display_name(model_id: str) -> str:
     return _pretty_model_id(mid)
 
 
-def resolve_model_selection(model_id: str | None, fallback: str = "composer-2.5") -> str | dict:
+def resolve_model_selection(model_id: str | None, fallback: str = "auto") -> str | dict:
     """Expand a model id into SDK ModelSelection JSON (id + default variant params)."""
-    mid = normalize_model_id(model_id or fallback or "composer-2.5") or "composer-2.5"
+    mid = normalize_model_id(model_id or fallback or "auto") or "auto"
     item = _MODEL_CATALOG.get(mid)
     if not item:
         return mid

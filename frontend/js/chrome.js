@@ -172,7 +172,10 @@
   }
 
   function clearChatHistory() {
-    try { localStorage.removeItem(HISTORY_KEY); } catch (err) {}
+    try { localStorage.removeItem(historyStorageKey()); } catch (err) {}
+    apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider), {
+      method: "DELETE",
+    }).catch(function () {});
   }
 
   function saveChatHistory(opts) {
@@ -191,7 +194,17 @@
         pending: streaming,
         savedAt: Date.now(),
       };
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(payload));
+      var key = historyStorageKey();
+      localStorage.setItem(key, JSON.stringify(payload));
+      apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payload: payload,
+          session_id: payload.sessionId || "",
+          model: payload.model || "",
+        }),
+      }).catch(function () {});
     } catch (err) {
       // ponytail: quota / private mode — skip persistence
     }
@@ -229,12 +242,12 @@
 
   function readChatHistory() {
     var raw = "";
-    try { raw = localStorage.getItem(HISTORY_KEY) || ""; } catch (err) { return null; }
+    try { raw = localStorage.getItem(historyStorageKey()) || ""; } catch (err) { return null; }
     if (!raw) return null;
     try {
       return JSON.parse(raw);
     } catch (err) {
-      clearChatHistory();
+      try { localStorage.removeItem(historyStorageKey()); } catch (e2) {}
       return null;
     }
   }
@@ -245,13 +258,16 @@
     });
   }
 
-  function restoreChatHistory() {
-    // Sync paint from localStorage — no /api/health gate.
-    var data = readChatHistory();
+  function restoreChatHistory(data) {
+    // Prefer explicit payload (server); fall back to user-scoped local cache.
+    if (!data) data = readChatHistory();
     if (!data || !(data.messages || []).length) {
-      if (data) clearChatHistory();
+      if (data) {
+        try { localStorage.removeItem(historyStorageKey()); } catch (err) {}
+      }
       return { ok: false, streaming: false };
     }
+    try { localStorage.setItem(historyStorageKey(), JSON.stringify(data)); } catch (err) {}
     if (data.bootId) serverBootId = data.bootId;
     if (data.sessionId) {
       sessionId = data.sessionId;
@@ -440,14 +456,14 @@
   function refreshModelOptionsOnce() {
     if (modelCatalogFetched) return Promise.resolve();
     if (modelCatalogPromise) return modelCatalogPromise;
-    modelCatalogPromise = fetch(apiBase + "/api/models/refresh?provider=" + encodeURIComponent(provider))
+    modelCatalogPromise = apiFetch(apiBase + "/api/models/refresh?provider=" + encodeURIComponent(provider))
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (refreshed) {
         modelCatalogFetched = true;
         if (!refreshed || !refreshed.model_options) return;
         window.__aiAgentModelOptions = refreshed.model_options;
+        fillModelOptions(refreshed.model_options, modelField.value || defaultModel);
         if (refreshed.changed) {
-          fillModelOptions(refreshed.model_options, modelField.value || defaultModel);
           window.dispatchEvent(new CustomEvent("ai-agent-models-updated", {
             detail: { model_options: refreshed.model_options },
           }));
@@ -671,7 +687,7 @@
   function ensureSkillsLoaded() {
     if (provider !== "cursor") return Promise.resolve([]);
     if (skillCatalog.length) return Promise.resolve(skillCatalog);
-    return fetch(apiBase + "/api/skills")
+    return apiFetch(apiBase + "/api/skills")
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (data) {
         skillCatalog = (data && data.skills) || [];

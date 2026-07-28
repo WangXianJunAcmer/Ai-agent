@@ -64,7 +64,7 @@ def load_settings() -> dict:
         "host": server.get("host", "127.0.0.1"),
         "port": int(server.get("port", 8765)),
         "reload": bool(server.get("reload", False)),
-        "model": agent.get("model", "composer-2.5"),
+        "model": agent.get("model", "auto"),
         "runtime": agent.get("runtime", "local"),
         # Coding sidecar defaults to writable; set false for read-only embed hosts.
         "allow_repo_write": bool(agent.get("allow_repo_write", True)),

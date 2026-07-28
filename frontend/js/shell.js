@@ -8,8 +8,46 @@
   }
   var inferredApiBase = scriptUrl ? scriptUrl.origin : window.location.origin;
   var apiBase = (script && script.getAttribute("data-api-base")) || inferredApiBase;
-  var defaultModel = (script && script.getAttribute("data-default-model")) || "composer-2.5";
+  var defaultModel = (script && script.getAttribute("data-default-model")) || "auto";
   var provider = (script && script.getAttribute("data-provider")) || "cursor";
+  var AUTH_TOKEN_KEY = "ai-agent-auth-token";
+  var currentUser = null;
+  function getAuthToken() {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
+    } catch (err) {
+      return "";
+    }
+  }
+  function clearAuthToken() {
+    try {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch (err) {}
+  }
+  function authHeaders(extra) {
+    var headers = extra ? Object.assign({}, extra) : {};
+    var token = getAuthToken();
+    if (token) headers.Authorization = "Bearer " + token;
+    return headers;
+  }
+  function redirectToLogin() {
+    clearAuthToken();
+    var next = location.pathname + location.search;
+    window.location.href = "/login?next=" + encodeURIComponent(next || "/");
+  }
+  function apiFetch(url, opts) {
+    opts = opts || {};
+    var headers = authHeaders(opts.headers || {});
+    opts.headers = headers;
+    return fetch(url, opts).then(function (res) {
+      if (res.status === 401) {
+        redirectToLogin();
+        return Promise.reject(new Error("Unauthorized"));
+      }
+      return res;
+    });
+  }
   var sessionStorageKey = "ai-agent-session-id:" + provider;
   var sessionId = localStorage.getItem(sessionStorageKey) || "";
   // Brand / copy keyed by data-provider (Cursor · OpenAI · DeepSeek).
@@ -148,6 +186,20 @@
     }
     #ai-agent-run-state.is-busy { color: var(--ai-muted); }
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    #ai-agent-user-chip {
+      display: none; align-items: center; gap: 6px;
+      max-width: 170px; padding: 0 2px 0 4px;
+      color: var(--ai-muted, #6b6b6b); font: 12px/1.2 inherit;
+    }
+    #ai-agent-user-chip.is-on { display: inline-flex; }
+    #ai-agent-user-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;
+    }
+    #ai-agent-logout {
+      border: 1px solid var(--ai-border); background: #fff; color: inherit;
+      border-radius: 999px; padding: 6px 10px; font: 12px/1.2 inherit; cursor: pointer;
+    }
+    #ai-agent-logout:hover { background: var(--ai-surface); color: var(--ai-text); }
     #ai-agent-new-chat, #ai-agent-fullscreen, #ai-agent-close {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 7px 12px; font: 12px/1.2 inherit; cursor: pointer;
@@ -1323,6 +1375,10 @@
           </div>
         </div>
         <div id="ai-agent-top-actions">
+          <div id="ai-agent-user-chip" aria-live="polite">
+            <span id="ai-agent-user-name"></span>
+            <button id="ai-agent-logout" type="button" title="退出登录">退出</button>
+          </div>
           <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
           <button id="ai-agent-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false">
             <span class="ai-agent-icon-expand" aria-hidden="true">
@@ -1535,8 +1591,38 @@
   // Match backend attachments.MAX_ATTACHMENT_BYTES (Cursor hard limit ≈ 50MB).
   var MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
   var HISTORY_KEY = "ai-agent-chat-history:" + provider;
+  function historyStorageKey() {
+    var uid = currentUser && currentUser.id != null ? String(currentUser.id) : "anon";
+    return "ai-agent-chat-history:" + uid + ":" + provider;
+  }
   var MODEL_KEY = "ai-agent-selected-model:" + provider;
   var historySaveTimer = null;
+  var logoutBtn = document.getElementById("ai-agent-logout");
+  var userChip = document.getElementById("ai-agent-user-chip");
+  var userNameEl = document.getElementById("ai-agent-user-name");
+  if (logoutBtn) {
+    logoutBtn.onclick = function () {
+      apiFetch(apiBase + "/api/auth/logout", { method: "POST" })
+        .catch(function () {})
+        .then(function () {
+          clearAuthToken();
+          window.location.href = "/login";
+        });
+    };
+  }
+  function setCurrentUser(user) {
+    currentUser = user || null;
+    HISTORY_KEY = historyStorageKey();
+    if (userChip && userNameEl) {
+      if (user && user.username) {
+        userNameEl.textContent = user.username;
+        userChip.classList.add("is-on");
+      } else {
+        userNameEl.textContent = "";
+        userChip.classList.remove("is-on");
+      }
+    }
+  }
   var modelOptions = (function () {
     if (provider === "deepseek") {
       return [
@@ -1559,6 +1645,11 @@
   })();
   var savedModel = "";
   try { savedModel = (localStorage.getItem(MODEL_KEY) || "").trim(); } catch (err) {}
+  // Cursor default is Auto; ignore stale local pick of only the old injected fallback.
+  if (provider === "cursor" && savedModel === "composer-2.5" && defaultModel === "auto") {
+    savedModel = "";
+    try { localStorage.removeItem(MODEL_KEY); } catch (err) {}
+  }
   var bootModel = savedModel || defaultModel;
   var lastManualModel = bootModel === "auto"
     ? (provider === "deepseek" ? "deepseek-v4-flash" : provider === "openai" ? "gpt-4o" : "composer-2.5")
@@ -1567,20 +1658,7 @@
   var autoResolvedLabel = "";
   modelField.value = bootModel;
 
-  // Restore ASAP (functions are hoisted; don't wait for listener wiring).
+  // Server history restore runs in runtime.js after /api/auth/me.
   var bootRestoredStreaming = false;
-  try {
-    var bootRestored = restoreChatHistory();
-    bootRestoredStreaming = !!(bootRestored && bootRestored.streaming);
-  } catch (err) {
-    console.warn("Ai-agent history restore failed", err);
-  }
   updateEmptyState();
-  if (bootRestoredStreaming) {
-    // Block send until followIfNeeded finishes (or status says idle).
-    pendingFollow = true;
-    isRunning = true;
-    updateRunState("继续接收");
-  } else if (!threadDiv.querySelector(".ai-agent-msg")) {
-    updateRunState("就绪");
-  }
+  updateRunState("就绪");

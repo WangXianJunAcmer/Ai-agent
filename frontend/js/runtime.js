@@ -445,7 +445,7 @@
     activeAbort = controller;
     try {
       var think = deepseekThinkOpts();
-      var res = await fetch(apiBase + "/api/chat/stream", {
+      var res = await apiFetch(apiBase + "/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -872,7 +872,7 @@
 
   async function fetchFollowReplay(agentMsg, state, signal) {
     wipeAgentBubbleForReplay(agentMsg, state);
-    var res = await fetch(apiBase + "/api/chat/follow", {
+    var res = await apiFetch(apiBase + "/api/chat/follow", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: signal,
@@ -891,7 +891,7 @@
     // Stale streaming=true after a finished turn must not delete the last reply.
     if (sessionId) {
       try {
-        var stRes = await fetch(
+        var stRes = await apiFetch(
           apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sessionId)
         );
         var st = stRes.ok ? await stRes.json() : null;
@@ -932,7 +932,7 @@
       var controller = new AbortController();
       activeAbort = controller;
       try {
-        var res = await fetch(apiBase + "/api/chat/follow", {
+        var res = await apiFetch(apiBase + "/api/chat/follow", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
@@ -1032,7 +1032,7 @@
 
   function requestCancel() {
     if (!sessionId) return Promise.resolve();
-    return fetch(apiBase + "/api/chat/cancel", {
+    return apiFetch(apiBase + "/api/chat/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId }),
@@ -1237,7 +1237,7 @@
     pendingFollow = false;
     if (activeAbort) activeAbort.abort();
     if (cancelSid) {
-      fetch(apiBase + "/api/chat/cancel", {
+      apiFetch(apiBase + "/api/chat/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: cancelSid }),
@@ -1263,46 +1263,75 @@
     // Abort is async — a late stream chunk must not leave empty greeting hidden.
     requestAnimationFrame(updateEmptyState);
   };
-  // History already restored right after panel open; finish UI + follow only.
+  // Auth + per-user history from server, then follow if needed.
   loadModelOptions();
   updateModeUI();
   (function maybeFollow() {
-    // BOOT_ID: process instance uuid. After restart, in-memory sessions are gone —
-    // mismatch vs localStorage bootId → drop session/follow, keep message history.
-    fetch(apiBase + "/api/health")
-      .then(function (res) { return res.ok ? res.json() : null; })
-      .then(function (health) {
-        var boot = health && health.boot_id ? String(health.boot_id) : "";
-        if (boot) {
-          var prev = serverBootId || "";
-          if (prev && prev !== boot) {
-            sessionId = "";
-            try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
-            bootRestoredStreaming = false;
-            pendingFollow = false;
-            isRunning = false;
+    function afterHistoryRestore() {
+      return apiFetch(apiBase + "/api/health")
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (health) {
+          var boot = health && health.boot_id ? String(health.boot_id) : "";
+          if (boot) {
+            var prev = serverBootId || "";
+            if (prev && prev !== boot) {
+              sessionId = "";
+              try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
+              bootRestoredStreaming = false;
+              pendingFollow = false;
+              isRunning = false;
+              serverBootId = boot;
+              flushChatHistory({ streaming: false });
+              updateRunState("就绪");
+              return;
+            }
             serverBootId = boot;
-            flushChatHistory({ streaming: false });
-            updateRunState("就绪");
+            if (!prev) flushChatHistory({ streaming: !!bootRestoredStreaming });
+          }
+          if (bootRestoredStreaming) {
+            followIfNeeded();
             return;
           }
-          serverBootId = boot;
-          if (!prev) flushChatHistory({ streaming: !!bootRestoredStreaming });
+          if (!sessionId) return;
+          return apiFetch(apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sessionId))
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              if (data && data.running) followIfNeeded();
+            });
+        })
+        .catch(function () {
+          if (bootRestoredStreaming) followIfNeeded();
+        });
+    }
+
+    apiFetch(apiBase + "/api/auth/me")
+      .then(function (res) { return res.json(); })
+      .then(function (me) {
+        setCurrentUser(me && me.user ? me.user : null);
+        return apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider));
+      })
+      .then(function (res) { return res.json(); })
+      .then(function (hist) {
+        try {
+          var bootRestored = restoreChatHistory(hist && hist.payload ? hist.payload : null);
+          bootRestoredStreaming = !!(bootRestored && bootRestored.streaming);
+        } catch (err) {
+          console.warn("Ai-agent history restore failed", err);
+          bootRestoredStreaming = false;
         }
+        updateEmptyState();
         if (bootRestoredStreaming) {
-          followIfNeeded();
-          return;
+          pendingFollow = true;
+          isRunning = true;
+          updateRunState("继续接收");
+        } else if (!threadDiv.querySelector(".ai-agent-msg")) {
+          updateRunState("就绪");
         }
-        if (!sessionId) return;
-        return fetch(apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sessionId))
-          .then(function (res) { return res.json(); })
-          .then(function (data) {
-            if (data && data.running) followIfNeeded();
-          });
+        return afterHistoryRestore();
       })
       .catch(function () {
-        // Offline: keep restored UI; follow on next successful health.
-        if (bootRestoredStreaming) followIfNeeded();
+        // Unauthorized redirects inside apiFetch; other errors keep empty UI.
+        updateRunState("就绪");
       });
   })();
   function persistUnloadState() {

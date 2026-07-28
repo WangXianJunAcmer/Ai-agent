@@ -10,7 +10,7 @@ server:
 agent:
   # cursor | openai | deepseek — see backend/providers/
   provider: "cursor"
-  model: "composer-2.5"
+  model: "auto"
   # local: 本机工作区；cloud: Cursor 云端 VM（需配置 cloud）
   runtime: "local"
   allow_repo_write: true

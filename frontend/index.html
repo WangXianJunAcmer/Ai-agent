@@ -81,6 +81,15 @@
     }
     th { background: #fafafa; font-weight: 600; }
     .muted { color: var(--muted); }
+    .userbar {
+      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      margin: 0 0 16px; color: var(--muted); font-size: 13px;
+    }
+    .userbar button {
+      border: 1px solid var(--line); background: #fff; border-radius: 999px;
+      padding: 6px 12px; font: inherit; cursor: pointer; color: var(--text);
+    }
+    .userbar button:hover { border-color: rgba(0,0,0,.18); }
     @media (max-width: 560px) {
       .wrap { padding: 24px 16px 64px; }
       h1 { font-size: 26px; }
@@ -90,6 +99,10 @@
 </head>
 <body>
   <div class="wrap">
+    <div class="userbar">
+      <span id="user-label">…</span>
+      <button type="button" id="btn-logout">退出</button>
+    </div>
     <div class="entries">
       <div class="entries-row">
         <a class="entry" href="/cursor" aria-label="Cursor">
@@ -212,11 +225,58 @@ http://127.0.0.1:8765/deepseek  # DeepSeek</code></pre>
 
   <script>
     (function () {
+      var TOKEN_KEY = "ai-agent-auth-token";
       var KEY_ENV = { openai: "OPENAI_API_KEY", deepseek: "DEEPSEEK_API_KEY" };
       var PATH = { openai: "/openai", deepseek: "/deepseek" };
 
+      function authToken() {
+        try {
+          return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || "";
+        } catch (err) {
+          return "";
+        }
+      }
+      function authHeaders() {
+        var t = authToken();
+        return t ? { Authorization: "Bearer " + t } : {};
+      }
+      function apiFetch(url, opts) {
+        opts = opts || {};
+        var headers = Object.assign({}, authHeaders(), opts.headers || {});
+        opts.headers = headers;
+        return fetch(url, opts).then(function (res) {
+          if (res.status === 401) {
+            window.location.href = "/login?next=/";
+            return Promise.reject(new Error("Unauthorized"));
+          }
+          return res;
+        });
+      }
+
+      apiFetch("/api/auth/me")
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var label = document.getElementById("user-label");
+          if (label && data && data.user) {
+            label.textContent = data.user.username;
+          }
+        })
+        .catch(function () {});
+
+      document.getElementById("btn-logout").onclick = function () {
+        apiFetch("/api/auth/logout", { method: "POST" })
+          .catch(function () {})
+          .then(function () {
+            try {
+              localStorage.removeItem(TOKEN_KEY);
+              sessionStorage.removeItem(TOKEN_KEY);
+            } catch (err) {}
+            window.location.href = "/login";
+          });
+      };
+
       function onEntry(id) {
-        fetch("/api/health")
+        apiFetch("/api/health")
           .then(function (res) { return res.ok ? res.json() : null; })
           .then(function (health) {
             var hasKey = !!(health && health.keys && health.keys[id]);

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · Ai-agent</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: rgba(17, 24, 39, .1);
+      --accent: #111827;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      display: grid; place-items: center;
+      padding: 24px;
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 420px at 15% 0%, rgba(17,24,39,.06), transparent 60%),
+        radial-gradient(700px 360px at 90% 20%, rgba(59,130,246,.08), transparent 55%),
+        var(--bg);
+    }
+    .card {
+      width: min(400px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 28px 26px 24px;
+      box-shadow: 0 18px 40px rgba(17, 24, 39, .06);
+    }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.02em; }
+    .lead { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+    label {
+      display: block; margin: 0 0 6px;
+      font-size: 13px; font-weight: 600; color: #374151;
+    }
+    .field { margin: 0 0 14px; }
+    input[type="text"], input[type="password"] {
+      width: 100%; border: 1px solid var(--line); border-radius: 10px;
+      padding: 11px 12px; font: inherit; background: #fff; color: var(--text);
+    }
+    input:focus {
+      outline: 2px solid rgba(17,24,39,.18); outline-offset: 1px;
+      border-color: rgba(17,24,39,.28);
+    }
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin: 4px 0 18px;
+    }
+    .remember {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #374151; user-select: none; cursor: pointer;
+    }
+    .remember input { width: 15px; height: 15px; }
+    .switch {
+      border: 0; background: none; color: #2563eb; font: inherit;
+      font-size: 13px; cursor: pointer; padding: 0;
+    }
+    .switch:hover { text-decoration: underline; }
+    button.primary {
+      width: 100%; border: 0; border-radius: 10px;
+      padding: 12px 14px; background: var(--accent); color: #fff;
+      font: 600 15px/1.2 inherit; cursor: pointer;
+    }
+    button.primary:hover { background: #1f2937; }
+    button.primary:disabled { opacity: .55; cursor: not-allowed; }
+    .error {
+      min-height: 1.2em; margin: 12px 0 0;
+      color: var(--danger); font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">登录</h1>
+    <p class="lead" id="lead">使用账号进入 Ai-agent 控制台</p>
+    <form id="form" autocomplete="on">
+      <div class="field">
+        <label for="username">用户名</label>
+        <input id="username" name="username" type="text" autocomplete="username" required maxlength="32">
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+      </div>
+      <div class="row">
+        <label class="remember">
+          <input id="remember" type="checkbox" checked>
+          <span>自动登录</span>
+        </label>
+        <button type="button" class="switch" id="mode-switch">没有账号？注册</button>
+      </div>
+      <button class="primary" id="submit" type="submit">登录</button>
+      <p class="error" id="error" aria-live="polite"></p>
+    </form>
+  </div>
+  <script>
+    (function () {
+      var TOKEN_KEY = "ai-agent-auth-token";
+      var mode = "login";
+      var form = document.getElementById("form");
+      var title = document.getElementById("title");
+      var lead = document.getElementById("lead");
+      var submit = document.getElementById("submit");
+      var modeSwitch = document.getElementById("mode-switch");
+      var errorEl = document.getElementById("error");
+      var usernameEl = document.getElementById("username");
+      var passwordEl = document.getElementById("password");
+      var rememberEl = document.getElementById("remember");
+
+      function nextUrl() {
+        try {
+          var u = new URL(window.location.href);
+          var n = u.searchParams.get("next") || "/";
+          if (!n.startsWith("/") || n.startsWith("//") || n.startsWith("/login")) return "/";
+          return n;
+        } catch (err) {
+          return "/";
+        }
+      }
+
+      function setMode(next) {
+        mode = next;
+        var isLogin = mode === "login";
+        title.textContent = isLogin ? "登录" : "注册";
+        lead.textContent = isLogin ? "使用账号进入 Ai-agent 控制台" : "创建普通用户账号";
+        submit.textContent = isLogin ? "登录" : "注册并登录";
+        modeSwitch.textContent = isLogin ? "没有账号？注册" : "已有账号？登录";
+        passwordEl.autocomplete = isLogin ? "current-password" : "new-password";
+        errorEl.textContent = "";
+      }
+
+      modeSwitch.onclick = function () {
+        setMode(mode === "login" ? "register" : "login");
+      };
+
+      // Stored token (auto-login / session) → try resume
+      (function tryAuto() {
+        var token = "";
+        try {
+          token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || "";
+        } catch (err) {}
+        if (!token) return;
+        fetch("/api/auth/me", {
+          headers: { Authorization: "Bearer " + token },
+        }).then(function (res) {
+          if (res.ok) window.location.replace(nextUrl());
+        }).catch(function () {});
+      })();
+
+      form.onsubmit = function (ev) {
+        ev.preventDefault();
+        errorEl.textContent = "";
+        submit.disabled = true;
+        var body = {
+          username: (usernameEl.value || "").trim(),
+          password: passwordEl.value || "",
+          remember: !!rememberEl.checked,
+        };
+        var path = mode === "login" ? "/api/auth/login" : "/api/auth/register";
+        fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function (res) {
+            return res.json().then(function (data) {
+              return { ok: res.ok, status: res.status, data: data };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              errorEl.textContent = (result.data && result.data.detail) || "请求失败";
+              if (Array.isArray(result.data && result.data.detail)) {
+                errorEl.textContent = "请检查用户名和密码";
+              }
+              return;
+            }
+            var token = result.data && result.data.token;
+            if (token) {
+              try {
+                if (body.remember) {
+                  localStorage.setItem(TOKEN_KEY, token);
+                  sessionStorage.removeItem(TOKEN_KEY);
+                } else {
+                  sessionStorage.setItem(TOKEN_KEY, token);
+                  localStorage.removeItem(TOKEN_KEY);
+                }
+              } catch (err) {}
+            }
+            window.location.replace(nextUrl());
+          })
+          .catch(function () {
+            errorEl.textContent = "无法连接服务";
+          })
+          .finally(function () {
+            submit.disabled = false;
+          });
+      };
+    })();
+  </script>
+</body>
+</html>
