@@ -794,12 +794,12 @@ async def workspace_roots(request: Request):
 
 
 @app.get("/api/workspace/local")
-async def workspace_local_list(request: Request, q: str = ""):
-    """On This PC folder suggestions."""
-    from backend.workspace import local_folder_suggestions
+async def workspace_local_list(request: Request, q: str = "", path: str = ""):
+    """On This PC folder browse (seed list or children of path)."""
+    from backend.workspace import browse_local_folders
 
     require_user(request)
-    return {"ok": True, "roots": local_folder_suggestions(settings, q)}
+    return {"ok": True, **browse_local_folders(settings, path, q)}
 
 
 @app.get("/api/workspace/tree")

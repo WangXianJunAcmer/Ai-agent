@@ -22,21 +22,19 @@
   var wsUseExisting = document.getElementById("coding-agent-ws-use-existing");
   var wsNewFolder = document.getElementById("coding-agent-ws-new-folder");
   var wsFlyout = document.getElementById("coding-agent-ws-flyout");
-  var wsOpenFolder = document.getElementById("coding-agent-ws-open-folder");
-  var wsFlyoutPath = document.getElementById("coding-agent-ws-flyout-path");
-  var wsFlyoutInput = document.getElementById("coding-agent-ws-flyout-input");
-  var wsFlyoutGo = document.getElementById("coding-agent-ws-flyout-go");
-  var wsFlyoutSearch = document.getElementById("coding-agent-ws-flyout-search");
-  var wsFlyoutList = document.getElementById("coding-agent-ws-flyout-list");
+  var wsBrowseSearch = document.getElementById("coding-agent-ws-browse-search");
+  var wsBrowseHead = document.getElementById("coding-agent-ws-browse-head");
+  var wsBrowseList = document.getElementById("coding-agent-ws-browse-list");
+  var wsBrowseUseHere = document.getElementById("coding-agent-ws-browse-use-here");
+  var wsBrowseOpenFolder = document.getElementById("coding-agent-ws-browse-open-folder");
+  var wsBrowsePath = document.getElementById("coding-agent-ws-browse-path");
+  var wsBrowsePathInput = document.getElementById("coding-agent-ws-browse-path-input");
+  var wsBrowsePathGo = document.getElementById("coding-agent-ws-browse-path-go");
   var wsUeOpenFolder = document.getElementById("coding-agent-ws-ue-open-folder");
   var wsUeSsh = document.getElementById("coding-agent-ws-ue-ssh");
   var wsFlyoutPathUe = document.getElementById("coding-agent-ws-flyout-path-ue");
   var wsUePathInput = document.getElementById("coding-agent-ws-ue-path-input");
   var wsUePathGo = document.getElementById("coding-agent-ws-ue-path-go");
-  var wsSshTreeHead = document.getElementById("coding-agent-ws-ssh-tree-head");
-  var wsSshTreeList = document.getElementById("coding-agent-ws-ssh-tree-list");
-  var wsSshSearch = document.getElementById("coding-agent-ws-ssh-search");
-  var wsSshUseHere = document.getElementById("coding-agent-ws-ssh-use-here");
   var wsSshId = document.getElementById("coding-agent-ws-ssh-id");
   var wsSshLabel = document.getElementById("coding-agent-ws-ssh-label");
   var wsSshHost = document.getElementById("coding-agent-ws-ssh-host");
@@ -56,14 +54,15 @@
   var wsPickerMode = "switch"; // switch | new-agent | add-repo
   var wsPcBtn = null;
   var wsUseExistingBtn = null;
-  var wsFlyoutMode = ""; // pc | use-existing | ssh-tree | ssh-form
+  var wsFlyoutMode = ""; // browse | use-existing | ssh-form
   var wsFlyoutAnchor = null;
-  var sshBrowse = { hostId: "", path: "/", label: "", uri: "" };
-  var sshTreeEntries = []; // last loaded dir entries for client-side Search filter
-  // Already-listed remote dirs — Search is client-side; avoid re-SSH on hover/nav.
+  // Shared folder browse (local + SSH) — one panel, one list, one Use this folder.
+  var browseKind = ""; // local | ssh
+  var browse = { hostId: "", path: "", parent: null, label: "", uri: "" };
+  var browseEntries = [];
   var sshTreeCache = {}; // key hostId|path → { entries, path, uri, label, at }
   var SSH_TREE_CACHE_MS = 120000;
-  var sshSearchJumpTimer = null;
+  var browseSearchJumpTimer = null;
   var branchFetchToken = 0;
   var WS_ICON_FOLDER = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>';
   var WS_ICON_HOME = '<svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"></path></svg>';
@@ -1440,17 +1439,18 @@
 
   function closePcFlyout() {
     if (wsFlyout) {
-      wsFlyout.classList.remove("is-on");
+      wsFlyout.classList.remove("is-on", "is-local-browse");
       wsFlyout.setAttribute("aria-hidden", "true");
       wsFlyout.style.top = "";
       wsFlyout.style.maxHeight = "";
     }
-    if (wsFlyoutPath) wsFlyoutPath.classList.remove("is-on");
+    if (wsBrowsePath) wsBrowsePath.classList.remove("is-on");
     if (wsFlyoutPathUe) wsFlyoutPathUe.classList.remove("is-on");
     if (wsPcBtn) wsPcBtn.classList.remove("is-open", "is-hot");
     if (wsUseExistingBtn) wsUseExistingBtn.classList.remove("is-open", "is-hot");
     wsFlyoutMode = "";
     wsFlyoutAnchor = null;
+    browseKind = "";
   }
 
   function setFlyoutPanel(mode) {
@@ -1471,7 +1471,6 @@
       var rowRect = pin.getBoundingClientRect();
       preferredTop = Math.max(0, rowRect.top - pickerRect.top - 6);
     }
-    // SSH hosts sit near the bottom of Repos — shift the cascade up so it stays on screen.
     var flyH = wsFlyout.offsetHeight || 280;
     var absTop = pickerRect.top + preferredTop;
     var overflow = absTop + flyH + gap - window.innerHeight;
@@ -1491,6 +1490,7 @@
       anchor.classList.add("is-open", "is-hot");
     }
     setFlyoutPanel(mode);
+    wsFlyout.classList.toggle("is-local-browse", mode === "browse" && browseKind === "local");
     wsFlyout.classList.add("is-on");
     wsFlyout.setAttribute("aria-hidden", "false");
     requestAnimationFrame(function () {
@@ -1501,8 +1501,20 @@
 
   function openPcFlyout(anchor) {
     wsPcBtn = anchor || wsPcBtn;
-    openWsFlyout(wsPcBtn, "pc");
-    loadLocalFolderList(wsFlyoutSearch ? wsFlyoutSearch.value : "");
+    browseKind = "local";
+    browse.hostId = "";
+    browse.path = "";
+    browse.parent = null;
+    browse.label = "This PC";
+    browse.uri = "";
+    browseEntries = [];
+    openWsFlyout(wsPcBtn, "browse");
+    if (wsBrowsePath) wsBrowsePath.classList.remove("is-on");
+    if (wsBrowseSearch) {
+      wsBrowseSearch.value = "";
+      wsBrowseSearch.placeholder = "Search or path";
+    }
+    loadLocalBrowse("", { path: "" });
   }
 
   function openUseExistingFlyout(anchor) {
@@ -1511,38 +1523,131 @@
     if (wsFlyoutPathUe) wsFlyoutPathUe.classList.remove("is-on");
   }
 
-  function loadLocalFolderList(query) {
-    if (!wsFlyoutList) return;
-    var q = String(query || "").trim();
-    apiFetch(apiBase + "/api/workspace/local?q=" + encodeURIComponent(q))
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        wsFlyoutList.innerHTML = "";
-        var roots = (data && data.roots) || [];
-        if (!roots.length) {
-          var empty = document.createElement("div");
-          empty.className = "coding-agent-ws-item-path";
-          empty.style.padding = "6px 8px";
-          empty.textContent = q ? "No matches" : "No folders";
-          wsFlyoutList.appendChild(empty);
+  // "D:\\cod" → list D:\\ filter "cod" (SSH-style prefix); trailing \\ enters that dir.
+  function parseLocalPathQuery(q) {
+    var s = String(q || "").trim();
+    if (!s) return null;
+    if (s.charAt(0) === "~") {
+      var home = String(homeWorkspaceRoot || "").replace(/[\\/]+$/, "");
+      if (!home) return null;
+      if (s === "~" || s === "~/" || s === "~\\") {
+        return { dir: home, filter: "", full: home };
+      }
+      if (s.indexOf("~/") === 0 || s.indexOf("~\\") === 0) {
+        s = home + "\\" + s.slice(2).replace(/\//g, "\\");
+      } else {
+        return null;
+      }
+    }
+    if (!/^[a-zA-Z]:/.test(s) && s.indexOf("\\\\") !== 0) return null;
+    var drive = "";
+    var rest = s;
+    if (/^[a-zA-Z]:/.test(s)) {
+      drive = s.slice(0, 2);
+      rest = s.slice(2).replace(/\//g, "\\");
+    } else {
+      rest = s.replace(/\//g, "\\");
+    }
+    if (!rest || rest === "\\") {
+      var root = drive ? (drive + "\\") : "\\\\";
+      return { dir: root, filter: "", full: root };
+    }
+    var endsSlash = rest.slice(-1) === "\\";
+    rest = rest.replace(/^\\+/, "").replace(/\\+$/, "");
+    if (!rest) {
+      var root2 = drive ? (drive + "\\") : "\\\\";
+      return { dir: root2, filter: "", full: root2 };
+    }
+    if (endsSlash) {
+      var fullDir = drive ? (drive + "\\" + rest) : ("\\\\" + rest);
+      return { dir: fullDir, filter: "", full: fullDir };
+    }
+    var parts = rest.split("\\");
+    var last = parts.pop() || "";
+    var parent = parts.length
+      ? (drive ? (drive + "\\" + parts.join("\\")) : ("\\\\" + parts.join("\\")))
+      : (drive ? (drive + "\\") : "\\\\");
+    var full = drive ? (drive + "\\" + rest) : ("\\\\" + rest);
+    return { dir: parent, filter: last.toLowerCase(), full: full };
+  }
+
+  function localPathNorm(p) {
+    var s = String(p || "").replace(/\//g, "\\");
+    if (/^[a-zA-Z]:\\/.test(s)) {
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+      if (s.length > 3) s = s.replace(/\\+$/, "");
+      return s;
+    }
+    return s.replace(/\\+$/, "") || s;
+  }
+
+  function applyBrowseData(data, opts) {
+    opts = opts || {};
+    browse.path = String((data && data.path) || "");
+    browse.parent = (data && data.parent) != null ? data.parent : null;
+    if (data && data.uri) browse.uri = data.uri;
+    if (data && data.label) browse.label = data.label;
+    browseEntries = (data && (data.entries || data.roots)) || [];
+    if (wsBrowseHead) {
+      if (browseKind === "ssh") {
+        var head = (browse.label || browse.hostId || "SSH") + " · " + (browse.path || "/");
+        if (opts.stale) head += "（缓存）";
+        wsBrowseHead.textContent = head;
+      } else {
+        wsBrowseHead.textContent = browse.path || "This PC";
+      }
+    }
+    if (wsBrowsePathInput && browseKind === "local" && browse.path) {
+      wsBrowsePathInput.value = browse.path;
+    }
+    if (wsBrowseUseHere) {
+      wsBrowseUseHere.style.display = (browseKind === "ssh" || browse.path) ? "" : "none";
+    }
+    if (wsFlyout) {
+      wsFlyout.classList.toggle("is-local-browse", browseKind === "local");
+    }
+    renderBrowseFlyoutList();
+  }
+
+  function loadLocalBrowse(query, opts) {
+    if (!wsBrowseList) return;
+    opts = opts || {};
+    var q = String(query != null ? query : (wsBrowseSearch && wsBrowseSearch.value) || "").trim();
+    var browsePath = opts.path != null ? String(opts.path) : String(browse.path || "");
+    var nameFilter = "";
+    if (opts.path == null) {
+      var parsed = parseLocalPathQuery(q);
+      if (parsed) {
+        browsePath = parsed.dir;
+        nameFilter = parsed.filter || "";
+      } else {
+        nameFilter = q.toLowerCase();
+      }
+    } else {
+      nameFilter = q.toLowerCase();
+    }
+    var url = apiBase + "/api/workspace/local?q=" + encodeURIComponent(nameFilter)
+      + "&path=" + encodeURIComponent(browsePath);
+    apiFetch(url)
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (browseKind !== "local") return;
+        if (!result.ok) {
+          if (wsBrowseList) {
+            wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>"
+              + String((result.data && (result.data.detail || result.data.message)) || "加载失败")
+              + "</div>";
+          }
+          requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
           return;
         }
-        roots.forEach(function (r) {
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "coding-agent-ws-item";
-          btn.innerHTML = WS_ICON_FOLDER
-            + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
-            + '<span class="coding-agent-ws-item-path"></span></span>';
-          btn.querySelector(".coding-agent-ws-item-name").textContent = r.name || r.path || "";
-          btn.querySelector(".coding-agent-ws-item-path").textContent = r.path || "";
-          btn.title = r.path || "";
-          btn.onclick = function () { selectWorkspacePath(r.path, r.is_home ? "No Repo" : r.name); };
-          wsFlyoutList.appendChild(btn);
-        });
+        applyBrowseData(result.data);
       })
       .catch(function () {
-        if (wsFlyoutList) wsFlyoutList.innerHTML = "";
+        if (browseKind !== "local" || !wsBrowseList) return;
+        wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
       });
   }
 
@@ -1670,17 +1775,15 @@
 
   function applySshTreeData(hostId, data, opts) {
     opts = opts || {};
-    sshBrowse.hostId = hostId;
-    sshBrowse.path = data.path || "/";
-    sshBrowse.uri = data.uri || ("ssh://" + hostId + sshBrowse.path);
-    if (data.label) sshBrowse.label = data.label;
-    sshTreeEntries = data.entries || [];
-    if (wsSshTreeHead) {
-      var head = (data.label || sshBrowse.label || hostId) + " · " + sshBrowse.path;
-      if (opts.stale) head += "（缓存）";
-      wsSshTreeHead.textContent = head;
-    }
-    renderSshFlyoutList(hostId);
+    browseKind = "ssh";
+    browse.hostId = hostId;
+    applyBrowseData({
+      path: data.path || "/",
+      parent: null,
+      uri: data.uri || ("ssh://" + hostId + (data.path || "/")),
+      label: data.label || browse.label || hostId,
+      entries: data.entries || [],
+    }, opts);
   }
 
   function showSshTreeError(hostId, detail) {
@@ -1689,9 +1792,9 @@
       applySshTreeData(hostId, cached, { stale: true });
       return;
     }
-    if (wsSshTreeHead) wsSshTreeHead.textContent = (sshBrowse.label || hostId) + " · 失败";
-    if (wsSshTreeList) {
-      wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>"
+    if (wsBrowseHead) wsBrowseHead.textContent = (browse.label || hostId) + " · 失败";
+    if (wsBrowseList) {
+      wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>"
         + String(detail || "SSH 连接失败") + "</div>";
     }
     requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
@@ -1701,48 +1804,49 @@
     opts = opts || {};
     var soft = !!opts.soft;
     var hid = host.id;
-    var prevHost = sshBrowse.hostId;
+    var prevHost = browse.hostId;
     var sameHost = prevHost === hid;
-    openWsFlyout(anchor || wsPcBtn, "ssh-tree");
-    if (wsSshSearch) wsSshSearch.placeholder = "Search or /path";
+    browseKind = "ssh";
+    openWsFlyout(anchor || wsPcBtn, "browse");
+    if (wsBrowseSearch) wsBrowseSearch.placeholder = "Search or /path";
 
-    var cached = (sameHost && readSshTreeCache(hid, sshBrowse.path)) || latestSshTreeCache(hid);
-    var hasLocal = sameHost && sshBrowse.path
-      && (sshTreeEntries.length || readSshTreeCache(hid, sshBrowse.path));
+    var cached = (sameHost && readSshTreeCache(hid, browse.path)) || latestSshTreeCache(hid);
+    var hasLocal = sameHost && browse.path
+      && (browseEntries.length || readSshTreeCache(hid, browse.path));
 
     // Hover must never re-warm (timeout loops). Click can retry when empty.
     if (soft) {
       if (hasLocal) {
-        sshBrowse.hostId = hid;
-        sshBrowse.label = host.label || host.id;
+        browse.hostId = hid;
+        browse.label = host.label || host.id;
         applySshTreeData(hid, {
-          path: sshBrowse.path,
-          uri: sshBrowse.uri,
-          label: sshBrowse.label,
-          entries: sshTreeEntries.length
-            ? sshTreeEntries
-            : ((readSshTreeCache(hid, sshBrowse.path) || {}).entries || []),
+          path: browse.path,
+          uri: browse.uri,
+          label: browse.label,
+          entries: browseEntries.length
+            ? browseEntries
+            : ((readSshTreeCache(hid, browse.path) || {}).entries || []),
         });
       } else if (cached) {
-        sshBrowse.hostId = hid;
-        sshBrowse.label = host.label || host.id;
+        browse.hostId = hid;
+        browse.label = host.label || host.id;
         applySshTreeData(hid, cached);
       }
       // else: leave current panel (maybe error / user typing path); do not reconnect
       return;
     }
 
-    sshBrowse.hostId = hid;
-    sshBrowse.label = host.label || host.id;
+    browse.hostId = hid;
+    browse.label = host.label || host.id;
 
     if (hasLocal) {
       applySshTreeData(hid, {
-        path: sshBrowse.path,
-        uri: sshBrowse.uri,
-        label: sshBrowse.label,
-        entries: sshTreeEntries.length
-          ? sshTreeEntries
-          : ((readSshTreeCache(hid, sshBrowse.path) || {}).entries || []),
+        path: browse.path,
+        uri: browse.uri,
+        label: browse.label,
+        entries: browseEntries.length
+          ? browseEntries
+          : ((readSshTreeCache(hid, browse.path) || {}).entries || []),
       });
       return;
     }
@@ -1750,18 +1854,18 @@
       applySshTreeData(hid, cached);
       return;
     }
-    if (wsSshSearch) {
-      wsSshSearch.value = "";
-      wsSshSearch.placeholder = "Search or /path";
+    if (wsBrowseSearch) {
+      wsBrowseSearch.value = "";
+      wsBrowseSearch.placeholder = "Search or /path";
     }
-    sshBrowse.path = "";
-    sshBrowse.uri = "";
-    sshTreeEntries = [];
-    if (wsSshTreeHead) {
-      wsSshTreeHead.textContent = (sshBrowse.label || hid) + " · 连接中…";
+    browse.path = "";
+    browse.uri = "";
+    browseEntries = [];
+    if (wsBrowseHead) {
+      wsBrowseHead.textContent = (browse.label || hid) + " · 连接中…";
     }
-    if (wsSshTreeList) {
-      wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>连接中…</div>";
+    if (wsBrowseList) {
+      wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>连接中…</div>";
     }
     // Warm first so we get remote $HOME (not "/") before listing.
     apiFetch(apiBase + "/api/ssh/hosts/" + encodeURIComponent(hid) + "/warm", {
@@ -1771,7 +1875,7 @@
         return res.json().then(function (data) { return { ok: res.ok, data: data }; });
       })
       .then(function (result) {
-        if (sshBrowse.hostId !== hid) return;
+        if (browse.hostId !== hid) return;
         if (!result.ok) {
           showSshTreeError(
             hid,
@@ -1783,11 +1887,11 @@
         var path = (configured && configured !== "/" && configured !== "~")
           ? configured
           : (result.data.default_path || "/");
-        sshBrowse.path = path;
+        browse.path = path;
         loadSshTree(hid, path);
       })
       .catch(function () {
-        if (sshBrowse.hostId !== hid) return;
+        if (browse.hostId !== hid) return;
         showSshTreeError(hid, "SSH 连接失败");
       });
   }
@@ -1804,7 +1908,7 @@
     var s = String(q || "").trim();
     if (!s) return null;
     if (s.charAt(0) === "~") {
-      var home = guessSshHome(sshBrowse.hostId);
+      var home = guessSshHome(browse.hostId);
       if (!home) return null;
       if (s === "~" || s === "~/") {
         return { dir: home, filter: "", full: home };
@@ -1829,13 +1933,13 @@
 
   function scheduleSshPathJump(hostId, parsed) {
     if (!parsed || !hostId) return;
-    clearTimeout(sshSearchJumpTimer);
+    clearTimeout(browseSearchJumpTimer);
     var go = function () {
-      if (sshBrowse.hostId !== hostId) return;
-      var cur = sshPathNorm(sshBrowse.path);
+      if (browse.hostId !== hostId) return;
+      var cur = sshPathNorm(browse.path);
       // Already inside the typed path (e.g. browsed into /tmp while q is /tmp).
       if (cur === sshPathNorm(parsed.full) || cur === sshPathNorm(parsed.dir)) {
-        renderSshFlyoutList(hostId);
+        renderBrowseFlyoutList();
         return;
       }
       var hit = readSshTreeCache(hostId, parsed.dir);
@@ -1846,16 +1950,16 @@
       loadSshTree(hostId, parsed.dir, { keepSearch: true });
     };
     if (readSshTreeCache(hostId, parsed.dir)
-      || sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.dir)
-      || sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.full)) {
+      || sshPathNorm(browse.path) === sshPathNorm(parsed.dir)
+      || sshPathNorm(browse.path) === sshPathNorm(parsed.full)) {
       go();
     } else {
-      sshSearchJumpTimer = setTimeout(go, 120);
+      browseSearchJumpTimer = setTimeout(go, 120);
     }
   }
 
   function guessSshHome(hostId) {
-    var p = sshBrowse.path || "";
+    var p = browse.path || "";
     var m = String(p).match(/^(\/home\/[^/]+)/);
     if (m) return m[1];
     var hit = latestSshTreeCache(hostId);
@@ -1874,114 +1978,174 @@
     });
   }
 
-  function renderSshFlyoutList(hostId) {
-    if (!wsSshTreeList) return;
-    var rawQ = wsSshSearch ? String(wsSshSearch.value || "").trim() : "";
-    var parsed = parseSshPathQuery(rawQ);
+  function renderBrowseFlyoutList() {
+    if (!wsBrowseList) return;
+    var rawQ = wsBrowseSearch ? String(wsBrowseSearch.value || "").trim() : "";
     var q = rawQ.toLowerCase();
-    var cur = sshPathNorm(sshBrowse.path);
-    var atAbsExact = parsed && cur === sshPathNorm(parsed.full);
-    var atAbsParent = parsed && cur === sshPathNorm(parsed.dir);
-    // Prefix search filters parent; exact path (or drilled-in) lists that dir unfiltered.
-    var nameFilter = "";
-    if (parsed) {
-      nameFilter = atAbsExact ? "" : String(parsed.filter || "");
+    wsBrowseList.innerHTML = "";
+
+    if (browseKind === "ssh") {
+      var hostId = browse.hostId;
+      var parsed = parseSshPathQuery(rawQ);
+      var cur = sshPathNorm(browse.path);
+      var atAbsExact = parsed && cur === sshPathNorm(parsed.full);
+      var atAbsParent = parsed && cur === sshPathNorm(parsed.dir);
+      var nameFilter = "";
+      if (parsed) {
+        nameFilter = atAbsExact ? "" : String(parsed.filter || "");
+      } else {
+        nameFilter = q;
+      }
+
+      if (parsed && !atAbsParent && !atAbsExact) {
+        var wait = document.createElement("div");
+        wait.className = "coding-agent-ws-item-path";
+        wait.style.padding = "6px 8px";
+        wait.textContent = "加载 " + parsed.dir + " …";
+        wsBrowseList.appendChild(wait);
+        requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
+        return;
+      }
+
+      var recents = sshHostRecentRoots(hostId).filter(function (r) {
+        if (!q) return true;
+        var remote = String(r.remote_path || r.path || "").toLowerCase();
+        var name = String(r.name || "").toLowerCase();
+        return remote.indexOf(q) >= 0 || name.indexOf(q) >= 0;
+      });
+      recents.forEach(function (r) {
+        var remote = String(r.remote_path || "").trim();
+        if (!remote && isSshWorkspace(r.path)) {
+          var m = String(r.path).match(/^ssh:\/\/[^/]+(\/.*)?$/i);
+          remote = (m && m[1]) ? m[1] : "/";
+        }
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "coding-agent-ws-item";
+        btn.innerHTML = WS_ICON_FOLDER
+          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
+          + WS_ICON_CHECK;
+        btn.querySelector(".coding-agent-ws-item-name").textContent = remote || r.path || "";
+        btn.title = r.path || "";
+        btn.onclick = function () {
+          selectWorkspacePath(r.path, workspaceDisplayName(r.path) || remote);
+        };
+        wsBrowseList.appendChild(btn);
+      });
+
+      if (!rawQ && browse.path && browse.path !== "/") {
+        var up = document.createElement("button");
+        up.type = "button";
+        up.className = "coding-agent-ws-item";
+        up.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span></span>';
+        up.onclick = function () {
+          var parts = browse.path.replace(/\/+$/, "").split("/");
+          parts.pop();
+          var parent = parts.join("/") || "/";
+          loadSshTree(hostId, parent);
+        };
+        wsBrowseList.appendChild(up);
+      }
+
+      var entries = (browseEntries || []).filter(function (e) {
+        if (!nameFilter) return true;
+        var name = String(e.name || "").toLowerCase();
+        var path = String(e.path || "").toLowerCase();
+        if (parsed && !atAbsExact) {
+          return name.indexOf(nameFilter) === 0 || name.indexOf(nameFilter) >= 0;
+        }
+        return name.indexOf(nameFilter) >= 0 || path.indexOf(nameFilter) >= 0;
+      });
+      entries.forEach(function (e) {
+        if (e.type && e.type !== "dir") return;
+        var abs = String(e.path || "");
+        if (abs && abs.charAt(0) !== "/") {
+          abs = (browse.path === "/" ? "/" : (browse.path.replace(/\/+$/, "") + "/")) + abs;
+        }
+        if (!abs) abs = e.name || "";
+        var btn2 = document.createElement("button");
+        btn2.type = "button";
+        btn2.className = "coding-agent-ws-item";
+        btn2.innerHTML = WS_ICON_FOLDER
+          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
+          + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
+        btn2.querySelector(".coding-agent-ws-item-name").textContent = abs;
+        btn2.title = abs;
+        btn2.onclick = function () {
+          if (wsBrowseSearch) wsBrowseSearch.value = "";
+          loadSshTree(hostId, e.path);
+        };
+        wsBrowseList.appendChild(btn2);
+      });
     } else {
-      nameFilter = q;
-    }
-    wsSshTreeList.innerHTML = "";
-
-    // Waiting for parent of an abs prefix query (e.g. /tm while still on /home/…).
-    if (parsed && !atAbsParent && !atAbsExact) {
-      var wait = document.createElement("div");
-      wait.className = "coding-agent-ws-item-path";
-      wait.style.padding = "6px 8px";
-      wait.textContent = "加载 " + parsed.dir + " …";
-      wsSshTreeList.appendChild(wait);
-      requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
-      return;
-    }
-
-    // Recents (path query also matches remote paths).
-    var recents = sshHostRecentRoots(hostId).filter(function (r) {
-      if (!q) return true;
-      var remote = String(r.remote_path || r.path || "").toLowerCase();
-      var name = String(r.name || "").toLowerCase();
-      return remote.indexOf(q) >= 0 || name.indexOf(q) >= 0;
-    });
-    recents.forEach(function (r) {
-      var remote = String(r.remote_path || "").trim();
-      if (!remote && isSshWorkspace(r.path)) {
-        var m = String(r.path).match(/^ssh:\/\/[^/]+(\/.*)?$/i);
-        remote = (m && m[1]) ? m[1] : "/";
+      // local — same drill-in UX as SSH
+      var localParsed = parseLocalPathQuery(rawQ);
+      var nameFilterL = "";
+      if (localParsed) {
+        var atExact = localPathNorm(browse.path) === localPathNorm(localParsed.full);
+        var atParent = localPathNorm(browse.path) === localPathNorm(localParsed.dir);
+        if (!atExact && !atParent && localParsed.dir) {
+          // waiting for parent load
+          var waitL = document.createElement("div");
+          waitL.className = "coding-agent-ws-item-path";
+          waitL.style.padding = "6px 8px";
+          waitL.textContent = "加载 " + localParsed.dir + " …";
+          wsBrowseList.appendChild(waitL);
+          requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
+          return;
+        }
+        nameFilterL = atExact ? "" : String(localParsed.filter || "");
+      } else {
+        nameFilterL = q;
       }
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "coding-agent-ws-item";
-      btn.innerHTML = WS_ICON_FOLDER
-        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
-        + WS_ICON_CHECK;
-      btn.querySelector(".coding-agent-ws-item-name").textContent = remote || r.path || "";
-      btn.title = r.path || "";
-      btn.onclick = function () {
-        selectWorkspacePath(r.path, workspaceDisplayName(r.path) || remote);
-      };
-      wsSshTreeList.appendChild(btn);
-    });
 
-    // Parent nav only when not searching.
-    if (!rawQ && sshBrowse.path && sshBrowse.path !== "/") {
-      var up = document.createElement("button");
-      up.type = "button";
-      up.className = "coding-agent-ws-item";
-      up.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span></span>';
-      up.onclick = function () {
-        var parts = sshBrowse.path.replace(/\/+$/, "").split("/");
-        parts.pop();
-        var parent = parts.join("/") || "/";
-        loadSshTree(hostId, parent);
-      };
-      wsSshTreeList.appendChild(up);
+      if (!rawQ && browse.path && browse.parent) {
+        var upL = document.createElement("button");
+        upL.type = "button";
+        upL.className = "coding-agent-ws-item";
+        upL.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span>'
+          + '<span class="coding-agent-ws-item-path"></span></span>';
+        upL.querySelector(".coding-agent-ws-item-path").textContent = browse.parent;
+        upL.title = browse.parent;
+        upL.onclick = function () {
+          if (wsBrowseSearch) wsBrowseSearch.value = "";
+          loadLocalBrowse("", { path: browse.parent });
+        };
+        wsBrowseList.appendChild(upL);
+      }
+
+      (browseEntries || []).forEach(function (r) {
+        var name = String(r.name || "");
+        var pth = String(r.path || "");
+        if (nameFilterL) {
+          var nl = name.toLowerCase();
+          var pl = pth.toLowerCase();
+          if (nl.indexOf(nameFilterL) < 0 && pl.indexOf(nameFilterL) < 0) return;
+        }
+        var btnL = document.createElement("button");
+        btnL.type = "button";
+        btnL.className = "coding-agent-ws-item";
+        btnL.innerHTML = (r.is_home ? WS_ICON_HOME : WS_ICON_FOLDER)
+          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
+          + '<span class="coding-agent-ws-item-path"></span></span>'
+          + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
+        btnL.querySelector(".coding-agent-ws-item-name").textContent = name || pth;
+        btnL.querySelector(".coding-agent-ws-item-path").textContent = pth;
+        btnL.title = pth;
+        btnL.onclick = function () {
+          if (wsBrowseSearch) wsBrowseSearch.value = "";
+          loadLocalBrowse("", { path: pth });
+        };
+        wsBrowseList.appendChild(btnL);
+      });
     }
 
-    var entries = (sshTreeEntries || []).filter(function (e) {
-      if (!nameFilter) return true;
-      var name = String(e.name || "").toLowerCase();
-      var path = String(e.path || "").toLowerCase();
-      if (parsed && !atAbsExact) {
-        return name.indexOf(nameFilter) === 0 || name.indexOf(nameFilter) >= 0;
-      }
-      return name.indexOf(nameFilter) >= 0 || path.indexOf(nameFilter) >= 0;
-    });
-    entries.forEach(function (e) {
-      if (e.type && e.type !== "dir") return;
-      var abs = String(e.path || "");
-      if (abs && abs.charAt(0) !== "/") {
-        abs = (sshBrowse.path === "/" ? "/" : (sshBrowse.path.replace(/\/+$/, "") + "/")) + abs;
-      }
-      if (!abs) abs = e.name || "";
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "coding-agent-ws-item";
-      btn.innerHTML = WS_ICON_FOLDER
-        + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
-        + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
-      btn.querySelector(".coding-agent-ws-item-name").textContent = abs;
-      btn.title = abs;
-      btn.onclick = function () {
-        // Clear abs search so drilling in doesn't stick on "加载 / …".
-        if (wsSshSearch) wsSshSearch.value = "";
-        loadSshTree(hostId, e.path);
-      };
-      wsSshTreeList.appendChild(btn);
-    });
-
-    if (!wsSshTreeList.children.length) {
+    if (!wsBrowseList.children.length) {
       var empty = document.createElement("div");
       empty.className = "coding-agent-ws-item-path";
       empty.style.padding = "6px 8px";
       empty.textContent = q ? "No matches" : "No folders";
-      wsSshTreeList.appendChild(empty);
+      wsBrowseList.appendChild(empty);
     }
     requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
   }
@@ -1994,14 +2158,14 @@
       applySshTreeData(hostId, hit);
       return;
     }
-    if (wsSshTreeHead) {
-      wsSshTreeHead.textContent = (sshBrowse.label || hostId) + " · " + want;
+    if (wsBrowseHead) {
+      wsBrowseHead.textContent = (browse.label || hostId) + " · " + want;
     }
     // Keep Search UI while resolving abs path (don't flash empty "No matches").
-    if (opts.keepSearch || parseSshPathQuery(wsSshSearch && wsSshSearch.value)) {
-      renderSshFlyoutList(hostId);
-    } else if (wsSshTreeList) {
-      wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>Loading…</div>";
+    if (opts.keepSearch || parseSshPathQuery(wsBrowseSearch && wsBrowseSearch.value)) {
+      renderBrowseFlyoutList();
+    } else if (wsBrowseList) {
+      wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>Loading…</div>";
     }
     apiFetch(apiBase + "/api/ssh/hosts/" + encodeURIComponent(hostId)
       + "/tree?path=" + encodeURIComponent(want))
@@ -2009,18 +2173,18 @@
         return res.json().then(function (data) { return { ok: res.ok, data: data }; });
       })
       .then(function (result) {
-        if (!wsSshTreeList) return;
-        if (sshBrowse.hostId !== hostId) return;
+        if (!wsBrowseList) return;
+        if (browse.hostId !== hostId) return;
         if (!result.ok) {
           // Don't fall back to a different path while user is typing an abs query.
-          var abs = parseSshPathQuery(wsSshSearch && wsSshSearch.value);
+          var abs = parseSshPathQuery(wsBrowseSearch && wsBrowseSearch.value);
           if (abs) {
-            renderSshFlyoutList(hostId);
+            renderBrowseFlyoutList();
             var err = document.createElement("div");
             err.className = "coding-agent-ws-item-path";
             err.style.padding = "6px 8px";
             err.textContent = (result.data && (result.data.detail || result.data.message)) || "加载失败";
-            wsSshTreeList.appendChild(err);
+            wsBrowseList.appendChild(err);
             requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
             return;
           }
@@ -2029,12 +2193,12 @@
             applySshTreeData(hostId, stale, { stale: true });
             return;
           }
-          wsSshTreeList.innerHTML = "";
+          wsBrowseList.innerHTML = "";
           var err2 = document.createElement("div");
           err2.className = "coding-agent-ws-item-path";
           err2.style.padding = "6px 8px";
           err2.textContent = (result.data && (result.data.detail || result.data.message)) || "加载失败";
-          wsSshTreeList.appendChild(err2);
+          wsBrowseList.appendChild(err2);
           requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
           return;
         }
@@ -2042,10 +2206,10 @@
         applySshTreeData(hostId, result.data);
       })
       .catch(function () {
-        if (sshBrowse.hostId !== hostId) return;
-        var abs = parseSshPathQuery(wsSshSearch && wsSshSearch.value);
+        if (browse.hostId !== hostId) return;
+        var abs = parseSshPathQuery(wsBrowseSearch && wsBrowseSearch.value);
         if (abs) {
-          renderSshFlyoutList(hostId);
+          renderBrowseFlyoutList();
           return;
         }
         var stale = readSshTreeCache(hostId, want) || latestSshTreeCache(hostId);
@@ -2053,8 +2217,8 @@
           applySshTreeData(hostId, stale, { stale: true });
           return;
         }
-        if (wsSshTreeList) {
-          wsSshTreeList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
+        if (wsBrowseList) {
+          wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
         }
         requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
       });
@@ -2240,7 +2404,7 @@
       pcBtn.onmouseenter = function () { openPcFlyout(pcBtn); };
       pcBtn.onclick = function (ev) {
         ev.stopPropagation();
-        if (wsFlyout && wsFlyout.classList.contains("is-on") && wsFlyoutMode === "pc" && wsPcBtn === pcBtn) {
+        if (wsFlyout && wsFlyout.classList.contains("is-on") && wsFlyoutMode === "browse" && browseKind === "local" && wsPcBtn === pcBtn) {
           closePcFlyout();
         } else {
           openPcFlyout(pcBtn);
@@ -2310,7 +2474,7 @@
 
   function useTypedWorkspacePath(fromFlyout) {
     var ws = "";
-    if (fromFlyout && wsFlyoutInput) ws = String(wsFlyoutInput.value || "").trim();
+    if (fromFlyout && wsBrowsePathInput) ws = String(wsBrowsePathInput.value || "").trim();
     if (!ws && wsPathInput) ws = String(wsPathInput.value || "").trim();
     if (!ws && wsSearch) {
       var q = String(wsSearch.value || "").trim();
@@ -2320,8 +2484,8 @@
     if (!ws) {
       if (fromFlyout) {
         openPcFlyout(wsPcBtn);
-        if (wsFlyoutPath) wsFlyoutPath.classList.add("is-on");
-        if (wsFlyoutInput) wsFlyoutInput.focus();
+        if (wsBrowsePath) wsBrowsePath.classList.add("is-on");
+        if (wsBrowsePathInput) wsBrowsePathInput.focus();
       } else {
         if (wsPathRow) wsPathRow.classList.add("is-on");
         if (wsPathInput) wsPathInput.focus();
@@ -2470,59 +2634,111 @@
       }
     });
   }
-  if (wsOpenFolder) {
-    wsOpenFolder.onclick = function (ev) {
+  if (wsBrowseOpenFolder) {
+    wsBrowseOpenFolder.onclick = function (ev) {
       ev.stopPropagation();
-      if (wsFlyoutPath) wsFlyoutPath.classList.add("is-on");
-      if (wsFlyoutInput) {
-        wsFlyoutInput.value = isSshWorkspace(activeWorkspaceRoot) ? "" : (activeWorkspaceRoot || "");
-        wsFlyoutInput.focus();
-        wsFlyoutInput.select();
+      if (wsBrowsePath) wsBrowsePath.classList.add("is-on");
+      if (wsBrowsePathInput) {
+        wsBrowsePathInput.value = browse.path
+          || (isSshWorkspace(activeWorkspaceRoot) ? "" : (activeWorkspaceRoot || ""));
+        wsBrowsePathInput.focus();
+        wsBrowsePathInput.select();
       }
     };
   }
-  if (wsFlyoutSearch) {
-    wsFlyoutSearch.addEventListener("input", function () {
-      loadLocalFolderList(wsFlyoutSearch.value);
+  if (wsBrowsePathGo) {
+    wsBrowsePathGo.onclick = function (ev) {
+      ev.stopPropagation();
+      useTypedWorkspacePath(true);
+    };
+  }
+  if (wsBrowsePathInput) {
+    wsBrowsePathInput.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        useTypedWorkspacePath(true);
+      }
     });
   }
-  if (wsSshSearch) {
-    wsSshSearch.addEventListener("input", function () {
-      if (!sshBrowse.hostId) return;
-      var parsed = parseSshPathQuery(wsSshSearch.value);
-      if (parsed) scheduleSshPathJump(sshBrowse.hostId, parsed);
-      else clearTimeout(sshSearchJumpTimer);
-      renderSshFlyoutList(sshBrowse.hostId);
+  if (wsBrowseSearch) {
+    wsBrowseSearch.addEventListener("input", function () {
+      if (browseKind === "local") {
+        var parsed = parseLocalPathQuery(wsBrowseSearch.value);
+        if (parsed) {
+          clearTimeout(browseSearchJumpTimer);
+          browseSearchJumpTimer = setTimeout(function () {
+            if (browseKind !== "local") return;
+            loadLocalBrowse(wsBrowseSearch.value);
+          }, 120);
+        } else {
+          clearTimeout(browseSearchJumpTimer);
+          loadLocalBrowse(wsBrowseSearch.value);
+        }
+        return;
+      }
+      if (!browse.hostId) return;
+      var sshParsed = parseSshPathQuery(wsBrowseSearch.value);
+      if (sshParsed) scheduleSshPathJump(browse.hostId, sshParsed);
+      else clearTimeout(browseSearchJumpTimer);
+      renderBrowseFlyoutList();
     });
-    wsSshSearch.addEventListener("keydown", function (ev) {
-      if (ev.key !== "Enter" || !sshBrowse.hostId) return;
-      var parsed = parseSshPathQuery(wsSshSearch.value);
-      if (!parsed) return;
+    wsBrowseSearch.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
       ev.preventDefault();
-      clearTimeout(sshSearchJumpTimer);
-      // Prefer exact/prefix folder match under parent — not a half-typed dead path.
-      var filter = String(parsed.filter || "").toLowerCase();
-      var hit = null;
-      if (sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.dir) && filter) {
-        var dirs = (sshTreeEntries || []).filter(function (e) {
-          return (!e.type || e.type === "dir")
-            && String(e.name || "").toLowerCase().indexOf(filter) === 0;
-        });
-        hit = dirs.find(function (e) {
-          return String(e.name || "").toLowerCase() === filter;
-        }) || (dirs.length === 1 ? dirs[0] : null);
+      clearTimeout(browseSearchJumpTimer);
+      if (browseKind === "local") {
+        var lp = parseLocalPathQuery(wsBrowseSearch.value);
+        if (lp) {
+          var filter = String(lp.filter || "").toLowerCase();
+          var hit = null;
+          if (localPathNorm(browse.path) === localPathNorm(lp.dir) && filter) {
+            var dirs = (browseEntries || []).filter(function (e) {
+              return String(e.name || "").toLowerCase().indexOf(filter) === 0;
+            });
+            hit = dirs.find(function (e) {
+              return String(e.name || "").toLowerCase() === filter;
+            }) || (dirs.length === 1 ? dirs[0] : null);
+          }
+          if (hit) {
+            wsBrowseSearch.value = "";
+            loadLocalBrowse("", { path: hit.path });
+          } else if (!filter) {
+            wsBrowseSearch.value = "";
+            loadLocalBrowse("", { path: lp.full });
+          } else {
+            loadLocalBrowse(wsBrowseSearch.value);
+          }
+        } else {
+          loadLocalBrowse(wsBrowseSearch.value);
+        }
+        return;
       }
-      if (hit) {
-        if (wsSshSearch) wsSshSearch.value = "";
-        loadSshTree(sshBrowse.hostId, hit.path, { keepSearch: false });
-      } else if (!filter) {
-        if (wsSshSearch) wsSshSearch.value = "";
-        loadSshTree(sshBrowse.hostId, parsed.full, { keepSearch: false });
+      if (!browse.hostId) return;
+      var parsed = parseSshPathQuery(wsBrowseSearch.value);
+      if (!parsed) return;
+      var filterS = String(parsed.filter || "").toLowerCase();
+      var hitS = null;
+      if (sshPathNorm(browse.path) === sshPathNorm(parsed.dir) && filterS) {
+        var dirsS = (browseEntries || []).filter(function (e) {
+          return (!e.type || e.type === "dir")
+            && String(e.name || "").toLowerCase().indexOf(filterS) === 0;
+        });
+        hitS = dirsS.find(function (e) {
+          return String(e.name || "").toLowerCase() === filterS;
+        }) || (dirsS.length === 1 ? dirsS[0] : null);
+      }
+      if (hitS) {
+        wsBrowseSearch.value = "";
+        loadSshTree(browse.hostId, hitS.path, { keepSearch: false });
+      } else if (!filterS) {
+        wsBrowseSearch.value = "";
+        loadSshTree(browse.hostId, parsed.full, { keepSearch: false });
       } else {
-        loadSshTree(sshBrowse.hostId, parsed.dir, { keepSearch: true });
+        loadSshTree(browse.hostId, parsed.dir, { keepSearch: true });
       }
     });
   }
+
   if (wsUeOpenFolder) {
     wsUeOpenFolder.onclick = function (ev) {
       ev.stopPropagation();
@@ -2575,27 +2791,18 @@
       saveSshHostThenBrowse();
     };
   }
-  if (wsSshUseHere) {
-    wsSshUseHere.onclick = function (ev) {
+  if (wsBrowseUseHere) {
+    wsBrowseUseHere.onclick = function (ev) {
       ev.stopPropagation();
-      var uri = sshBrowse.uri || ("ssh://" + sshBrowse.hostId + (sshBrowse.path || "/"));
+      if (browseKind === "local") {
+        if (!browse.path) return;
+        selectWorkspacePath(browse.path, workspaceDisplayName(browse.path));
+        return;
+      }
+      var uri = browse.uri || ("ssh://" + browse.hostId + (browse.path || "/"));
       var name = workspaceDisplayName(uri);
       selectWorkspacePath(uri, name);
     };
-  }
-  if (wsFlyoutGo) {
-    wsFlyoutGo.onclick = function (ev) {
-      ev.stopPropagation();
-      useTypedWorkspacePath(true);
-    };
-  }
-  if (wsFlyoutInput) {
-    wsFlyoutInput.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        useTypedWorkspacePath(true);
-      }
-    });
   }
   if (wsFlyout) {
     wsFlyout.addEventListener("click", function (ev) { ev.stopPropagation(); });

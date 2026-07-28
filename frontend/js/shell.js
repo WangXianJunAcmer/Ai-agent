@@ -819,13 +819,13 @@
       max-height: min(560px, 85vh); overflow: auto;
     }
     #coding-agent-ws-flyout.is-on { display: block; }
-    /* SSH tree: one scrollbar only — flyout clips, list scrolls. */
-    #coding-agent-ws-flyout:has([data-flyout-panel="ssh-tree"].is-on) {
+    /* Folder browse (local + SSH): one scrollbar — flyout clips, list scrolls. */
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on) {
       overflow: hidden;
       display: flex;
       flex-direction: column;
     }
-    #coding-agent-ws-flyout:has([data-flyout-panel="ssh-tree"].is-on) #coding-agent-ws-flyout-panels {
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on) #coding-agent-ws-flyout-panels {
       flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
     }
     #coding-agent-ws-flyout-path {
@@ -854,25 +854,19 @@
       border: 0; background: #111; color: #fff; border-radius: 8px;
       padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #coding-agent-ws-flyout-search,
-    #coding-agent-ws-ssh-search {
+    #coding-agent-ws-browse-search {
       width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
       border-radius: 8px; padding: 8px 10px; margin: 2px 0 6px;
       font: 12.5px/1.3 inherit; outline: none;
     }
-    #coding-agent-ws-flyout-search::placeholder,
-    #coding-agent-ws-ssh-search::placeholder { color: #8b8b93; }
-    #coding-agent-ws-flyout-list {
-      display: flex; flex-direction: column; gap: 1px;
-      max-height: 220px; overflow: auto; margin-bottom: 4px;
-    }
+    #coding-agent-ws-browse-search::placeholder { color: #8b8b93; }
     #coding-agent-ws-flyout-panels > [data-flyout-panel] { display: none; }
     #coding-agent-ws-flyout-panels > [data-flyout-panel].is-on { display: block; }
-    #coding-agent-ws-flyout-panels > [data-flyout-panel="ssh-tree"].is-on {
+    #coding-agent-ws-flyout-panels > [data-flyout-panel="browse"].is-on {
       display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
     }
-    #coding-agent-ws-ssh-tree-head { flex: 0 0 auto; }
-    #coding-agent-ws-ssh-search { flex: 0 0 auto; }
+    #coding-agent-ws-browse-head { flex: 0 0 auto; }
+    #coding-agent-ws-browse-search { flex: 0 0 auto; }
     #coding-agent-ws-ssh-form {
       display: none; flex-direction: column; gap: 6px; padding: 4px 2px 6px;
     }
@@ -916,19 +910,37 @@
       letter-spacing: .01em; padding: 10px 8px 4px;
     }
     .coding-agent-ws-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow: auto; }
-    /* SSH browse: list is the only scroller (not the flyout). */
-    #coding-agent-ws-ssh-tree-list.coding-agent-ws-list {
+    /* Browse list: only scroller inside the flyout. */
+    #coding-agent-ws-browse-list.coding-agent-ws-list {
       flex: 1 1 auto;
       min-height: 0;
       max-height: none;
       overflow: auto;
       margin-bottom: 0;
     }
-    #coding-agent-ws-ssh-use-here {
+    #coding-agent-ws-browse-use-here,
+    #coding-agent-ws-browse-open-folder,
+    #coding-agent-ws-browse-path {
       flex: 0 0 auto;
+    }
+    #coding-agent-ws-browse-use-here {
       position: static;
       margin-top: 4px;
       background: #fff; border-top: 1px solid #f0f0f0; z-index: 1;
+    }
+    #coding-agent-ws-browse-open-folder,
+    #coding-agent-ws-browse-path { display: none; }
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on).is-local-browse #coding-agent-ws-browse-open-folder {
+      display: flex;
+    }
+    #coding-agent-ws-browse-path.is-on { display: flex; flex-direction: column; gap: 6px; padding: 6px 4px 4px; }
+    #coding-agent-ws-browse-path input {
+      width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
+      border-radius: 8px; padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
+    }
+    #coding-agent-ws-browse-path button {
+      border: 0; background: #111; color: #fff; border-radius: 8px;
+      padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
     .coding-agent-ws-item,
     .coding-agent-ws-nav {
@@ -2787,16 +2799,20 @@
               </div>
               <div id="coding-agent-ws-flyout" aria-hidden="true">
                 <div id="coding-agent-ws-flyout-panels">
-                  <div data-flyout-panel="pc" id="coding-agent-ws-flyout-pc">
-                    <input id="coding-agent-ws-flyout-search" type="search" placeholder="Search" autocomplete="off">
-                    <div id="coding-agent-ws-flyout-list" class="coding-agent-ws-list"></div>
-                    <button type="button" id="coding-agent-ws-open-folder" class="coding-agent-ws-item">
+                  <div data-flyout-panel="browse" id="coding-agent-ws-flyout-browse">
+                    <input id="coding-agent-ws-browse-search" type="search" placeholder="Search or path" autocomplete="off">
+                    <div id="coding-agent-ws-browse-head" class="coding-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
+                    <div id="coding-agent-ws-browse-list" class="coding-agent-ws-list"></div>
+                    <button type="button" id="coding-agent-ws-browse-use-here" class="coding-agent-ws-item">
+                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Use this folder</span></span>
+                    </button>
+                    <button type="button" id="coding-agent-ws-browse-open-folder" class="coding-agent-ws-item">
                       <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
                       <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Open Folder</span></span>
                     </button>
-                    <div id="coding-agent-ws-flyout-path">
-                      <input id="coding-agent-ws-flyout-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
-                      <button type="button" id="coding-agent-ws-flyout-go">打开</button>
+                    <div id="coding-agent-ws-browse-path">
+                      <input id="coding-agent-ws-browse-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                      <button type="button" id="coding-agent-ws-browse-path-go">打开</button>
                     </div>
                   </div>
                   <div data-flyout-panel="use-existing" id="coding-agent-ws-flyout-use">
@@ -2812,14 +2828,6 @@
                       <input id="coding-agent-ws-ue-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
                       <button type="button" id="coding-agent-ws-ue-path-go">打开</button>
                     </div>
-                  </div>
-                  <div data-flyout-panel="ssh-tree" id="coding-agent-ws-flyout-ssh-tree">
-                    <input id="coding-agent-ws-ssh-search" type="search" placeholder="Search" autocomplete="off">
-                    <div id="coding-agent-ws-ssh-tree-head" class="coding-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
-                    <div id="coding-agent-ws-ssh-tree-list" class="coding-agent-ws-list"></div>
-                    <button type="button" id="coding-agent-ws-ssh-use-here" class="coding-agent-ws-item">
-                      <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Use this folder</span></span>
-                    </button>
                   </div>
                   <div data-flyout-panel="ssh-form" id="coding-agent-ws-flyout-ssh-form">
                     <div id="coding-agent-ws-ssh-form" class="is-on">

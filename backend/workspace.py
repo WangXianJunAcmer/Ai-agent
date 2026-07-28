@@ -781,3 +781,64 @@ def local_folder_suggestions(settings: dict, query: str = "", *, limit: int = 40
         if len(out) >= limit:
             break
     return out
+
+
+def browse_local_folders(
+    settings: dict,
+    path: str = "",
+    query: str = "",
+    *,
+    limit: int = 80,
+) -> dict:
+    """Seed list (empty path) or one-level subdirs of an absolute local path."""
+    raw = (path or "").strip()
+    q = (query or "").strip().lower()
+    if not raw:
+        return {
+            "path": "",
+            "parent": None,
+            "roots": local_folder_suggestions(settings, query, limit=limit),
+        }
+    try:
+        base = Path(raw).expanduser().resolve()
+    except OSError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail="不是目录")
+    parent: str | None
+    try:
+        parent_path = base.parent
+        parent = str(parent_path) if parent_path != base else None
+    except OSError:
+        parent = None
+    roots: list[dict] = []
+    try:
+        children = sorted(base.iterdir(), key=lambda p: p.name.lower())
+    except OSError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    for child in children:
+        if not child.is_dir():
+            continue
+        name = child.name
+        if name in _SKIP_DIRS:
+            continue
+        if name.startswith(".") and name not in {".gitignore", ".env.example"}:
+            continue
+        if q and q not in name.lower():
+            continue
+        try:
+            abs_path = str(child.resolve())
+        except OSError:
+            continue
+        roots.append({
+            "path": abs_path,
+            "name": name,
+            "is_home": is_home_workspace(child),
+        })
+        if len(roots) >= limit:
+            break
+    return {
+        "path": str(base),
+        "parent": parent,
+        "roots": roots,
+    }
