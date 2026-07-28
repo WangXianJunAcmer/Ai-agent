@@ -341,6 +341,11 @@ class WorkspaceExecRequest(BaseModel):
     conda_env: str | None = None
 
 
+class WorkspacePickFolderRequest(BaseModel):
+    mode: str | None = "open"  # open | new
+    initial: str | None = None
+
+
 class SshHostUpsert(BaseModel):
     id: str
     label: str | None = None
@@ -802,6 +807,29 @@ async def workspace_local_list(request: Request, q: str = "", path: str = ""):
     return {"ok": True, **browse_local_folders(settings, path, q)}
 
 
+@app.post("/api/workspace/pick-folder")
+async def workspace_pick_folder(req: WorkspacePickFolderRequest, request: Request):
+    """Native OS folder dialog (same idea as Cursor Open Folder / New Folder)."""
+    from backend.workspace import pick_local_folder
+
+    require_user(request)
+    mode = str(req.mode or "open").strip().lower()
+    title = "New Folder" if mode == "new" else "Open Folder"
+    initial = (req.initial or "").strip()
+    if not initial:
+        try:
+            code = Path("D:/code")
+            initial = str(code) if code.is_dir() else str(Path.home())
+        except OSError:
+            initial = str(Path.home())
+    return await asyncio.to_thread(
+        pick_local_folder,
+        title=title,
+        initial=initial,
+        allow_create=True,
+    )
+
+
 @app.get("/api/workspace/tree")
 async def workspace_tree(
     request: Request,
@@ -1111,6 +1139,24 @@ async def ssh_hosts_list(request: Request):
         "ssh_config": str(cfg),
         "ssh_config_exists": cfg.is_file(),
     }
+
+
+@app.post("/api/ssh/open-config")
+async def ssh_open_config(request: Request):
+    """Open ~/.ssh/config in the OS file manager (Cursor 'Open SSH Config')."""
+    from backend.ssh_hosts import _ssh_config_path
+    from backend.workspace import reveal_abs_path
+
+    require_user(request)
+    cfg = _ssh_config_path()
+    try:
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        if not cfg.is_file():
+            cfg.write_text("# SSH config\n", encoding="utf-8")
+    except OSError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    await asyncio.to_thread(reveal_abs_path, cfg)
+    return {"ok": True, "ssh_config": str(cfg)}
 
 
 @app.post("/api/ssh/hosts")

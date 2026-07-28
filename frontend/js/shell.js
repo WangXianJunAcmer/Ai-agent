@@ -820,12 +820,15 @@
     }
     #coding-agent-ws-flyout.is-on { display: block; }
     /* Folder browse (local + SSH): one scrollbar — flyout clips, list scrolls. */
-    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on) {
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on),
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="ssh-form"].is-on) {
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      min-height: min(420px, 70vh);
     }
-    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on) #coding-agent-ws-flyout-panels {
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="browse"].is-on) #coding-agent-ws-flyout-panels,
+    #coding-agent-ws-flyout.is-on:has([data-flyout-panel="ssh-form"].is-on) #coding-agent-ws-flyout-panels {
       flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
     }
     #coding-agent-ws-flyout-path {
@@ -865,17 +868,64 @@
     #coding-agent-ws-flyout-panels > [data-flyout-panel="browse"].is-on {
       display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
     }
+    #coding-agent-ws-flyout-panels > [data-flyout-panel="ssh-form"].is-on {
+      display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+    }
     #coding-agent-ws-browse-head { flex: 0 0 auto; }
     #coding-agent-ws-browse-search { flex: 0 0 auto; }
     #coding-agent-ws-ssh-form {
-      display: none; flex-direction: column; gap: 6px; padding: 4px 2px 6px;
+      display: none; flex-direction: column; gap: 8px; padding: 4px 2px 6px;
+      min-height: 0; flex: 1 1 auto;
     }
     #coding-agent-ws-ssh-form.is-on { display: flex; }
-    #coding-agent-ws-ssh-form label {
+    #coding-agent-ws-ssh-connect-row {
+      display: flex; gap: 6px; align-items: stretch; flex: 0 0 auto;
+    }
+    #coding-agent-ws-ssh-hostname {
+      flex: 1 1 auto; min-width: 0;
+      border: 0; background: #f4f4f5; border-radius: 8px;
+      padding: 9px 10px; font: 12.5px/1.3 inherit; outline: none; color: #18181b;
+    }
+    #coding-agent-ws-ssh-hostname:focus { background: #ececee; }
+    #coding-agent-ws-ssh-connect {
+      flex: 0 0 auto; border: 0; border-radius: 8px;
+      padding: 0 12px; font: 600 12px/1 inherit; cursor: pointer;
+      background: #2563eb; color: #fff;
+    }
+    #coding-agent-ws-ssh-connect:hover { background: #1d4ed8; }
+    #coding-agent-ws-ssh-host-list {
+      flex: 1 1 auto; min-height: 0; overflow: auto;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    #coding-agent-ws-ssh-host-list .coding-agent-ws-item {
+      width: 100%;
+    }
+    #coding-agent-ws-ssh-foot {
+      flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 4px 2px 0; font-size: 11px; color: #8b8b93; line-height: 1.35;
+    }
+    #coding-agent-ws-ssh-open-config {
+      border: 0; background: transparent; color: #2563eb;
+      font: 600 11.5px/1 inherit; cursor: pointer; padding: 0; white-space: nowrap;
+    }
+    #coding-agent-ws-ssh-open-config:hover { text-decoration: underline; }
+    #coding-agent-ws-ssh-manual {
+      display: none; flex-direction: column; gap: 6px; padding-top: 4px;
+      border-top: 1px solid #ececee; margin-top: 2px;
+    }
+    #coding-agent-ws-ssh-manual.is-on { display: flex; }
+    #coding-agent-ws-ssh-manual-toggle {
+      border: 0; background: transparent; color: #71717a;
+      font: 600 11px/1 inherit; cursor: pointer; padding: 4px 2px; text-align: left;
+    }
+    #coding-agent-ws-ssh-manual-toggle:hover { color: #18181b; }
+    #coding-agent-ws-ssh-form label,
+    #coding-agent-ws-ssh-manual label {
       display: flex; flex-direction: column; gap: 3px;
       font-size: 11px; color: #71717a; font-weight: 600;
     }
-    #coding-agent-ws-ssh-form input, #coding-agent-ws-ssh-form select {
+    #coding-agent-ws-ssh-form label input, #coding-agent-ws-ssh-form label select,
+    #coding-agent-ws-ssh-manual label input, #coding-agent-ws-ssh-manual label select {
       border: 0; background: #f4f4f5; border-radius: 8px;
       padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none; color: #18181b;
     }
@@ -2831,27 +2881,36 @@
                   </div>
                   <div data-flyout-panel="ssh-form" id="coding-agent-ws-flyout-ssh-form">
                     <div id="coding-agent-ws-ssh-form" class="is-on">
-                      <div class="coding-agent-ws-item-path" style="padding:0 0 8px;line-height:1.35;">
-                        ~/.ssh/config 里的 Host 会自动出现在 Repos 列表；这里只用于手动补一条。
+                      <div id="coding-agent-ws-ssh-connect-row">
+                        <input id="coding-agent-ws-ssh-hostname" type="text" placeholder="SSH Hostname" spellcheck="false" autocomplete="off">
+                        <button type="button" id="coding-agent-ws-ssh-connect" title="Connect">Connect</button>
                       </div>
-                      <label>ID<input id="coding-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
-                      <label>Label<input id="coding-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
-                      <label>Host<input id="coding-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
-                      <label>Port<input id="coding-agent-ws-ssh-port" type="number" value="22" min="1" max="65535"></label>
-                      <label>User<input id="coding-agent-ws-ssh-user" type="text" placeholder="wxj" autocomplete="off"></label>
-                      <label>Auth
-                        <select id="coding-agent-ws-ssh-auth">
-                          <option value="key">SSH Key</option>
-                          <option value="password">Password</option>
-                        </select>
-                      </label>
-                      <label id="coding-agent-ws-ssh-key-wrap">Key path<input id="coding-agent-ws-ssh-key" type="text" placeholder="~/.ssh/id_rsa" autocomplete="off"></label>
-                      <label id="coding-agent-ws-ssh-pass-wrap" style="display:none;">Password<input id="coding-agent-ws-ssh-pass" type="password" autocomplete="new-password"></label>
-                      <label>Default path<input id="coding-agent-ws-ssh-default" type="text" placeholder="/home/user" autocomplete="off"></label>
+                      <div id="coding-agent-ws-ssh-host-list" class="coding-agent-ws-list"></div>
+                      <div id="coding-agent-ws-ssh-foot">
+                        <span>Type a host like user@host or select from SSH config</span>
+                        <button type="button" id="coding-agent-ws-ssh-open-config">Open SSH Config</button>
+                      </div>
                       <div id="coding-agent-ws-ssh-status"></div>
-                      <div id="coding-agent-ws-ssh-form-actions">
-                        <button type="button" id="coding-agent-ws-ssh-test">测试连接</button>
-                        <button type="button" id="coding-agent-ws-ssh-save">保存</button>
+                      <button type="button" id="coding-agent-ws-ssh-manual-toggle">Add host manually…</button>
+                      <div id="coding-agent-ws-ssh-manual">
+                        <label>ID<input id="coding-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                        <label>Label<input id="coding-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                        <label>Host<input id="coding-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
+                        <label>Port<input id="coding-agent-ws-ssh-port" type="number" value="22" min="1" max="65535"></label>
+                        <label>User<input id="coding-agent-ws-ssh-user" type="text" placeholder="wxj" autocomplete="off"></label>
+                        <label>Auth
+                          <select id="coding-agent-ws-ssh-auth">
+                            <option value="key">SSH Key</option>
+                            <option value="password">Password</option>
+                          </select>
+                        </label>
+                        <label id="coding-agent-ws-ssh-key-wrap">Key path<input id="coding-agent-ws-ssh-key" type="text" placeholder="~/.ssh/id_rsa" autocomplete="off"></label>
+                        <label id="coding-agent-ws-ssh-pass-wrap" style="display:none;">Password<input id="coding-agent-ws-ssh-pass" type="password" autocomplete="new-password"></label>
+                        <label>Default path<input id="coding-agent-ws-ssh-default" type="text" placeholder="/home/user" autocomplete="off"></label>
+                        <div id="coding-agent-ws-ssh-form-actions">
+                          <button type="button" id="coding-agent-ws-ssh-test">测试连接</button>
+                          <button type="button" id="coding-agent-ws-ssh-save">保存</button>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -648,6 +648,15 @@ def reveal_in_os(root: Path, rel: str) -> dict:
     path = Path(info["abs_path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="路径不存在")
+    reveal_abs_path(path)
+    return info
+
+
+def reveal_abs_path(path: Path) -> None:
+    """Open OS file manager on an absolute local path (file or dir)."""
+    path = Path(path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="路径不存在")
     try:
         if sys.platform.startswith("win"):
             if path.is_dir():
@@ -664,7 +673,120 @@ def reveal_in_os(root: Path, rel: str) -> dict:
             subprocess.Popen(["xdg-open", str(target)])
     except OSError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-    return info
+
+
+def pick_local_folder(
+    *,
+    title: str = "Open Folder",
+    initial: str = "",
+    allow_create: bool = True,
+) -> dict:
+    """Native OS folder picker (Cursor-style). Blocks until user picks or cancels."""
+    title = (title or "Open Folder").strip() or "Open Folder"
+    start = (initial or "").strip()
+    if start:
+        try:
+            p = Path(start).expanduser()
+            if p.is_file():
+                start = str(p.parent)
+            elif p.is_dir():
+                start = str(p)
+            else:
+                start = ""
+        except OSError:
+            start = ""
+    chosen = _pick_folder_native(title, start, allow_create)
+    if not chosen:
+        return {"ok": True, "cancelled": True, "path": ""}
+    try:
+        path = str(Path(chosen).expanduser().resolve())
+    except OSError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    if not Path(path).is_dir():
+        raise HTTPException(status_code=400, detail="不是目录")
+    return {"ok": True, "cancelled": False, "path": path}
+
+
+def _pick_folder_native(title: str, initial: str, allow_create: bool) -> str:
+    if sys.platform.startswith("win"):
+        try:
+            return _pick_folder_winforms(title, initial, allow_create)
+        except Exception:
+            pass
+    try:
+        return _pick_folder_tk(title, initial, allow_create)
+    except Exception as err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"无法打开系统文件夹选择器: {err}",
+        ) from err
+
+
+def _pick_folder_winforms(title: str, initial: str, allow_create: bool) -> str:
+    # ponytail: WinForms via PowerShell STA — swap to ctypes SHBrowseForFolder if PS is unavailable
+    import json
+
+    show_new = "true" if allow_create else "false"
+    ps = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "[System.Windows.Forms.Application]::EnableVisualStyles() | Out-Null; "
+        "$f = New-Object System.Windows.Forms.Form; "
+        "$f.TopMost = $true; $f.ShowInTaskbar = $false; "
+        "$f.WindowState = 'Minimized'; $f.Show(); $f.Hide(); "
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+        f"$d.Description = {json.dumps(title)}; "
+        f"$d.ShowNewFolderButton = ${show_new}; "
+    )
+    if initial:
+        ps += f"$d.SelectedPath = {json.dumps(initial)}; "
+    ps += (
+        "try { "
+        "if ($d.ShowDialog($f) -eq [System.Windows.Forms.DialogResult]::OK) "
+        "{ [Console]::Out.Write($d.SelectedPath) } "
+        "} finally { $f.Dispose() }"
+    )
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-STA",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            ps,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        shell=False,
+    )
+    if completed.returncode not in (0, None) and not (completed.stdout or "").strip():
+        err = (completed.stderr or "").strip() or f"exit {completed.returncode}"
+        raise RuntimeError(err)
+    return (completed.stdout or "").strip()
+
+
+def _pick_folder_tk(title: str, initial: str, allow_create: bool) -> str:
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.wm_attributes("-topmost", 1)
+    except tk.TclError:
+        pass
+    kwargs: dict = {"title": title, "mustexist": not allow_create}
+    if initial:
+        kwargs["initialdir"] = initial
+    try:
+        path = filedialog.askdirectory(**kwargs) or ""
+    finally:
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
+    return str(path or "").strip()
 
 
 def recent_workspace_suggestions(settings: dict, conversation_roots: list[str]) -> list[dict]:
