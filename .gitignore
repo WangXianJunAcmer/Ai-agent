@@ -13,3 +13,7 @@ stop.bat
 examples/
 .ai-agent-uploads/
 backend/model_options_cache.json
+
+_pty_out.txt
+*.pid
+
