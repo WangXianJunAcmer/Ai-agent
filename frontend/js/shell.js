@@ -475,7 +475,7 @@
       flex: 0 0 auto; /* never shrink when many tabs — scroll instead */
       border: 0; border-right: 1px solid rgba(0,0,0,.06); background: transparent;
       padding: 0 8px 0 10px; font: 12px/1.2 inherit; color: var(--ai-muted);
-      cursor: grab; max-width: 180px; height: 100%; position: relative;
+      cursor: grab; height: 100%; position: relative;
     }
     .coding-agent-ide-tab:active { cursor: grabbing; }
     .coding-agent-ide-tab.is-dragging { opacity: .45; }
@@ -494,7 +494,7 @@
     .coding-agent-ide-tab-icon.is-py { color: #3776ab; }
     .coding-agent-ide-tab-icon.is-js { color: #c5a000; }
     .coding-agent-ide-tab-name {
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;
+      white-space: nowrap; /* full filename; bar scrolls when tabs overflow */
     }
     .coding-agent-ide-tab.is-dirty .coding-agent-ide-tab-name::after { content: " ●"; color: #0078d4; font-size: 9px; }
     .coding-agent-ide-tab-close {

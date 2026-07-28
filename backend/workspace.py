@@ -64,6 +64,33 @@ def image_mime_for(name: str) -> str | None:
     return _IMAGE_MIME.get(ext)
 
 
+def is_docx_name(name: str) -> bool:
+    return Path(str(name or "")).suffix.lower() == ".docx"
+
+
+def extract_docx_text(data: bytes) -> str:
+    """Plain-text preview from OOXML — stdlib only (zip + XML)."""
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            xml = zf.read("word/document.xml")
+    except (KeyError, zipfile.BadZipFile) as err:
+        raise HTTPException(status_code=400, detail=f"无法解析 docx: {err}") from err
+    w_t = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
+    w_p = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"
+    root = ET.fromstring(xml)
+    paras: list[str] = []
+    for p in root.iter(w_p):
+        parts = [t.text or "" for t in p.iter(w_t)]
+        line = "".join(parts).strip()
+        if line:
+            paras.append(line)
+    return "\n\n".join(paras) if paras else "(空文档)"
+
+
 def home_workspace() -> Path:
     return Path.home().resolve()
 
@@ -192,7 +219,8 @@ def read_file(root: Path, rel: str) -> dict:
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     mime = image_mime_for(rel) or image_mime_for(path.name)
-    limit = _MAX_IMAGE_READ if mime else _MAX_READ
+    docx = is_docx_name(rel) or is_docx_name(path.name)
+    limit = _MAX_IMAGE_READ if (mime or docx) else _MAX_READ
     try:
         data = path.read_bytes()
     except OSError as err:
@@ -209,6 +237,15 @@ def read_file(root: Path, rel: str) -> dict:
             "mime": mime,
             "encoding": "base64",
             "data_base64": base64.b64encode(data).decode("ascii"),
+        }
+    if docx:
+        return {
+            "root": str(root),
+            "path": rel.replace("\\", "/"),
+            "content": extract_docx_text(data),
+            "size": len(data),
+            "media": "docx",
+            "readonly": True,
         }
     try:
         text = data.decode("utf-8")

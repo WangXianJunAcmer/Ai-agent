@@ -505,12 +505,19 @@ def _is_dir(attr) -> bool:
 def read_file(host_id: str, root: str, rel: str) -> dict:
     import base64
 
-    from backend.workspace import _MAX_IMAGE_READ, _MAX_READ, image_mime_for
+    from backend.workspace import (
+        _MAX_IMAGE_READ,
+        _MAX_READ,
+        extract_docx_text,
+        image_mime_for,
+        is_docx_name,
+    )
 
     client = get_client(host_id)
     path = _safe_remote(root, rel)
     mime = image_mime_for(rel) or image_mime_for(posixpath.basename(path))
-    limit = _MAX_IMAGE_READ if mime else _MAX_READ
+    docx = is_docx_name(rel) or is_docx_name(posixpath.basename(path))
+    limit = _MAX_IMAGE_READ if (mime or docx) else _MAX_READ
     sftp = client.open_sftp()
     try:
         with sftp.open(path, "rb") as fh:
@@ -532,6 +539,16 @@ def read_file(host_id: str, root: str, rel: str) -> dict:
             "mime": mime,
             "encoding": "base64",
             "data_base64": base64.b64encode(data).decode("ascii"),
+        }
+    if docx:
+        return {
+            "root": format_ssh_uri(host_id, root),
+            "path": rel.replace("\\", "/"),
+            "content": extract_docx_text(data),
+            "size": len(data),
+            "ssh": True,
+            "media": "docx",
+            "readonly": True,
         }
     try:
         text = data.decode("utf-8")

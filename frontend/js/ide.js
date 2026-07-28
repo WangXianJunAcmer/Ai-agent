@@ -180,6 +180,14 @@
     return !!(tab && (tab.media === "image" || isImagePath(tab.path)));
   }
 
+  function isDocxPath(path) {
+    return /\.docx$/i.test(String(path || ""));
+  }
+
+  function isDocxTab(tab) {
+    return !!(tab && (tab.media === "docx" || isDocxPath(tab.path)));
+  }
+
   function tabKey(tab) {
     if (!tab) return "";
     var kind = tab.kind || "file";
@@ -362,6 +370,28 @@
         } else {
           idePreview.textContent = "无法加载图片";
         }
+      }
+      setOutlineOpen(false);
+      return;
+    }
+    var docx = hasFile && isDocxTab(tab);
+    if (docx) {
+      if (ideViewTools) ideViewTools.classList.toggle("is-on", false);
+      if (ideOutlineToggle) ideOutlineToggle.style.display = "none";
+      if (ideEditor) ideEditor.classList.toggle("is-preview", true);
+      if (ideCodeWrap) ideCodeWrap.style.display = "none";
+      if (ideCode) ideCode.readOnly = true;
+      if (idePreview) {
+        idePreview.style.display = "block";
+        idePreview.innerHTML = "";
+        var note = document.createElement("div");
+        note.style.cssText = "font-size:12px;color:#6b6b6b;margin:0 0 12px";
+        note.textContent = "Word 预览（只读文本）";
+        idePreview.appendChild(note);
+        var body = document.createElement("div");
+        body.style.cssText = "white-space:pre-wrap;line-height:1.6;font-size:14px;color:#1f1f1f";
+        body.textContent = tab.content || "(空文档)";
+        idePreview.appendChild(body);
       }
       setOutlineOpen(false);
       return;
@@ -561,6 +591,7 @@
     if (ext === "json") return "is-json";
     if (ext === "yml" || ext === "yaml") return "is-yml";
     if (ext === "env" || name === ".env" || name === ".env.example") return "is-env";
+    if (ext === "docx" || ext === "doc") return "is-doc";
     if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp" || ext === "bmp" || ext === "svg") return "is-img";
     if (ext === "bat" || ext === "cmd") return "is-bat";
     if (ext === "sh" || ext === "bash" || ext === "zsh") return "is-sh";
@@ -576,6 +607,7 @@
     if (ext === "md" || ext === "markdown") return "M↓";
     if (ext === "json") return "{}";
     if (ext === "yml" || ext === "yaml") return "!";
+    if (ext === "docx" || ext === "doc") return "W";
     if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp" || ext === "bmp" || ext === "svg") return "IMG";
     if (ext === "bat" || ext === "sh") return "$>";
     if (name === ".gitignore") return "gi";
@@ -1046,6 +1078,7 @@
       .then(readApiJson)
       .then(function (data) {
         var isImg = data && (data.media === "image" || (data.encoding === "base64" && data.data_base64));
+        var isDocx = data && (data.media === "docx" || /\.docx$/i.test(path));
         if (!isImg && (!data || data.content == null)) throw new Error("read failed");
         var tab = existing || {
           id: path,
@@ -1065,6 +1098,15 @@
           tab.dataBase64 = data.data_base64 || "";
           tab.content = "";
           tab.original = "";
+          tab.view = "preview";
+          tab.dirty = false;
+          tab.unsaved = false;
+        } else if (isDocx) {
+          tab.media = "docx";
+          tab.mime = "";
+          tab.dataBase64 = "";
+          tab.content = String(data.content || "");
+          tab.original = tab.content;
           tab.view = "preview";
           tab.dirty = false;
           tab.unsaved = false;
@@ -1095,7 +1137,7 @@
       return (t.kind || "file") === "file" && t.path === ideActivePath;
     });
     if (!tab) return Promise.resolve();
-    if (isImageTab(tab)) return Promise.resolve();
+    if (isImageTab(tab) || isDocxTab(tab)) return Promise.resolve();
     tab.content = ideCode.value;
     return apiFetch(apiBase + "/api/workspace/file", {
       method: "PUT",
