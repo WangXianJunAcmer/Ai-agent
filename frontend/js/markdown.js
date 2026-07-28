@@ -367,9 +367,65 @@
     return raw;
   }
 
+  function highlightYaml(source) {
+    var lines = String(source || "").split("\n");
+    return lines.map(function (line) {
+      if (!line) return "";
+      var m = line.match(/^(\s*)(#.*)$/);
+      if (m) {
+        return escapeHtml(m[1]) + '<span class="tok-cmt">' + escapeHtml(m[2]) + "</span>";
+      }
+      // key: value  |  - item  |  key:
+      var km = line.match(/^(\s*)(- )?([A-Za-z_][\w.-]*)(\s*:\s*)(.*)$/);
+      if (km) {
+        var rest = km[5];
+        var valueHtml = "";
+        if (/^(true|false|null|yes|no|on|off)\s*(#.*)?$/i.test(rest)) {
+          var bm = rest.match(/^(\S+)(\s*)(#.*)?$/);
+          valueHtml = '<span class="tok-kw">' + escapeHtml(bm[1]) + "</span>"
+            + escapeHtml(bm[2] || "")
+            + (bm[3] ? '<span class="tok-cmt">' + escapeHtml(bm[3]) + "</span>" : "");
+        } else if (/^["'].*["']\s*(#.*)?$/.test(rest) || /^["']/.test(rest)) {
+          var sm = rest.match(/^((?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'))(\s*)(#.*)?$/);
+          if (sm) {
+            valueHtml = '<span class="tok-str">' + escapeHtml(sm[1]) + "</span>"
+              + escapeHtml(sm[2] || "")
+              + (sm[3] ? '<span class="tok-cmt">' + escapeHtml(sm[3]) + "</span>" : "");
+          } else {
+            valueHtml = '<span class="tok-str">' + escapeHtml(rest) + "</span>";
+          }
+        } else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?\s*(#.*)?$/.test(rest)) {
+          var nm = rest.match(/^(\S+)(\s*)(#.*)?$/);
+          valueHtml = '<span class="tok-num">' + escapeHtml(nm[1]) + "</span>"
+            + escapeHtml(nm[2] || "")
+            + (nm[3] ? '<span class="tok-cmt">' + escapeHtml(nm[3]) + "</span>" : "");
+        } else if (rest) {
+          var cm = rest.match(/^(.*?)(\s+)(#.*)$/);
+          if (cm) {
+            valueHtml = '<span class="tok-str">' + escapeHtml(cm[1]) + "</span>"
+              + escapeHtml(cm[2])
+              + '<span class="tok-cmt">' + escapeHtml(cm[3]) + "</span>";
+          } else {
+            valueHtml = '<span class="tok-str">' + escapeHtml(rest) + "</span>";
+          }
+        }
+        return escapeHtml(km[1])
+          + escapeHtml(km[2] || "")
+          + '<span class="tok-key">' + escapeHtml(km[3]) + "</span>"
+          + escapeHtml(km[4])
+          + valueHtml;
+      }
+      if (/^\s*#/.test(line)) {
+        return '<span class="tok-cmt">' + escapeHtml(line) + "</span>";
+      }
+      return escapeHtml(line);
+    }).join("\n");
+  }
+
   function highlightCode(code, lang) {
     var source = String(code || "").replace(/\n$/, "");
     var kind = normalizeCodeLang(lang);
+    if (kind === "yaml") return highlightYaml(source);
     var keywords = {
       python: "False|True|None|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield",
       cpp: "alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|goto|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq",

@@ -27,17 +27,25 @@ from backend.auth import (
     TOKEN_COOKIE,
     create_user,
     current_user,
-    delete_conversation,
     extract_token,
-    get_conversation,
     issue_token,
     require_user,
     revoke_token,
-    upsert_conversation,
     user_public,
     verify_login,
 )
 from backend.config import load_settings
+from backend.conversations import (
+    create_conversation,
+    delete_conversation_by_id,
+    get_conversation_by_id,
+    list_conversations,
+    public_conversation,
+    is_placeholder_title,
+    should_auto_title,
+    title_from_payload,
+    update_conversation,
+)
 from backend.db import init_db
 from backend.model_catalog import get_model_options, resolve_model_selection
 from backend.runtime import SessionManager
@@ -197,6 +205,8 @@ class ChatRequest(BaseModel):
     mode: str | None = None
     # cursor | openai | deepseek — omitted → config.yaml agent.provider
     provider: str | None = None
+    # Absolute or relative project root for this agent turn.
+    workspace: str | None = None
     # DeepSeek thinking mode (ignored for other providers). Default off when omitted.
     thinking: bool | None = None
     reasoning_effort: str | None = None  # high | max (aliases mapped server-side)
@@ -265,6 +275,83 @@ class HistoryPutRequest(BaseModel):
     payload: dict = Field(default_factory=dict)
     session_id: str | None = None
     model: str | None = None
+    conversation_id: int | None = None
+    title: str | None = None
+
+
+class ConversationCreateRequest(BaseModel):
+    provider: str = "cursor"
+    title: str | None = None
+    workspace_root: str | None = None
+
+
+class ConversationPutRequest(BaseModel):
+    payload: dict = Field(default_factory=dict)
+    session_id: str | None = None
+    model: str | None = None
+    title: str | None = None
+    workspace_root: str | None = None
+
+
+class ConversationPatchRequest(BaseModel):
+    title: str | None = None
+    pinned: bool | None = None
+    archived: bool | None = None
+    workspace_root: str | None = None
+
+
+class WorkspaceFilePut(BaseModel):
+    root: str | None = None
+    path: str
+    content: str
+
+
+class WorkspacePathRequest(BaseModel):
+    root: str | None = None
+    path: str
+    content: str | None = None
+
+
+class WorkspaceRenameRequest(BaseModel):
+    root: str | None = None
+    path: str
+    new_name: str
+
+
+class WorkspaceTransferRequest(BaseModel):
+    root: str | None = None
+    path: str
+    dest: str
+
+
+class WorkspaceExecRequest(BaseModel):
+    root: str | None = None
+    command: str
+    timeout: float | None = 30.0
+
+
+class SshHostUpsert(BaseModel):
+    id: str
+    label: str | None = None
+    host: str
+    port: int = 22
+    user: str
+    auth: str = "key"
+    key_path: str | None = None
+    password: str | None = None
+    default_path: str | None = "/"
+
+
+def _normalize_ws(raw: str | None) -> str:
+    from backend.workspace import normalize_workspace_key
+
+    return normalize_workspace_key(raw, settings)
+
+
+def _ssh_parts(ws_key: str) -> tuple[str, str]:
+    from backend.ssh_workspace import parse_ssh_uri
+
+    return parse_ssh_uri(ws_key)
 
 
 frontend_dir = ROOT / "frontend"
@@ -276,6 +363,8 @@ _JS_PARTS = (
     "chrome.js",
     "markdown.js",
     "thread.js",
+    "history.js",
+    "ide.js",
     "runtime.js",
 )
 
@@ -409,55 +498,476 @@ async def auth_me(request: Request):
     return {"ok": True, "user": user_public(user)}
 
 
-@app.get("/api/history/{provider}")
-async def history_get(provider: str, request: Request):
+@app.get("/api/conversations")
+async def conversations_list(request: Request, provider: str = "cursor"):
     from backend.providers import normalize_provider
 
     user = require_user(request)
     prov = normalize_provider(provider)
-    row = get_conversation(int(user["id"]), prov)
-    if row is None:
-        return {"ok": True, "payload": None}
-    try:
-        payload = json.loads(row["payload_json"] or "{}")
-    except json.JSONDecodeError:
-        payload = None
+    rows = list_conversations(int(user["id"]), prov)
     return {
         "ok": True,
-        "payload": payload,
-        "session_id": row.get("agent_session_id") or "",
-        "model": row.get("model") or "",
-        "updated_at": row.get("updated_at") or "",
+        "conversations": [public_conversation(r) for r in rows],
+    }
+
+
+@app.post("/api/conversations")
+async def conversations_create(req: ConversationCreateRequest, request: Request):
+    from backend.providers import normalize_provider
+
+    user = require_user(request)
+    prov = normalize_provider(req.provider)
+    ws = _normalize_ws(req.workspace_root)
+    title = (req.title or "").strip() or "新对话"
+    row = create_conversation(
+        int(user["id"]),
+        prov,
+        title=title,
+        workspace_root=ws,
+    )
+    return {"ok": True, "conversation": public_conversation(row, include_payload=True)}
+
+
+@app.get("/api/conversations/{conv_id}")
+async def conversations_get(conv_id: int, request: Request):
+    user = require_user(request)
+    row = get_conversation_by_id(int(user["id"]), int(conv_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    return {"ok": True, "conversation": public_conversation(row, include_payload=True)}
+
+
+@app.put("/api/conversations/{conv_id}")
+async def conversations_put(conv_id: int, req: ConversationPutRequest, request: Request):
+    user = require_user(request)
+    uid = int(user["id"])
+    existing = get_conversation_by_id(uid, int(conv_id))
+    if existing is None:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    payload = dict(req.payload or {})
+    session_id = (req.session_id or payload.get("sessionId") or "").strip()
+    model = (req.model or payload.get("model") or "").strip()
+    title = req.title
+    if title is None and should_auto_title(existing.get("title"), payload):
+        # Auto topic title once first reply finishes; never overwrite user rename.
+        title = title_from_payload(payload, fallback=str(existing.get("title") or "新对话"))
+    elif title is None:
+        title = None
+    ws = None
+    if req.workspace_root is not None:
+        ws = _normalize_ws(req.workspace_root)
+    row = update_conversation(
+        uid,
+        int(conv_id),
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        agent_session_id=session_id,
+        model=model,
+        title=title,
+        workspace_root=ws,
+    )
+    return {"ok": True, "conversation": public_conversation(row)}
+
+
+@app.patch("/api/conversations/{conv_id}")
+async def conversations_patch(conv_id: int, req: ConversationPatchRequest, request: Request):
+    user = require_user(request)
+    if (
+        req.title is None
+        and req.pinned is None
+        and req.archived is None
+        and req.workspace_root is None
+    ):
+        raise HTTPException(status_code=400, detail="没有可更新的字段")
+    ws = None
+    if req.workspace_root is not None:
+        ws = _normalize_ws(req.workspace_root)
+    row = update_conversation(
+        int(user["id"]),
+        int(conv_id),
+        title=req.title,
+        pinned=req.pinned,
+        archived=req.archived,
+        workspace_root=ws,
+    )
+    return {"ok": True, "conversation": public_conversation(row)}
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def conversations_delete(conv_id: int, request: Request):
+    user = require_user(request)
+    delete_conversation_by_id(int(user["id"]), int(conv_id))
+    return {"ok": True}
+
+
+@app.get("/api/history/{provider}")
+async def history_get(provider: str, request: Request, conversation_id: int | None = None):
+    """Compat: latest conversation for provider, or a specific id."""
+    from backend.providers import normalize_provider
+
+    user = require_user(request)
+    uid = int(user["id"])
+    if conversation_id is not None:
+        row = get_conversation_by_id(uid, int(conversation_id))
+    else:
+        rows = list_conversations(uid, normalize_provider(provider))
+        row = rows[0] if rows else None
+    if row is None:
+        return {"ok": True, "payload": None, "conversation_id": None}
+    pub = public_conversation(row, include_payload=True)
+    return {
+        "ok": True,
+        "conversation_id": pub["id"],
+        "payload": pub.get("payload"),
+        "session_id": pub.get("session_id") or "",
+        "model": pub.get("model") or "",
+        "title": pub.get("title") or "",
+        "updated_at": pub.get("updated_at") or "",
     }
 
 
 @app.put("/api/history/{provider}")
 async def history_put(provider: str, req: HistoryPutRequest, request: Request):
+    """Compat upsert: update conversation_id, or create when missing."""
     from backend.providers import normalize_provider
 
     user = require_user(request)
+    uid = int(user["id"])
     prov = normalize_provider(provider)
     payload = dict(req.payload or {})
     session_id = (req.session_id or payload.get("sessionId") or "").strip()
     model = (req.model or payload.get("model") or "").strip()
-    upsert_conversation(
-        int(user["id"]),
-        prov,
-        payload_json=json.dumps(payload, ensure_ascii=False),
-        agent_session_id=session_id,
-        model=model,
-    )
-    return {"ok": True}
+    conv_id = req.conversation_id
+    if conv_id is None:
+        title = (req.title or "").strip() or title_from_payload(payload)
+        row = create_conversation(
+            uid,
+            prov,
+            title=title,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            agent_session_id=session_id,
+            model=model,
+        )
+    else:
+        existing = get_conversation_by_id(uid, int(conv_id))
+        if req.title is not None:
+            title = req.title
+        elif existing and should_auto_title(existing.get("title"), payload):
+            title = title_from_payload(payload, fallback=str(existing.get("title") or "新对话"))
+        else:
+            title = None
+        row = update_conversation(
+            uid,
+            int(conv_id),
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            agent_session_id=session_id,
+            model=model,
+            title=title,
+        )
+    pub = public_conversation(row)
+    return {"ok": True, "conversation_id": pub["id"], "conversation": pub}
 
 
 @app.delete("/api/history/{provider}")
-async def history_delete(provider: str, request: Request):
+async def history_delete(
+    provider: str, request: Request, conversation_id: int | None = None
+):
     from backend.providers import normalize_provider
 
     user = require_user(request)
-    prov = normalize_provider(provider)
-    delete_conversation(int(user["id"]), prov)
+    uid = int(user["id"])
+    if conversation_id is not None:
+        delete_conversation_by_id(uid, int(conversation_id))
+        return {"ok": True}
+    # No id → clear all for provider (legacy "new chat wipe")
+    for row in list_conversations(uid, normalize_provider(provider)):
+        delete_conversation_by_id(uid, int(row["id"]))
     return {"ok": True}
+
+
+@app.get("/api/workspace/roots")
+async def workspace_roots(request: Request):
+    from backend.workspace import home_workspace, recent_workspace_suggestions
+
+    user = require_user(request)
+    rows = list_conversations(int(user["id"]), "cursor")
+    # Also pull OpenAI/DeepSeek so SSH recents appear regardless of page.
+    for prov in ("openai", "deepseek"):
+        rows.extend(list_conversations(int(user["id"]), prov))
+    roots = [str(r.get("workspace_root") or "") for r in rows]
+    home = str(home_workspace())
+    return {
+        "ok": True,
+        "home": home,
+        "default": home,
+        "project_root": str(settings["host_root"]),
+        "roots": recent_workspace_suggestions(settings, roots),
+    }
+
+
+@app.get("/api/workspace/local")
+async def workspace_local_list(request: Request, q: str = ""):
+    """On This PC folder suggestions."""
+    from backend.workspace import local_folder_suggestions
+
+    require_user(request)
+    return {"ok": True, "roots": local_folder_suggestions(settings, q)}
+
+
+@app.get("/api/workspace/tree")
+async def workspace_tree(
+    request: Request,
+    root: str = "",
+    path: str = ".",
+    depth: int = 2,
+):
+    from backend.ssh_workspace import is_ssh_uri, list_tree as ssh_list_tree
+    from backend.workspace import list_tree, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(root or None)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return {"ok": True, **ssh_list_tree(host_id, remote, path, depth=max(1, min(depth, 4)))}
+    ws = resolve_workspace_root(ws_key, settings)
+    return {"ok": True, **list_tree(ws, path, depth=max(1, min(depth, 4)))}
+
+
+@app.get("/api/workspace/file")
+async def workspace_file_get(request: Request, root: str = "", path: str = ""):
+    from backend.ssh_workspace import is_ssh_uri, read_file as ssh_read_file
+    from backend.workspace import read_file, resolve_workspace_root
+
+    require_user(request)
+    if not (path or "").strip():
+        raise HTTPException(status_code=422, detail="path required")
+    ws_key = _normalize_ws(root or None)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return {"ok": True, **ssh_read_file(host_id, remote, path)}
+    ws = resolve_workspace_root(ws_key, settings)
+    return {"ok": True, **read_file(ws, path)}
+
+
+@app.put("/api/workspace/file")
+async def workspace_file_put(req: WorkspaceFilePut, request: Request):
+    from backend.ssh_workspace import is_ssh_uri, write_file as ssh_write_file
+    from backend.workspace import resolve_workspace_root, write_file
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_write_file(host_id, remote, req.path, req.content)
+    ws = resolve_workspace_root(ws_key, settings)
+    return write_file(ws, req.path, req.content)
+
+
+@app.post("/api/workspace/create")
+async def workspace_create(req: WorkspacePathRequest, request: Request):
+    from backend.ssh_workspace import create_file as ssh_create_file, is_ssh_uri
+    from backend.workspace import create_file, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_create_file(host_id, remote, req.path, req.content or "")
+    ws = resolve_workspace_root(ws_key, settings)
+    return create_file(ws, req.path, req.content or "")
+
+
+@app.post("/api/workspace/mkdir")
+async def workspace_mkdir(req: WorkspacePathRequest, request: Request):
+    from backend.ssh_workspace import create_dir as ssh_create_dir, is_ssh_uri
+    from backend.workspace import create_dir, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_create_dir(host_id, remote, req.path)
+    ws = resolve_workspace_root(ws_key, settings)
+    return create_dir(ws, req.path)
+
+
+@app.post("/api/workspace/rename")
+async def workspace_rename(req: WorkspaceRenameRequest, request: Request):
+    from backend.ssh_workspace import is_ssh_uri, rename_entry as ssh_rename
+    from backend.workspace import rename_entry, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_rename(host_id, remote, req.path, req.new_name)
+    ws = resolve_workspace_root(ws_key, settings)
+    return rename_entry(ws, req.path, req.new_name)
+
+
+@app.post("/api/workspace/delete")
+async def workspace_delete(req: WorkspacePathRequest, request: Request):
+    from backend.ssh_workspace import delete_entry as ssh_delete, is_ssh_uri
+    from backend.workspace import delete_entry, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_delete(host_id, remote, req.path)
+    ws = resolve_workspace_root(ws_key, settings)
+    return delete_entry(ws, req.path)
+
+
+@app.post("/api/workspace/copy")
+async def workspace_copy(req: WorkspaceTransferRequest, request: Request):
+    from backend.ssh_workspace import is_ssh_uri
+    from backend.workspace import copy_entry, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        raise HTTPException(status_code=400, detail="SSH 工作区暂不支持复制，请用远程 shell")
+    ws = resolve_workspace_root(ws_key, settings)
+    return copy_entry(ws, req.path, req.dest)
+
+
+@app.post("/api/workspace/move")
+async def workspace_move(req: WorkspaceTransferRequest, request: Request):
+    from backend.ssh_workspace import is_ssh_uri
+    from backend.workspace import move_entry, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        raise HTTPException(status_code=400, detail="SSH 工作区暂不支持移动，请用远程 shell")
+    ws = resolve_workspace_root(ws_key, settings)
+    return move_entry(ws, req.path, req.dest)
+
+
+@app.get("/api/workspace/info")
+async def workspace_info(request: Request, root: str = "", path: str = "."):
+    from backend.ssh_workspace import is_ssh_uri, path_info as ssh_path_info
+    from backend.workspace import path_info, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(root or None)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_path_info(host_id, remote, path or ".")
+    ws = resolve_workspace_root(ws_key, settings)
+    return path_info(ws, path or ".")
+
+
+@app.get("/api/workspace/git")
+async def workspace_git(request: Request, root: str = ""):
+    from backend.ssh_workspace import git_info_remote, is_ssh_uri
+    from backend.workspace import git_info, resolve_workspace_root
+
+    require_user(request)
+    ws_key = _normalize_ws(root or None)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return git_info_remote(host_id, remote)
+    ws = resolve_workspace_root(ws_key, settings)
+    return git_info(ws)
+
+
+@app.post("/api/workspace/reveal")
+async def workspace_reveal(req: WorkspacePathRequest, request: Request):
+    from backend.ssh_workspace import is_ssh_uri
+    from backend.workspace import resolve_workspace_root, reveal_in_os
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        raise HTTPException(status_code=400, detail="SSH 远程路径无法在本机资源管理器打开")
+    ws = resolve_workspace_root(ws_key, settings)
+    return reveal_in_os(ws, req.path)
+
+
+@app.post("/api/workspace/exec")
+async def workspace_exec(req: WorkspaceExecRequest, request: Request):
+    from backend.ssh_workspace import is_ssh_uri, run_command as ssh_run
+    from backend.workspace import resolve_workspace_root, run_command
+
+    require_user(request)
+    ws_key = _normalize_ws(req.root)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return ssh_run(host_id, remote, req.command, timeout=float(req.timeout or 30))
+    ws = resolve_workspace_root(ws_key, settings)
+    return run_command(ws, req.command, timeout=float(req.timeout or 30))
+
+
+@app.get("/api/ssh/hosts")
+async def ssh_hosts_list(request: Request):
+    from backend.ssh_hosts import list_hosts
+
+    require_user(request)
+    return {"ok": True, "hosts": list_hosts(include_secrets=False)}
+
+
+@app.post("/api/ssh/hosts")
+async def ssh_hosts_upsert(req: SshHostUpsert, request: Request):
+    from backend.ssh_hosts import upsert_host
+
+    require_user(request)
+    host = upsert_host(req.model_dump())
+    return {"ok": True, "host": host}
+
+
+@app.delete("/api/ssh/hosts/{host_id}")
+async def ssh_hosts_delete(host_id: str, request: Request):
+    from backend.ssh_hosts import delete_host
+    from backend.ssh_workspace import drop_client
+
+    require_user(request)
+    delete_host(host_id)
+    drop_client(host_id)
+    return {"ok": True}
+
+
+@app.post("/api/ssh/hosts/{host_id}/test")
+async def ssh_hosts_test(host_id: str, request: Request):
+    from backend.ssh_workspace import test_connection
+
+    require_user(request)
+    return test_connection(host_id)
+
+
+@app.get("/api/ssh/hosts/{host_id}/tree")
+async def ssh_hosts_tree(
+    host_id: str,
+    request: Request,
+    path: str = "",
+):
+    from backend.ssh_hosts import get_host
+    from backend.ssh_workspace import format_ssh_uri, list_tree
+
+    require_user(request)
+    host = get_host(host_id, include_secrets=False)
+    remote = (path or "").strip() or str(host.get("default_path") or "/")
+    data = list_tree(host_id, remote if remote.startswith("/") else "/" + remote, ".", depth=1)
+    # For picker: list direct children of `path` as absolute remote dirs.
+    entries = []
+    for e in data.get("entries") or []:
+        if e.get("type") != "dir":
+            continue
+        child = remote.rstrip("/") + "/" + e["name"] if remote not in {"/", ""} else "/" + e["name"]
+        entries.append({
+            "name": e["name"],
+            "path": child,
+            "uri": format_ssh_uri(host_id, child),
+            "type": "dir",
+        })
+    return {
+        "ok": True,
+        "host_id": host_id,
+        "label": host.get("label") or host_id,
+        "path": remote,
+        "uri": format_ssh_uri(host_id, remote),
+        "entries": entries,
+    }
 
 
 @app.get("/api/health")
@@ -563,6 +1073,7 @@ async def chat(req: ChatRequest):
             provider=provider,
             thinking=thinking,
             reasoning_effort=effort,
+            workspace=req.workspace,
         )
     )
     if result.get("status") == "error" and "error" in result:
@@ -626,6 +1137,7 @@ async def chat_stream(req: ChatRequest):
                 provider=provider,
                 thinking=thinking,
                 reasoning_effort=effort,
+                workspace=req.workspace,
             )
         ):
             yield chunk

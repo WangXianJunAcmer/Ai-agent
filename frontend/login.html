@@ -80,7 +80,7 @@
 <body>
   <div class="card">
     <h1 id="title">登录</h1>
-    <p class="lead" id="lead">使用账号进入 Ai-agent 控制台</p>
+    <p class="lead" id="lead">登录后即可使用对话，并按账号保存历史记录</p>
     <form id="form" autocomplete="on">
       <div class="field">
         <label for="username">用户名</label>
@@ -130,7 +130,9 @@
         mode = next;
         var isLogin = mode === "login";
         title.textContent = isLogin ? "登录" : "注册";
-        lead.textContent = isLogin ? "使用账号进入 Ai-agent 控制台" : "创建普通用户账号";
+        lead.textContent = isLogin
+          ? "登录后即可使用对话，并按账号保存历史记录"
+          : "创建账号后开始对话，历史记录只属于你";
         submit.textContent = isLogin ? "登录" : "注册并登录";
         modeSwitch.textContent = isLogin ? "没有账号？注册" : "已有账号？登录";
         passwordEl.autocomplete = isLogin ? "current-password" : "new-password";

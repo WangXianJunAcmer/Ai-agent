@@ -207,7 +207,12 @@ async def stream_compat_turn(
     allow_write = bool(settings.get("allow_repo_write", True)) and mode != "plan"
     # Same effective flag for tool_call_event pre-checks (plan mode must block shell writes).
     guard_settings = {**settings, "allow_repo_write": allow_write}
-    tracker = TurnChangeTracker(Path(settings["host_root"]))
+    from backend.ssh_workspace import is_ssh_uri
+
+    if is_ssh_uri(str(settings.get("host_root") or "")):
+        tracker = None
+    else:
+        tracker = TurnChangeTracker(Path(settings["host_root"]))
     tools, executors = make_tool_kit(settings, allow_write=allow_write, tracker=tracker)
     client = build_client(settings, handle.provider)
     # DeepSeek default: thinking off. Others ignore.
@@ -377,11 +382,12 @@ async def stream_compat_turn(
                     path_arg = ""
                     if isinstance(args_obj, dict):
                         path_arg = str(args_obj.get("path") or args_obj.get("file") or "").strip()
-                    if path_arg and name in {"write_file", "str_replace"}:
+                    if path_arg and name in {"write_file", "str_replace"} and tracker is not None:
                         tracker.snapshot_before(path_arg)
                     result = await asyncio.to_thread(run_tool, executors, name, raw_args)
                     if (
-                        path_arg
+                        tracker is not None
+                        and path_arg
                         and name in {"write_file", "str_replace"}
                         and isinstance(result, str)
                         and result.startswith(("wrote ", "updated "))
@@ -426,14 +432,15 @@ async def stream_compat_turn(
         final_status = "error"
 
     # Emit workspace change summary for this turn (undoable when files changed).
-    summary = tracker.summary()
-    if summary.get("file_count"):
-        store_tracker(session, tracker)
-        emit({
-            **summary,
-            "session_id": session.session_id,
-            "model": session.model,
-        })
+    if tracker is not None:
+        summary = tracker.summary()
+        if summary.get("file_count"):
+            store_tracker(session, tracker)
+            emit({
+                **summary,
+                "session_id": session.session_id,
+                "model": session.model,
+            })
 
     return final_status
 

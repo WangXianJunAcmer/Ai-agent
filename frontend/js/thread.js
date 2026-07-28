@@ -1029,6 +1029,15 @@
           " · <span class=\"add\">+" + fa + "</span> / <span class=\"del\">-" + fd + "</span></div>" +
         '<span class="ai-agent-turn-file-actions"></span>';
       var fileActions = head.querySelector(".ai-agent-turn-file-actions");
+      var pathEl = head.querySelector(".ai-agent-turn-file-path");
+      if (pathEl && file.path && file.status !== "deleted") {
+        pathEl.style.cursor = "pointer";
+        pathEl.title = "在编辑器中打开 (Ctrl+G)";
+        pathEl.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          if (typeof openIdeFile === "function") openIdeFile(file.path);
+        });
+      }
       if (payload.turn_id && (fileUndoable || fileUndone)) {
         var fileUndoBtn = document.createElement("button");
         fileUndoBtn.type = "button";

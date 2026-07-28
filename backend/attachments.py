@@ -75,6 +75,10 @@ def decode_attachment_bytes(raw: str) -> bytes | None:
 
 def prune_upload_dir(host_root: str | Path) -> int:
     """Delete stale/excess files under .ai-agent-uploads. Returns removed count."""
+    from backend.ssh_workspace import is_ssh_uri
+
+    if is_ssh_uri(str(host_root)):
+        return 0
     upload_dir = Path(host_root).resolve() / UPLOAD_DIR
     if not upload_dir.is_dir():
         return 0
@@ -123,11 +127,46 @@ def materialize_files(host_root: str | Path, attachments: list[dict] | None) -> 
     """Write non-image uploads into host workspace; SDK only accepts images natively."""
     if not attachments:
         return []
+    from backend.ssh_workspace import is_ssh_uri, parse_ssh_uri, write_file as ssh_write
+
+    root_text = str(host_root)
+    if is_ssh_uri(root_text):
+        host_id, remote = parse_ssh_uri(root_text)
+        saved: list[dict] = []
+        for item in attachments:
+            mime = resolve_attachment_mime(item)
+            if is_image(mime):
+                continue
+            data = decode_attachment_bytes(item.get("data") or "")
+            if data is None:
+                continue
+            filename = safe_filename(item.get("name") or "file")
+            rel = f"{UPLOAD_DIR}/{uuid.uuid4().hex[:8]}_{filename}"
+            try:
+                text = data.decode("utf-8")
+                ssh_write(host_id, remote, rel, text)
+            except UnicodeDecodeError:
+                import posixpath
+
+                from backend.ssh_workspace import _mkdir_p, _safe_remote, get_client
+
+                client = get_client(host_id)
+                path = _safe_remote(remote, rel)
+                sftp = client.open_sftp()
+                try:
+                    _mkdir_p(sftp, posixpath.dirname(path))
+                    with sftp.open(path, "wb") as fh:
+                        fh.write(data)
+                finally:
+                    sftp.close()
+            saved.append({"name": filename, "mime_type": mime, "path": rel})
+        return saved
+
     root = Path(host_root).resolve()
     upload_dir = root / UPLOAD_DIR
     upload_dir.mkdir(parents=True, exist_ok=True)
     prune_upload_dir(root)
-    saved: list[dict] = []
+    saved = []
     for item in attachments:
         mime = resolve_attachment_mime(item)
         if is_image(mime):

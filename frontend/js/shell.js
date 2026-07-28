@@ -117,8 +117,16 @@
       --ai-muted: #6b6b6b;
       --ai-accent: #0d0d0d;
       --ai-user-bg: #f4f4f4;
+      --ai-nav-bg: #f9f9f9;
       --ai-composer-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
+      /* Brand + avatar stay pinned across expand/collapse (shared by nav + rail). */
+      --ai-nav-icon-size: 28px;
+      --ai-nav-chrome-pad-x: 12px;
+      --ai-nav-chrome-pad-y: 10px;
+      --ai-nav-rail-width: 52px;
       --ai-sidebar-width: 520px;
+      --ai-nav-width: 260px;
+      --ai-ide-width: min(520px, 42vw);
       /* Fullscreen reading column — wide enough for code/paths; matches composer. */
       --ai-content-width: min(1100px, 92%);
       position: fixed; top: 0;
@@ -132,6 +140,12 @@
       font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: var(--ai-text);
     }
+    #ai-agent-nav { display: none; }
+    #ai-agent-main {
+      flex: 1 1 auto; min-width: 0; min-height: 0;
+      display: flex; flex-direction: column; overflow: hidden;
+      background: var(--ai-bg);
+    }
     #ai-agent-sidebar.is-resizing { transition: none; user-select: none; }
     #ai-agent-sidebar *, #ai-agent-sidebar *::before, #ai-agent-sidebar *::after { box-sizing: border-box; }
     #ai-agent-sidebar.open { right: 0; }
@@ -141,8 +155,1062 @@
       width: 100vw;
       max-width: 100vw;
       box-shadow: none;
+      flex-direction: column;
     }
     #ai-agent-sidebar.is-fullscreen.open { right: 0; left: 0; }
+    #ai-agent-workspace {
+      flex: 1 1 auto; min-width: 0; min-height: 0;
+      display: flex; flex-direction: column; overflow: hidden;
+      position: relative;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-workspace {
+      flex-direction: row;
+    }
+    /* Shell wraps expanded nav + collapsed rail so brand/avatar pins stay put. */
+    #ai-agent-nav-shell {
+      display: none; position: relative; flex: 0 0 auto;
+      height: 100%; min-height: 0;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-nav-shell {
+      display: flex; flex-direction: row;
+    }
+    #ai-agent-nav-pins {
+      position: absolute; inset: 0; z-index: 8;
+      pointer-events: none;
+    }
+    #ai-agent-nav-rail-brand,
+    #ai-agent-nav-rail-avatar {
+      position: absolute;
+      left: var(--ai-nav-chrome-pad-x);
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size);
+      pointer-events: auto; padding: 0; cursor: pointer;
+      display: grid; place-items: center; box-sizing: border-box;
+    }
+    #ai-agent-nav-rail-brand {
+      top: var(--ai-nav-chrome-pad-y);
+      border: 0; border-radius: 8px; background: transparent; overflow: hidden;
+      transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
+    }
+    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail-brand:hover {
+      background: rgba(0,0,0,.07);
+      box-shadow: 0 0 0 3px rgba(0,0,0,.06);
+    }
+    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail-brand:active {
+      transform: scale(.96);
+    }
+    #ai-agent-sidebar.is-fullscreen:not(.nav-hidden) #ai-agent-nav-rail-brand {
+      cursor: default;
+    }
+    #ai-agent-nav-rail-brand svg {
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); display: block;
+    }
+    #ai-agent-nav-rail-avatar {
+      bottom: var(--ai-nav-chrome-pad-y);
+      border: 0; border-radius: 999px;
+      background: #111; color: #fff; font: 700 12px/1 inherit;
+      transition: transform .12s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+    #ai-agent-nav-rail-avatar:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 0 3px rgba(0,0,0,.08);
+      opacity: .95;
+    }
+    .ai-agent-nav-pin-slot {
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size);
+      flex: 0 0 auto; visibility: hidden;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-nav {
+      display: flex; flex-direction: column;
+      flex: 0 0 var(--ai-nav-width); width: var(--ai-nav-width);
+      height: 100%; background: var(--ai-nav-bg);
+      border-right: 1px solid var(--ai-border);
+      min-height: 0; position: relative; overflow: hidden;
+    }
+    #ai-agent-nav-rail {
+      display: none; flex: 0 0 var(--ai-nav-rail-width); width: var(--ai-nav-rail-width);
+      height: 100%; flex-direction: column; align-items: center; gap: 6px;
+      padding: 0; background: var(--ai-nav-bg);
+      border-right: 1px solid var(--ai-border); min-height: 0;
+    }
+    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav { display: none; }
+    #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail { display: flex; }
+    #ai-agent-nav-rail-top,
+    #ai-agent-nav-rail-bottom {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      width: 100%;
+    }
+    #ai-agent-nav-rail-top {
+      flex: 0 0 auto;
+      padding-top: calc(var(--ai-nav-chrome-pad-y) + var(--ai-nav-icon-size) + 6px);
+    }
+    #ai-agent-nav-rail-spacer { flex: 1 1 auto; min-height: 8px; }
+    #ai-agent-nav-rail-bottom {
+      flex: 0 0 auto; margin-top: auto;
+      min-height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size));
+    }
+    .ai-agent-nav-rail-btn {
+      width: 36px; height: 36px; border: 0; border-radius: 10px;
+      background: transparent; color: #444; cursor: pointer;
+      display: grid; place-items: center; padding: 0;
+      transition: background .15s ease, color .15s ease, transform .12s ease;
+    }
+    .ai-agent-nav-rail-btn:hover {
+      background: rgba(0,0,0,.07); color: var(--ai-text);
+    }
+    .ai-agent-nav-rail-btn:active {
+      background: rgba(0,0,0,.11); transform: scale(.96);
+    }
+    .ai-agent-nav-rail-btn svg { width: 18px; height: 18px; display: block; }
+    .ai-agent-nav-rail-btn.is-on {
+      background: rgba(0,0,0,.08); color: var(--ai-text);
+    }
+    #ai-agent-nav-rail-flyout {
+      display: none; position: fixed; z-index: 2147483630;
+      width: 300px; max-height: min(72vh, 560px);
+      overflow: auto; padding: 10px 8px 12px;
+      background: #fff; border: 1px solid rgba(0,0,0,.1);
+      border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,.14);
+    }
+    #ai-agent-nav-rail-flyout.is-on { display: block; }
+    #ai-agent-nav-rail-flyout-title {
+      padding: 2px 10px 10px; font: 600 15px/1.3 inherit; color: var(--ai-text);
+    }
+    #ai-agent-nav-rail-flyout-list { display: flex; flex-direction: column; gap: 2px; }
+    #ai-agent-nav-rail-flyout-empty {
+      display: none; padding: 16px 12px; color: var(--ai-muted);
+      font-size: 13px; line-height: 1.45;
+    }
+    #ai-agent-nav-rail-flyout-empty.is-on { display: block; }
+    #ai-agent-nav-head {
+      flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size));
+      padding: var(--ai-nav-chrome-pad-y) 10px var(--ai-nav-chrome-pad-y) var(--ai-nav-chrome-pad-x);
+      box-sizing: border-box;
+    }
+    #ai-agent-nav-brand {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+    }
+    #ai-agent-toggle-nav {
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); padding: 0; border: 0; border-radius: 6px;
+      background: transparent; color: #555; cursor: pointer;
+      display: grid; place-items: center; flex: 0 0 auto;
+      transition: background .15s ease, color .15s ease;
+    }
+    #ai-agent-toggle-nav:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #ai-agent-toggle-nav svg { width: 16px; height: 16px; display: block; }
+    #ai-agent-nav-resize {
+      position: absolute; right: -3px; top: 0; width: 6px; height: 100%;
+      cursor: ew-resize; z-index: 6;
+    }
+    #ai-agent-nav-resize:hover,
+    #ai-agent-sidebar.is-nav-resizing #ai-agent-nav-resize {
+      background: rgba(0,120,212,.45);
+    }
+    #ai-agent-sidebar.is-nav-resizing { user-select: none; cursor: ew-resize; }
+    #ai-agent-nav-top { flex: 0 0 auto; padding: 12px 12px 8px; }
+    #ai-agent-nav-new {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
+      border-radius: 10px; padding: 10px 12px; font: 600 14px/1.2 inherit;
+      cursor: pointer; text-align: left;
+    }
+    #ai-agent-nav-new:hover { background: #f3f3f3; }
+    #ai-agent-nav-new svg { width: 16px; height: 16px; flex: 0 0 auto; }
+    #ai-agent-ide-topbar {
+      flex: 0 0 auto; min-height: 35px; display: flex; align-items: stretch;
+      border-bottom: 1px solid var(--ai-border); background: #ececec;
+    }
+    #ai-agent-ide-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
+    #ai-agent-ide-editor {
+      flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+      background: #fff; border-right: 1px solid var(--ai-border);
+    }
+    #ai-agent-ide-tabs {
+      flex: 1 1 auto; min-width: 0; display: flex; gap: 0; overflow: hidden;
+      padding: 0; background: transparent; align-items: stretch;
+    }
+    #ai-agent-ide-tabs-scroll {
+      flex: 1 1 auto; min-width: 0; display: flex; overflow-x: auto; align-items: stretch;
+    }
+    #ai-agent-ide-maximize {
+      flex: 0 0 auto; width: 28px; height: 28px; margin: 3px 4px 0;
+      border: 0; border-radius: 6px; background: transparent; color: #666;
+      cursor: pointer; display: grid; place-items: center;
+    }
+    #ai-agent-ide-maximize:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #ai-agent-ide-maximize svg { width: 14px; height: 14px; display: block; }
+    #ai-agent-ide-maximize .ai-agent-icon-expand,
+    #ai-agent-ide-maximize .ai-agent-icon-shrink {
+      display: grid; place-items: center; width: 14px; height: 14px;
+    }
+    #ai-agent-ide-maximize .ai-agent-icon-shrink { display: none; }
+    #ai-agent-sidebar.ide-maximized #ai-agent-ide-maximize .ai-agent-icon-expand { display: none; }
+    #ai-agent-sidebar.ide-maximized #ai-agent-ide-maximize .ai-agent-icon-shrink { display: grid; }
+    /* Maximized IDE: keep chat title topbar, hide thread/composer, IDE fills the rest. */
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-workspace {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto 1fr;
+    }
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-nav-shell {
+      grid-column: 1;
+      grid-row: 1 / -1;
+      height: 100%;
+      max-height: none;
+    }
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-main {
+      grid-column: 2;
+      grid-row: 1;
+      display: flex;
+      flex: none;
+      width: auto;
+      min-width: 0;
+      min-height: 0;
+    }
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-scroll-wrap,
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-footer {
+      display: none !important;
+    }
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-ide {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex;
+      flex: none;
+      width: auto;
+      max-width: none;
+      min-width: 0;
+      min-height: 0;
+      height: auto;
+    }
+    #ai-agent-sidebar.has-ide.ide-maximized #ai-agent-ide-resize { display: none; }
+    #ai-agent-ide-top-actions {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 2px;
+      padding: 0 6px 0 4px; border-left: 1px solid rgba(0,0,0,.06);
+      background: #ececec;
+    }
+    #ai-agent-ide-top-actions .ai-agent-ide-icon-btn,
+    #ai-agent-toggle-ide-dock {
+      width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+      background: transparent; color: #555; cursor: pointer;
+      display: grid; place-items: center;
+    }
+    #ai-agent-ide-top-actions .ai-agent-ide-icon-btn:hover,
+    #ai-agent-toggle-ide-dock:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #ai-agent-toggle-ide-dock svg { width: 16px; height: 16px; display: block; }
+    #ai-agent-sidebar.has-ide #ai-agent-toggle-ide-dock {
+      background: rgba(0,0,0,.06); color: var(--ai-text);
+    }
+    .ai-agent-ide-tab {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 0; border-right: 1px solid rgba(0,0,0,.06); background: transparent;
+      padding: 0 8px 0 10px; font: 12px/1.2 inherit; color: var(--ai-muted);
+      cursor: pointer; max-width: 180px; height: 100%; position: relative;
+    }
+    .ai-agent-ide-tab:hover { background: rgba(255,255,255,.45); color: var(--ai-text); }
+    .ai-agent-ide-tab.is-active {
+      background: #fff; color: var(--ai-text);
+    }
+    .ai-agent-ide-tab-icon {
+      flex: 0 0 auto; width: 14px; height: 14px; display: grid; place-items: center;
+      font-size: 10px; font-weight: 700; line-height: 1;
+    }
+    .ai-agent-ide-tab-icon.is-md { color: #0550ae; }
+    .ai-agent-ide-tab-icon.is-py { color: #3776ab; }
+    .ai-agent-ide-tab-icon.is-js { color: #c5a000; }
+    .ai-agent-ide-tab-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;
+    }
+    .ai-agent-ide-tab.is-dirty .ai-agent-ide-tab-name::after { content: " ●"; color: #0078d4; font-size: 9px; }
+    .ai-agent-ide-tab-close {
+      flex: 0 0 auto; width: 16px; height: 16px; border: 0; border-radius: 4px;
+      background: transparent; color: var(--ai-muted); cursor: pointer;
+      display: grid; place-items: center; opacity: 0; font-size: 12px; line-height: 1; padding: 0;
+    }
+    .ai-agent-ide-tab:hover .ai-agent-ide-tab-close,
+    .ai-agent-ide-tab.is-active .ai-agent-ide-tab-close { opacity: 1; }
+    .ai-agent-ide-tab-close:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    #ai-agent-ide-crumb {
+      flex: 0 0 auto; height: 35px; padding: 0 8px 0 4px;
+      display: flex; align-items: center; gap: 2px;
+      border-bottom: 1px solid var(--ai-border); background: #fff;
+      color: var(--ai-muted); font-size: 12px;
+    }
+    #ai-agent-ide-crumb .ai-agent-ide-icon-btn { width: 24px; height: 24px; }
+    #ai-agent-ide-crumb-name {
+      margin-left: 4px; color: var(--ai-text); font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    }
+    #ai-agent-ide-crumb-spacer { flex: 1 1 auto; }
+    #ai-agent-ide-view-tools {
+      flex: 0 0 auto; display: none; align-items: center; gap: 0;
+      margin-right: 6px; padding: 2px; border-radius: 8px; background: #f0f0f0;
+    }
+    #ai-agent-ide-view-tools.is-on { display: inline-flex; }
+    .ai-agent-ide-view-btn {
+      border: 0; background: transparent; color: #555; border-radius: 6px;
+      padding: 4px 10px; font: 12px/1.2 inherit; cursor: pointer;
+    }
+    .ai-agent-ide-view-btn:hover { color: var(--ai-text); }
+    .ai-agent-ide-view-btn.is-on {
+      background: #fff; color: var(--ai-text); font-weight: 600;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.06);
+    }
+    #ai-agent-ide-find {
+      display: none; flex: 0 0 auto; align-items: center; gap: 6px;
+      padding: 6px 10px; border-bottom: 1px solid var(--ai-border); background: #f7f7f7;
+    }
+    #ai-agent-ide-find.is-on { display: flex; }
+    #ai-agent-ide-find-input {
+      flex: 1 1 auto; min-width: 0; border: 1px solid var(--ai-border); border-radius: 6px;
+      padding: 5px 8px; font: 12px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ide-find-input:focus { border-color: #0078d4; }
+    #ai-agent-ide-find-count { flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); }
+    #ai-agent-ide-code-wrap {
+      flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; position: relative; background: #fff;
+    }
+    #ai-agent-ide-code-pane {
+      flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; overflow: hidden;
+    }
+    #ai-agent-ide-highlight {
+      position: absolute; inset: 0; margin: 0; border: 0;
+      padding: 10px 14px; overflow: hidden; pointer-events: none;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--ai-text); background: #fff; white-space: pre; tab-size: 2;
+    }
+    #ai-agent-ide-highlight code {
+      font: inherit; color: inherit; background: transparent; padding: 0;
+      display: block; white-space: inherit; tab-size: inherit;
+    }
+    #ai-agent-ide-highlight .tok-kw { color: #0000ff; }
+    #ai-agent-ide-highlight .tok-key { color: #0451a5; }
+    #ai-agent-ide-highlight .tok-type { color: #267f99; }
+    #ai-agent-ide-highlight .tok-fn { color: #795e26; }
+    #ai-agent-ide-highlight .tok-str { color: #a31515; }
+    #ai-agent-ide-highlight .tok-cmt { color: #008000; font-style: italic; }
+    #ai-agent-ide-highlight .tok-num { color: #098658; }
+    #ai-agent-ide-highlight .tok-pp { color: #0000ff; }
+    #ai-agent-ide-highlight .tok-op { color: #000000; }
+    #ai-agent-ide-highlight .tok-punct { color: #000000; }
+    #ai-agent-ide-preview {
+      display: none; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto;
+      padding: 20px 28px 40px; background: #fff; color: var(--ai-text);
+      font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #ai-agent-ide-stage {
+      flex: 1 1 auto; min-height: 0; display: flex; position: relative; background: #fff;
+    }
+    #ai-agent-ide-outline {
+      display: none; flex: 0 0 200px; width: 200px; overflow: auto;
+      border-left: 1px solid var(--ai-border); background: #fafafa; padding: 8px 0;
+    }
+    #ai-agent-ide-outline.is-on { display: block; }
+    .ai-agent-ide-outline-item {
+      display: block; width: 100%; border: 0; background: transparent; text-align: left;
+      padding: 5px 12px; font: 12px/1.35 inherit; color: #444; cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ai-agent-ide-outline-item:hover { background: rgba(0,0,0,.05); color: var(--ai-text); }
+    .ai-agent-ide-outline-item.is-h2 { padding-left: 22px; }
+    .ai-agent-ide-outline-item.is-h3 { padding-left: 32px; color: #666; }
+    #ai-agent-ide-editor.is-preview #ai-agent-ide-code-wrap { display: none !important; }
+    #ai-agent-ide-editor.is-preview #ai-agent-ide-preview { display: block; }
+    #ai-agent-ide-editor.is-preview #ai-agent-ide-empty { display: none !important; }
+    #ai-agent-ide-preview h1, #ai-agent-ide-preview h2, #ai-agent-ide-preview h3 {
+      margin: 1.1em 0 .45em; line-height: 1.3;
+    }
+    #ai-agent-ide-preview h1 { font-size: 1.7em; border-bottom: 1px solid #eee; padding-bottom: .25em; }
+    #ai-agent-ide-preview h2 { font-size: 1.35em; }
+    #ai-agent-ide-preview p { margin: .7em 0; }
+    #ai-agent-ide-preview pre {
+      background: #f6f8fa; border-radius: 8px; padding: 12px 14px; overflow: auto;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    #ai-agent-ide-preview code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .92em;
+    }
+    #ai-agent-ide-preview :not(pre) > code {
+      background: rgba(0,0,0,.06); padding: .12em .35em; border-radius: 4px;
+    }
+    #ai-agent-ide-preview ul, #ai-agent-ide-preview ol { padding-left: 1.4em; margin: .6em 0; }
+    #ai-agent-ide-preview blockquote {
+      margin: .8em 0; padding: .2em 0 .2em 12px; border-left: 3px solid #ddd; color: #555;
+    }
+    #ai-agent-ide-gutter {
+      flex: 0 0 auto; min-width: 40px; padding: 10px 8px 10px 10px;
+      text-align: right; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #9a9a9a; background: #fff; border-right: 1px solid #f0f0f0;
+      overflow: hidden; user-select: none; white-space: pre;
+    }
+    #ai-agent-ide-code {
+      position: absolute; inset: 0; width: 100%; height: 100%; border: 0; resize: none;
+      padding: 10px 14px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: transparent; caret-color: #111; background: transparent; outline: none;
+      white-space: pre; overflow: auto; tab-size: 2; z-index: 1;
+    }
+    #ai-agent-ide-code::selection {
+      background: rgba(0, 120, 212, 0.28); color: transparent;
+    }
+    #ai-agent-ide-empty {
+      flex: 1 1 auto; min-width: 0; display: grid; place-items: center; color: var(--ai-muted);
+      font-size: 13px; padding: 24px; text-align: center; background: #fff;
+    }
+    #ai-agent-ide-explorer {
+      flex: 0 0 var(--ai-ide-tree-width, 220px); width: var(--ai-ide-tree-width, 220px);
+      min-width: 140px; max-width: 45%; display: flex; flex-direction: column;
+      background: #f3f3f3; position: relative;
+    }
+    #ai-agent-ide-explorer-head {
+      flex: 0 0 auto; height: 35px; padding: 0 6px 0 12px;
+      display: flex; align-items: center; gap: 4px;
+      border-bottom: 0; background: #f3f3f3;
+      position: sticky; top: 0; z-index: 2;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-top-actions {
+      padding-right: 36px;
+    }
+    #ai-agent-sidebar.has-ide #ai-agent-top-actions {
+      padding-right: 0;
+    }
+    #ai-agent-ide-root-name {
+      flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600;
+      letter-spacing: 0; text-transform: none; color: var(--ai-text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #ai-agent-ide-explorer-actions {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 0;
+      margin-left: auto;
+      opacity: 0; pointer-events: none;
+      transition: opacity .12s ease;
+    }
+    #ai-agent-ide-explorer:hover #ai-agent-ide-explorer-actions,
+    #ai-agent-ide-explorer:focus-within #ai-agent-ide-explorer-actions {
+      opacity: 1; pointer-events: auto;
+    }
+    #ai-agent-ide-explorer-actions .ai-agent-ide-icon-btn {
+      width: 26px; height: 26px;
+    }
+    #ai-agent-ide-explorer-actions .ai-agent-ide-icon-btn svg {
+      width: 14px; height: 14px;
+    }
+    #ai-agent-ide-ctx {
+      display: none; position: fixed; z-index: 2147483640; min-width: 200px;
+      padding: 4px 0; margin: 0; list-style: none;
+      background: #fff; border: 1px solid rgba(0,0,0,.12); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.14);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #222;
+    }
+    #ai-agent-ide-ctx.is-on { display: block; }
+    #ai-agent-ide-ctx button {
+      display: block; width: 100%; border: 0; background: transparent;
+      text-align: left; padding: 7px 14px; cursor: pointer; color: inherit;
+      font: inherit;
+    }
+    #ai-agent-ide-ctx button:hover:not(:disabled) { background: #f0f0f0; }
+    #ai-agent-ide-ctx button:disabled { color: #aaa; cursor: default; }
+    #ai-agent-ide-ctx .ai-agent-ide-ctx-sep {
+      height: 1px; margin: 4px 0; background: rgba(0,0,0,.08); border: 0;
+    }
+    .ai-agent-ide-tree-item.is-cut { opacity: .45; }
+    .ai-agent-ide-inline-input {
+      display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px;
+    }
+    .ai-agent-ide-inline-input input {
+      flex: 1 1 auto; min-width: 0; border: 1px solid #0078d4; border-radius: 4px;
+      padding: 2px 6px; font: 13px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ide-tree {
+      flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 8px;
+      font-size: 13px;
+    }
+    .ai-agent-ide-tree-item {
+      display: flex; align-items: center; gap: 4px; width: 100%;
+      border: 0; background: transparent; text-align: left;
+      padding: 3px 8px 3px 4px; color: var(--ai-text); cursor: pointer;
+      font: 13px/1.35 inherit; overflow: hidden;
+    }
+    .ai-agent-ide-tree-item:hover { background: rgba(0,0,0,.05); }
+    .ai-agent-ide-tree-item.is-active { background: rgba(0,120,212,.12); }
+    .ai-agent-ide-tree-chevron {
+      flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center;
+      color: #666; opacity: 0;
+    }
+    .ai-agent-ide-tree-item.is-dir .ai-agent-ide-tree-chevron { opacity: 1; }
+    .ai-agent-ide-tree-chevron svg {
+      width: 10px; height: 10px; transition: transform .12s ease;
+    }
+    .ai-agent-ide-tree-item.is-expanded .ai-agent-ide-tree-chevron svg {
+      transform: rotate(90deg);
+    }
+    .ai-agent-ide-tree-icon {
+      flex: 0 0 16px; width: 16px; height: 16px; display: grid; place-items: center;
+      font-size: 11px; line-height: 1; border-radius: 3px; font-weight: 700;
+    }
+    .ai-agent-ide-tree-icon.is-dir { color: #dcb67a; background: transparent; font-size: 13px; }
+    .ai-agent-ide-tree-icon.is-py { color: #3776ab; }
+    .ai-agent-ide-tree-icon.is-js { color: #c5a000; }
+    .ai-agent-ide-tree-icon.is-html { color: #e34c26; }
+    .ai-agent-ide-tree-icon.is-css { color: #264de4; }
+    .ai-agent-ide-tree-icon.is-md { color: #555; }
+    .ai-agent-ide-tree-icon.is-json,
+    .ai-agent-ide-tree-icon.is-yml,
+    .ai-agent-ide-tree-icon.is-yaml { color: #cb171e; }
+    .ai-agent-ide-tree-icon.is-env { color: #888; }
+    .ai-agent-ide-tree-icon.is-bat,
+    .ai-agent-ide-tree-icon.is-sh { color: #3e7a3e; }
+    .ai-agent-ide-tree-label {
+      flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ai-agent-ide-icon-btn {
+      width: 28px; height: 28px; border: 0; border-radius: 6px;
+      background: transparent; color: #555; cursor: pointer;
+      display: grid; place-items: center; padding: 0; flex: 0 0 auto;
+    }
+    .ai-agent-ide-icon-btn:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    .ai-agent-ide-icon-btn.is-on { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .ai-agent-ide-icon-btn:disabled { opacity: .35; cursor: default; }
+    .ai-agent-ide-icon-btn svg { width: 16px; height: 16px; display: block; }
+    #ai-agent-ctx-bar {
+      position: relative;
+      display: none; align-items: center; gap: 4px;
+      min-height: 28px; padding: 0 2px 2px;
+      z-index: 8;
+    }
+    /* Only on empty / new-agent landing — hide once a real conversation starts. */
+    #ai-agent-sidebar.is-empty #ai-agent-ctx-bar { display: flex; }
+    .ai-agent-ctx-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      max-width: min(100%, 420px); min-width: 0;
+      border: 0; background: transparent; color: #3f3f46;
+      border-radius: 8px; padding: 5px 8px; margin: 0;
+      font: 500 12.5px/1.2 inherit; cursor: pointer;
+      white-space: nowrap;
+    }
+    .ai-agent-ctx-chip:hover { background: rgba(0,0,0,.05); color: #111; }
+    .ai-agent-ctx-chip:disabled { opacity: .55; cursor: default; }
+    .ai-agent-ctx-chip:disabled:hover { background: transparent; color: #3f3f46; }
+    .ai-agent-ctx-chip.is-open { background: rgba(0,0,0,.06); color: #111; }
+    .ai-agent-ctx-chip-label {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ai-agent-ctx-chevron {
+      width: 0; height: 0; flex: 0 0 auto;
+      border-left: 3.5px solid transparent;
+      border-right: 3.5px solid transparent;
+      border-top: 4.5px solid currentColor;
+      opacity: .55;
+    }
+    .ai-agent-ctx-icon {
+      width: 14px; height: 14px; flex: 0 0 auto; display: block; opacity: .7;
+    }
+    #ai-agent-ws-picker {
+      display: none; position: absolute; left: 0; top: calc(100% + 4px);
+      width: min(360px, calc(100vw - 48px));
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.06);
+      padding: 8px; z-index: 30;
+      overflow: visible;
+    }
+    #ai-agent-ws-picker.is-on { display: block; }
+    #ai-agent-ws-flyout {
+      display: none; position: absolute; left: calc(100% + 6px); top: 0;
+      width: min(280px, calc(100vw - 48px));
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.06);
+      padding: 6px; z-index: 31;
+      max-height: min(420px, 70vh); overflow: auto;
+    }
+    #ai-agent-ws-flyout.is-on { display: block; }
+    #ai-agent-ws-flyout-path {
+      display: none; flex-direction: column; gap: 6px;
+      padding: 6px 4px 4px;
+    }
+    #ai-agent-ws-flyout-path.is-on { display: flex; }
+    #ai-agent-ws-flyout-path-ue {
+      display: none; flex-direction: column; gap: 6px;
+      padding: 6px 4px 4px;
+    }
+    #ai-agent-ws-flyout-path-ue.is-on { display: flex; }
+    #ai-agent-ws-flyout-path-ue input {
+      width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
+      border-radius: 8px; padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ws-flyout-path-ue button {
+      border: 0; background: #111; color: #fff; border-radius: 8px;
+      padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
+    }
+    #ai-agent-ws-flyout-path input {
+      width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
+      border-radius: 8px; padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ws-flyout-path button {
+      border: 0; background: #111; color: #fff; border-radius: 8px;
+      padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
+    }
+    #ai-agent-ws-flyout-search {
+      width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
+      border-radius: 8px; padding: 8px 10px; margin: 2px 0 6px;
+      font: 12.5px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ws-flyout-list {
+      display: flex; flex-direction: column; gap: 1px;
+      max-height: 220px; overflow: auto; margin-bottom: 4px;
+    }
+    #ai-agent-ws-flyout-panels > [data-flyout-panel] { display: none; }
+    #ai-agent-ws-flyout-panels > [data-flyout-panel].is-on { display: block; }
+    #ai-agent-ws-ssh-form {
+      display: none; flex-direction: column; gap: 6px; padding: 4px 2px 6px;
+    }
+    #ai-agent-ws-ssh-form.is-on { display: flex; }
+    #ai-agent-ws-ssh-form label {
+      display: flex; flex-direction: column; gap: 3px;
+      font-size: 11px; color: #71717a; font-weight: 600;
+    }
+    #ai-agent-ws-ssh-form input, #ai-agent-ws-ssh-form select {
+      border: 0; background: #f4f4f5; border-radius: 8px;
+      padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none; color: #18181b;
+    }
+    #ai-agent-ws-ssh-form-actions {
+      display: flex; gap: 6px; margin-top: 4px;
+    }
+    #ai-agent-ws-ssh-form-actions button {
+      flex: 1 1 auto; border: 0; border-radius: 8px;
+      padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
+    }
+    #ai-agent-ws-ssh-test { background: #f4f4f5; color: #18181b; }
+    #ai-agent-ws-ssh-save { background: #111; color: #fff; }
+    #ai-agent-ws-ssh-status {
+      font-size: 11.5px; color: #71717a; min-height: 1.2em; padding: 0 2px;
+    }
+    #ai-agent-ws-ssh-status.is-err { color: #b91c1c; }
+    #ai-agent-ws-ssh-status.is-ok { color: #15803d; }
+    .ai-agent-ws-item-host {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: #8b8b93; font-size: 11.5px; margin-top: 2px;
+    }
+    #ai-agent-ws-search {
+      width: 100%; box-sizing: border-box;
+      border: 0; background: #f4f4f5; border-radius: 8px;
+      padding: 9px 10px; font: 13px/1.3 inherit; color: var(--ai-text);
+      margin: 0 0 4px; outline: none;
+    }
+    #ai-agent-ws-search:focus { background: #ececee; }
+    #ai-agent-ws-search::placeholder { color: #8b8b93; }
+    .ai-agent-ws-section-label {
+      font: 600 11px/1 inherit; color: #8b8b93;
+      letter-spacing: .01em; padding: 10px 8px 4px;
+    }
+    .ai-agent-ws-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow: auto; }
+    .ai-agent-ws-item,
+    .ai-agent-ws-nav {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; border: 0; background: transparent; color: #18181b;
+      border-radius: 8px; padding: 7px 8px; margin: 0;
+      font: 13px/1.25 inherit; cursor: pointer; text-align: left;
+    }
+    .ai-agent-ws-item:hover,
+    .ai-agent-ws-nav:hover { background: #f4f4f5; }
+    .ai-agent-ws-item.is-active { background: #f0f0f2; }
+    .ai-agent-ws-item-ico,
+    .ai-agent-ws-nav .ai-agent-ctx-icon {
+      width: 15px; height: 15px; flex: 0 0 auto; opacity: .72; display: block;
+    }
+    .ai-agent-ws-item-main { flex: 1 1 auto; min-width: 0; }
+    .ai-agent-ws-item-name {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-weight: 450;
+    }
+    .ai-agent-ws-item-path {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: #8b8b93; font-size: 11.5px; margin-top: 2px;
+    }
+    .ai-agent-ws-item-check {
+      flex: 0 0 auto; width: 14px; height: 14px; color: #111; opacity: 0;
+    }
+    .ai-agent-ws-item.is-active .ai-agent-ws-item-check { opacity: 1; }
+    .ai-agent-ws-chevron-r {
+      width: 0; height: 0; margin-left: auto; flex: 0 0 auto;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid #a1a1aa;
+    }
+    .ai-agent-ws-nav.is-open,
+    .ai-agent-ws-nav.is-hot { background: #f4f4f5; }
+    .ai-agent-ws-foot {
+      display: flex; flex-direction: column; gap: 1px; margin-top: 4px; padding-top: 2px;
+    }
+    .ai-agent-ws-foot button {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; border: 0; background: transparent; color: #18181b;
+      border-radius: 8px; padding: 7px 8px; margin: 0;
+      font: 13px/1.25 inherit; cursor: pointer; text-align: left;
+    }
+    .ai-agent-ws-foot button:hover { background: #f4f4f5; }
+    #ai-agent-ws-path-row {
+      display: none; gap: 6px; padding: 6px 2px 2px; align-items: center;
+    }
+    #ai-agent-ws-path-row.is-on { display: flex; }
+    #ai-agent-ws-path-input {
+      flex: 1 1 auto; min-width: 0;
+      border: 0; background: #f4f4f5; border-radius: 8px;
+      padding: 8px 10px; font: 12.5px/1.3 inherit; outline: none;
+    }
+    #ai-agent-ws-path-go {
+      flex: 0 0 auto; border: 0; background: #111; color: #fff;
+      border-radius: 8px; padding: 8px 12px; font: 600 12px/1 inherit; cursor: pointer;
+    }
+    #ai-agent-ctx-branch[hidden] { display: none !important; }
+    #ai-agent-confirm-modal {
+      display: none; position: fixed; inset: 0; z-index: 2147483601;
+      background: rgba(0,0,0,.35); place-items: center; padding: 24px;
+    }
+    #ai-agent-confirm-modal.is-on { display: grid; }
+    #ai-agent-confirm-card {
+      width: min(380px, 100%); background: #fff; border-radius: 14px;
+      border: 1px solid var(--ai-border); padding: 20px 18px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.12);
+    }
+    #ai-agent-confirm-card h2 { margin: 0 0 6px; font-size: 17px; }
+    #ai-agent-confirm-card p { margin: 0 0 16px; color: var(--ai-muted); font-size: 13px; line-height: 1.45; }
+    #ai-agent-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    #ai-agent-confirm-actions button {
+      border: 1px solid var(--ai-border); background: #fff; border-radius: 10px;
+      padding: 8px 14px; font: 600 13px/1 inherit; cursor: pointer;
+    }
+    #ai-agent-confirm-actions .primary { background: #111; color: #fff; border-color: #111; }
+    #ai-agent-confirm-actions .danger { background: #c62828; color: #fff; border-color: #c62828; }
+    #ai-agent-confirm-actions .danger:hover { background: #b71c1c; }
+    .ai-agent-nav-item-meta {
+      display: block; font-size: 11px; color: var(--ai-muted); font-weight: 400;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #ai-agent-nav-scroll {
+      flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 8px 12px;
+    }
+    #ai-agent-nav-label-row {
+      display: flex; align-items: center; gap: 2px;
+      padding: 6px 4px 4px; border-radius: 8px;
+    }
+    #ai-agent-nav-label-row:hover { background: rgba(0,0,0,.03); }
+    #ai-agent-nav-label {
+      display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0;
+      border: 0; background: transparent; cursor: pointer; text-align: left;
+      padding: 4px 4px; font: 600 12px/1.2 inherit;
+      color: var(--ai-muted); letter-spacing: .02em; border-radius: 6px;
+    }
+    #ai-agent-nav-label:hover { color: var(--ai-text); }
+    #ai-agent-nav-label-actions {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 0;
+      opacity: 0; pointer-events: none; transition: opacity .12s ease;
+    }
+    #ai-agent-nav-label-row:hover #ai-agent-nav-label-actions,
+    #ai-agent-nav-label-row:focus-within #ai-agent-nav-label-actions {
+      opacity: 1; pointer-events: auto;
+    }
+    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn {
+      width: 24px; height: 24px; border: 0; border-radius: 6px;
+      background: transparent; color: #666; cursor: pointer;
+      display: grid; place-items: center; padding: 0;
+    }
+    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn:hover,
+    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn.is-on {
+      background: rgba(0,0,0,.08); color: var(--ai-text);
+    }
+    #ai-agent-nav-label-actions .ai-agent-nav-mini-btn svg {
+      width: 14px; height: 14px; display: block;
+    }
+    .ai-agent-nav-label-chevron {
+      width: 0; height: 0; border-style: solid; flex: 0 0 auto;
+      border-width: 4px 0 4px 6px; border-color: transparent transparent transparent #888;
+      transition: transform .12s ease;
+    }
+    #ai-agent-nav-label[aria-expanded="true"] .ai-agent-nav-label-chevron {
+      transform: rotate(90deg);
+    }
+    #ai-agent-nav-scroll.is-repos-collapsed #ai-agent-nav-list,
+    #ai-agent-nav-scroll.is-repos-collapsed #ai-agent-nav-empty {
+      display: none;
+    }
+    #ai-agent-nav-scroll.is-hide-empty .ai-agent-repo-group.is-empty {
+      display: none;
+    }
+    #ai-agent-nav-list { display: flex; flex-direction: column; gap: 2px; }
+    .ai-agent-repo-group { margin: 0 0 6px; }
+    .ai-agent-repo-head {
+      display: flex; align-items: center; gap: 4px; width: 100%;
+      border: 0; background: transparent; color: var(--ai-text);
+      border-radius: 8px; padding: 2px 4px 2px 2px; font: 600 13px/1.2 inherit;
+    }
+    .ai-agent-repo-head:hover { background: rgba(0,0,0,.04); }
+    .ai-agent-repo-toggle {
+      display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0;
+      border: 0; background: transparent; color: inherit; font: inherit;
+      cursor: pointer; text-align: left; padding: 5px 4px; border-radius: 6px;
+    }
+    .ai-agent-repo-chevron {
+      width: 0; height: 0; border-style: solid;
+      border-width: 4px 0 4px 6px; border-color: transparent transparent transparent #888;
+      transition: transform .12s ease; flex: 0 0 auto;
+    }
+    .ai-agent-repo-group.is-collapsed .ai-agent-repo-chevron {
+      transform: rotate(0deg);
+    }
+    .ai-agent-repo-group:not(.is-collapsed) .ai-agent-repo-chevron {
+      transform: rotate(90deg);
+    }
+    .ai-agent-repo-name {
+      flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ai-agent-repo-count {
+      flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); font-weight: 500;
+      padding-right: 4px;
+    }
+    .ai-agent-repo-add {
+      flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 6px;
+      background: transparent; color: #666; cursor: pointer;
+      display: none; place-items: center; padding: 0;
+    }
+    .ai-agent-repo-add svg { width: 14px; height: 14px; display: block; }
+    .ai-agent-repo-add:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .ai-agent-repo-head:hover .ai-agent-repo-add,
+    .ai-agent-repo-head:focus-within .ai-agent-repo-add { display: grid; }
+    .ai-agent-repo-head:hover .ai-agent-repo-count,
+    .ai-agent-repo-head:focus-within .ai-agent-repo-count { display: none; }
+    .ai-agent-repo-body { display: flex; flex-direction: column; gap: 1px; padding: 0 0 4px 8px; }
+    .ai-agent-repo-group.is-collapsed .ai-agent-repo-body { display: none; }
+    .ai-agent-repo-empty {
+      padding: 6px 10px 8px; font-size: 12px; color: var(--ai-muted);
+    }
+    .ai-agent-nav-item {
+      display: flex; align-items: center; gap: 6px;
+      width: 100%; border: 0; background: transparent; color: var(--ai-text);
+      border-radius: 8px; padding: 7px 8px 7px 10px; font: 13px/1.35 inherit;
+      cursor: pointer; text-align: left; position: relative;
+    }
+    .ai-agent-nav-item:hover { background: rgba(0,0,0,.05); }
+    .ai-agent-nav-item.is-active { background: rgba(0,0,0,.08); font-weight: 600; }
+    .ai-agent-nav-item-spin {
+      display: none; flex: 0 0 auto; width: 12px; height: 12px;
+      border: 1.5px solid rgba(0,0,0,.14); border-top-color: #444;
+      border-radius: 50%; animation: ai-agent-nav-spin .7s linear infinite;
+    }
+    .ai-agent-nav-item.is-running .ai-agent-nav-item-spin { display: inline-block; }
+    @keyframes ai-agent-nav-spin {
+      to { transform: rotate(360deg); }
+    }
+    .ai-agent-nav-item-title {
+      flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      display: block;
+    }
+    .ai-agent-nav-item.is-renaming {
+      background: rgba(0,0,0,.06);
+    }
+    .ai-agent-nav-item-rename {
+      flex: 1 1 auto; min-width: 0; width: 100%;
+      border: 1px solid #0078d4; border-radius: 6px;
+      padding: 2px 6px; margin: 0; outline: none;
+      font: 13px/1.35 inherit; color: var(--ai-text); background: #fff;
+      box-shadow: 0 0 0 2px rgba(0,120,212,.18);
+    }
+    .ai-agent-nav-item-time {
+      flex: 0 0 auto; font-size: 11px; color: var(--ai-muted); font-weight: 400;
+    }
+    .ai-agent-nav-item-actions {
+      flex: 0 0 auto; display: none; align-items: center; gap: 1px;
+    }
+    .ai-agent-nav-item:hover .ai-agent-nav-item-actions,
+    .ai-agent-nav-item:focus-within .ai-agent-nav-item-actions,
+    .ai-agent-nav-item.is-menu-open .ai-agent-nav-item-actions { display: inline-flex; }
+    .ai-agent-nav-item:hover .ai-agent-nav-item-time,
+    .ai-agent-nav-item:focus-within .ai-agent-nav-item-time,
+    .ai-agent-nav-item.is-menu-open .ai-agent-nav-item-time { display: none; }
+    .ai-agent-nav-item-action {
+      width: 24px; height: 24px; border: 0; border-radius: 6px;
+      background: transparent; color: #555; cursor: pointer;
+      display: grid; place-items: center; padding: 0;
+    }
+    .ai-agent-nav-item-action:hover { background: rgba(0,0,0,.08); color: var(--ai-text); }
+    .ai-agent-nav-item-action svg { width: 14px; height: 14px; display: block; }
+    #ai-agent-nav-item-menu {
+      display: none; position: fixed; z-index: 2147483642; min-width: 180px;
+      padding: 6px; margin: 0; list-style: none;
+      background: #fff; border: 1px solid rgba(0,0,0,.1); border-radius: 12px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.14);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #ai-agent-nav-item-menu.is-on { display: block; }
+    #ai-agent-nav-item-menu button {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      border: 0; background: transparent; color: var(--ai-text);
+      border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: left;
+      font: inherit;
+    }
+    #ai-agent-nav-item-menu button:hover { background: rgba(0,0,0,.05); }
+    #ai-agent-nav-item-menu button.is-danger { color: #c62828; }
+    #ai-agent-nav-item-menu button.is-danger:hover { background: rgba(198,40,40,.08); }
+    #ai-agent-nav-item-menu button svg {
+      width: 15px; height: 15px; flex: 0 0 auto; display: block;
+    }
+    #ai-agent-nav-empty {
+      padding: 16px 10px; color: var(--ai-muted); font-size: 13px; line-height: 1.45;
+    }
+    #ai-agent-ide {
+      display: none; flex: 0 0 var(--ai-ide-width); width: var(--ai-ide-width);
+      height: 100%; min-width: 320px; max-width: 75vw; border-left: 1px solid var(--ai-border);
+      background: #fff; flex-direction: column; overflow: hidden; position: relative;
+    }
+    #ai-agent-sidebar.is-fullscreen.has-ide #ai-agent-ide { display: flex; }
+    #ai-agent-ide-rail {
+      display: none; position: absolute; right: 10px; top: 44px;
+      z-index: 28;
+      flex-direction: column; align-items: center; gap: 2px;
+      width: 44px; padding: 10px 6px; border-radius: 999px;
+      background: #fff; border: 1px solid rgba(0,0,0,.1);
+      box-shadow: 0 6px 20px rgba(0,0,0,.08);
+      transition: width .18s ease, padding .18s ease, border-radius .18s ease;
+    }
+    #ai-agent-sidebar.is-fullscreen:not(.has-ide) #ai-agent-ide-rail { display: flex; }
+    #ai-agent-ide-rail.is-labels {
+      width: 168px; align-items: stretch; padding: 8px;
+      border-radius: 14px;
+    }
+    .ai-agent-ide-rail-btn {
+      width: 32px; height: 32px; border: 0; border-radius: 999px;
+      background: transparent; color: #555; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0; padding: 0; flex: 0 0 auto;
+      transition: background .15s ease, color .15s ease, transform .12s ease, width .15s ease, border-radius .15s ease;
+    }
+    #ai-agent-ide-rail.is-labels .ai-agent-ide-rail-btn {
+      width: 100%; height: 34px; border-radius: 8px;
+      justify-content: flex-start; gap: 10px; padding: 0 10px;
+    }
+    .ai-agent-ide-rail-btn:hover {
+      background: rgba(0,0,0,.07); color: var(--ai-text);
+    }
+    .ai-agent-ide-rail-btn:active {
+      background: rgba(0,0,0,.11); transform: scale(.96);
+    }
+    .ai-agent-ide-rail-btn svg { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+    .ai-agent-ide-rail-label {
+      display: none; font: 13px/1.2 inherit; color: inherit;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #ai-agent-ide-rail.is-labels .ai-agent-ide-rail-label { display: inline; }
+    #ai-agent-ide-rail-expand .ai-agent-ide-rail-expand-icon {
+      display: block; transition: transform .18s ease;
+    }
+    #ai-agent-ide-rail.is-labels #ai-agent-ide-rail-expand .ai-agent-ide-rail-expand-icon {
+      transform: scaleX(-1);
+    }
+    #ai-agent-ide-panel-browser,
+    #ai-agent-ide-panel-terminal {
+      display: none; flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
+      flex-direction: column; background: #fff;
+    }
+    #ai-agent-ide[data-panel="browser"] #ai-agent-ide-editor,
+    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-editor,
+    #ai-agent-ide[data-panel="browser"] #ai-agent-ide-explorer,
+    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-explorer { display: none !important; }
+    #ai-agent-ide[data-panel="browser"] #ai-agent-ide-panel-browser,
+    #ai-agent-ide[data-panel="terminal"] #ai-agent-ide-panel-terminal { display: flex; }
+    .ai-agent-ide-panel-empty {
+      flex: 1 1 auto; display: grid; place-items: center; text-align: center;
+      color: var(--ai-muted); font-size: 13px; padding: 24px; gap: 8px;
+    }
+    .ai-agent-ide-panel-empty strong {
+      display: block; color: var(--ai-text); font-size: 15px; margin-bottom: 6px;
+    }
+    #ai-agent-ide-term {
+      flex: 1 1 auto; min-height: 0; width: 100%; border: 0; resize: none;
+      padding: 12px 14px; outline: none; background: #1e1e1e; color: #d4d4d4;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    #ai-agent-ide-browser-bar {
+      flex: 0 0 auto; display: flex; gap: 8px; align-items: center;
+      padding: 8px 10px; border-bottom: 1px solid var(--ai-border); background: #f7f7f7;
+    }
+    #ai-agent-ide-browser-url {
+      flex: 1 1 auto; min-width: 0; border: 1px solid var(--ai-border); border-radius: 8px;
+      padding: 7px 10px; font: 13px/1.3 inherit; background: #fff;
+    }
+    #ai-agent-ide-browser-frame {
+      flex: 1 1 auto; min-height: 0; width: 100%; border: 0; background: #fff;
+    }
+    #ai-agent-ide-resize {
+      position: absolute; left: -3px; top: 0; width: 6px; height: 100%;
+      cursor: ew-resize; z-index: 5;
+    }
+    #ai-agent-ide-resize:hover,
+    #ai-agent-sidebar.is-ide-resizing #ai-agent-ide-resize {
+      background: rgba(0,120,212,.45);
+    }
+    #ai-agent-ide-tree-resize {
+      position: absolute; left: -3px; top: 0; width: 6px; height: 100%;
+      cursor: ew-resize; z-index: 3;
+    }
+    #ai-agent-ide-tree-resize:hover,
+    #ai-agent-sidebar.is-ide-tree-resizing #ai-agent-ide-tree-resize {
+      background: rgba(0,120,212,.45);
+    }
+    #ai-agent-sidebar.is-ide-resizing,
+    #ai-agent-sidebar.is-ide-tree-resizing { user-select: none; cursor: ew-resize; }
+    #ai-agent-nav-footer {
+      flex: 0 0 auto; border-top: 1px solid var(--ai-border);
+      height: calc(var(--ai-nav-chrome-pad-y) * 2 + var(--ai-nav-icon-size) + 1px);
+      padding: var(--ai-nav-chrome-pad-y) var(--ai-nav-chrome-pad-x);
+      display: flex; align-items: center; gap: 8px;
+      background: var(--ai-nav-bg); box-sizing: border-box;
+    }
+    #ai-agent-nav-user {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600; color: var(--ai-text);
+    }
+    #ai-agent-nav-user-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #ai-agent-sidebar.is-fullscreen #ai-agent-user-chip,
+    #ai-agent-sidebar.is-fullscreen #ai-agent-new-chat,
+    #ai-agent-sidebar.is-fullscreen #ai-agent-fullscreen {
+      display: none !important;
+    }
+    #ai-agent-toggle-ide {
+      width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+      background: transparent; color: #555; cursor: pointer;
+      display: none; place-items: center;
+      transition: background .15s ease, color .15s ease;
+    }
+    /* When IDE is closed: float at workspace top-right. When open: docked in IDE topbar. */
+    #ai-agent-sidebar.is-fullscreen:not(.has-ide) #ai-agent-toggle-ide {
+      display: grid;
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      z-index: 30;
+      background: #fff;
+    }
+    #ai-agent-sidebar.has-ide #ai-agent-toggle-ide { display: none !important; }
+    #ai-agent-toggle-ide:hover { background: rgba(0,0,0,.06); color: var(--ai-text); }
+    #ai-agent-toggle-ide svg { width: 16px; height: 16px; display: block; }
+    @media (max-width: 720px) {
+      #ai-agent-sidebar.is-fullscreen #ai-agent-workspace { flex-direction: column; }
+      #ai-agent-sidebar.is-fullscreen #ai-agent-nav-shell {
+        width: 100%; height: auto; max-height: 38vh;
+      }
+      #ai-agent-sidebar.is-fullscreen #ai-agent-nav {
+        flex: 1 1 auto; width: 100%; height: 100%; max-height: none;
+        border-right: 0; border-bottom: 1px solid var(--ai-border);
+      }
+      #ai-agent-sidebar.is-fullscreen.nav-hidden #ai-agent-nav-rail {
+        width: 100%; flex-basis: auto;
+      }
+    }
     #ai-agent-resize-handle {
       position: absolute; left: 0; top: 0; width: 6px; height: 100%;
       cursor: ew-resize; z-index: 12; touch-action: none;
@@ -163,28 +1231,35 @@
       background: rgba(255,255,255,.85); backdrop-filter: blur(10px); z-index: 2;
     }
     #ai-agent-sidebar.is-fullscreen #ai-agent-topbar {
-      padding: 0 16px; background: #fff; backdrop-filter: none;
+      height: 44px; padding: 0 14px 0 16px; background: #fff; backdrop-filter: none;
+      border-bottom: 0;
     }
     #ai-agent-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    #ai-agent-brand-mark {
-      width: 28px; height: 28px; border-radius: 8px;
+    #ai-agent-brand-mark-main {
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); border-radius: 8px;
       overflow: hidden; flex: 0 0 auto;
       background: transparent;
       display: grid; place-items: center;
     }
-    #ai-agent-brand-mark svg { width: 28px; height: 28px; display: block; }
-    #ai-agent-brand-text {
-      display: flex; align-items: baseline; gap: 8px; min-width: 0;
+    #ai-agent-brand-mark-main svg {
+      width: var(--ai-nav-icon-size); height: var(--ai-nav-icon-size); display: block;
     }
+    #ai-agent-brand-text {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+    }
+    /* Run-state pill (就绪 / Read / Thinking) hidden — crowded next to title. */
+    .ai-agent-run-state { display: none !important; }
+    /* Expanded fullscreen: logo in left nav. Collapsed / floating: logo beside title. */
+    #ai-agent-brand-mark-main { display: none; }
+    #ai-agent-sidebar:not(.is-fullscreen) #ai-agent-brand-mark-main { display: grid; }
     #ai-agent-brand strong {
       font-size: 15px; font-weight: 600; color: var(--ai-text);
-      line-height: 1.2; flex: 0 0 auto;
+      line-height: 1.2; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #ai-agent-run-state {
-      font-size: 12px; line-height: 1.2; color: #10a37f; margin: 0;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    #ai-agent-sidebar.is-fullscreen #ai-agent-brand strong {
+      font-size: 14px; font-weight: 600;
     }
-    #ai-agent-run-state.is-busy { color: var(--ai-muted); }
     #ai-agent-top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     #ai-agent-user-chip {
       display: none; align-items: center; gap: 6px;
@@ -197,15 +1272,17 @@
     }
     #ai-agent-logout {
       border: 1px solid var(--ai-border); background: #fff; color: inherit;
-      border-radius: 999px; padding: 6px 10px; font: 12px/1.2 inherit; cursor: pointer;
+      border-radius: 999px; height: var(--ai-nav-icon-size); padding: 0 10px;
+      font: 12px/1 inherit; cursor: pointer; box-sizing: border-box;
+      display: inline-flex; align-items: center; flex: 0 0 auto;
     }
     #ai-agent-logout:hover { background: var(--ai-surface); color: var(--ai-text); }
-    #ai-agent-new-chat, #ai-agent-fullscreen, #ai-agent-close {
+    #ai-agent-new-chat, #ai-agent-fullscreen {
       border: 1px solid var(--ai-border); background: #fff; color: var(--ai-text);
       border-radius: 999px; padding: 7px 12px; font: 12px/1.2 inherit; cursor: pointer;
     }
-    #ai-agent-new-chat:hover, #ai-agent-fullscreen:hover, #ai-agent-close:hover { background: var(--ai-surface); }
-    #ai-agent-fullscreen, #ai-agent-close {
+    #ai-agent-new-chat:hover, #ai-agent-fullscreen:hover { background: var(--ai-surface); }
+    #ai-agent-fullscreen {
       width: 32px; height: 32px; padding: 0; display: grid; place-items: center; font-size: 16px;
     }
     #ai-agent-fullscreen .ai-agent-icon-expand,
@@ -1366,18 +2443,110 @@
     <div id="ai-agent-trigger" title="${providerUi.name}">${providerUi.markHtml}</div>
     <div id="ai-agent-sidebar">
       <div id="ai-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
+      <div id="ai-agent-workspace">
+      <button id="ai-agent-toggle-ide" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="false">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
+          <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" opacity=".22"/>
+        </svg>
+      </button>
+      <div id="ai-agent-nav-shell">
+      <div id="ai-agent-nav-pins">
+        <button type="button" id="ai-agent-nav-rail-brand" title="展开边栏 (Ctrl+B)" aria-label="展开边栏">
+          ${providerUi.markHtml}
+        </button>
+        <button type="button" id="ai-agent-nav-rail-avatar" title="账户" aria-label="账户">A</button>
+      </div>
+      <aside id="ai-agent-nav-rail" aria-label="收起的边栏">
+        <div id="ai-agent-nav-rail-top">
+          <button type="button" id="ai-agent-nav-rail-new" class="ai-agent-nav-rail-btn" title="新建 Agent" aria-label="新建 Agent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          </button>
+          <button type="button" id="ai-agent-nav-rail-chats" class="ai-agent-nav-rail-btn" title="最近聊天" aria-label="最近聊天" aria-expanded="false" aria-haspopup="dialog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="ai-agent-nav-rail-spacer" aria-hidden="true"></div>
+        <div id="ai-agent-nav-rail-bottom" aria-hidden="true"></div>
+      </aside>
+      <div id="ai-agent-nav-rail-flyout" role="dialog" aria-label="最近聊天">
+        <div id="ai-agent-nav-rail-flyout-title">最近聊天</div>
+        <div id="ai-agent-nav-rail-flyout-list"></div>
+        <div id="ai-agent-nav-rail-flyout-empty">还没有 Agent。点上方「新建 Agent」，或在 Home 里开始。</div>
+      </div>
+      <aside id="ai-agent-nav" aria-label="历史对话">
+        <div id="ai-agent-nav-resize" title="拖动调整宽度" aria-hidden="true"></div>
+        <div id="ai-agent-nav-head">
+          <div id="ai-agent-nav-brand">
+            <span class="ai-agent-nav-pin-slot" aria-hidden="true"></span>
+            <span id="ai-agent-run-state" class="ai-agent-run-state">就绪</span>
+          </div>
+          <button id="ai-agent-toggle-nav" type="button" title="收起边栏 (Ctrl+B)" aria-label="收起边栏" aria-pressed="true">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M5.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
+              <rect x="1.5" y="2.5" width="4" height="11" fill="currentColor" opacity=".22"/>
+            </svg>
+          </button>
+        </div>
+        <div id="ai-agent-nav-top">
+          <button id="ai-agent-nav-new" type="button" title="新建 Agent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14"></path><path d="M5 12h14"></path>
+            </svg>
+            <span>新建 Agent</span>
+          </button>
+        </div>
+        <div id="ai-agent-nav-scroll">
+          <div id="ai-agent-nav-label-row">
+            <button type="button" id="ai-agent-nav-label" title="折叠仓库列表" aria-expanded="true">
+              <span class="ai-agent-nav-label-chevron" aria-hidden="true"></span>
+              <span>仓库</span>
+            </button>
+            <div id="ai-agent-nav-label-actions">
+              <button type="button" id="ai-agent-nav-filter" class="ai-agent-nav-mini-btn" title="隐藏空仓库" aria-label="隐藏空仓库" aria-pressed="false">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <path d="M2.5 3.5h11l-4 5v3.5l-3 1.5v-5z"/>
+                </svg>
+              </button>
+              <button type="button" id="ai-agent-nav-add-repo" class="ai-agent-nav-mini-btn" title="添加仓库" aria-label="添加仓库">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 4.5h4l1.2 1.3H13.5v6.7H2.5z"/>
+                  <path d="M8 8v4"/><path d="M6 10h4"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="ai-agent-nav-list"></div>
+          <div id="ai-agent-nav-empty" style="display:none" hidden></div>
+        </div>
+        <div id="ai-agent-nav-footer">
+          <div id="ai-agent-nav-user">
+            <span class="ai-agent-nav-pin-slot" aria-hidden="true"></span>
+            <span id="ai-agent-nav-user-name"></span>
+          </div>
+          <button id="ai-agent-logout" type="button" title="退出登录">退出</button>
+        </div>
+      </aside>
+      </div>
+      <div id="ai-agent-main">
       <div id="ai-agent-topbar">
         <div id="ai-agent-brand">
-          <div id="ai-agent-brand-mark">${providerUi.markHtml}</div>
+          <div id="ai-agent-brand-mark-main">${providerUi.markHtml}</div>
           <div id="ai-agent-brand-text">
-            <strong>${providerUi.name}</strong>
-            <span id="ai-agent-run-state">就绪</span>
+            <span id="ai-agent-run-state-main" class="ai-agent-run-state">就绪</span>
+            <strong id="ai-agent-chat-title">${providerUi.name}</strong>
           </div>
         </div>
         <div id="ai-agent-top-actions">
           <div id="ai-agent-user-chip" aria-live="polite">
             <span id="ai-agent-user-name"></span>
-            <button id="ai-agent-logout" type="button" title="退出登录">退出</button>
           </div>
           <button id="ai-agent-new-chat" type="button" title="新对话">新对话</button>
           <button id="ai-agent-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false">
@@ -1398,7 +2567,6 @@
               </svg>
             </span>
           </button>
-          <button id="ai-agent-close" type="button" title="关闭">×</button>
         </div>
       </div>
       <div id="ai-agent-scroll-wrap">
@@ -1414,6 +2582,103 @@
       <div id="ai-agent-footer">
         <div id="ai-agent-composer-wrap">
           <div id="ai-agent-queue"></div>
+          <div id="ai-agent-ctx-bar">
+            <button type="button" id="ai-agent-ctx-ws" class="ai-agent-ctx-chip" title="选择仓库" aria-haspopup="listbox" aria-expanded="false">
+              <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path>
+              </svg>
+              <span id="ai-agent-ctx-ws-label" class="ai-agent-ctx-chip-label">No Repo</span>
+              <span class="ai-agent-ctx-chevron" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="ai-agent-ctx-branch" class="ai-agent-ctx-chip" disabled title="当前分支" hidden>
+              <span id="ai-agent-ctx-branch-label" class="ai-agent-ctx-chip-label"></span>
+            </button>
+            <div id="ai-agent-ws-picker" role="listbox" aria-label="选择仓库" aria-hidden="true">
+              <input id="ai-agent-ws-search" type="search" placeholder="Search folders, repos..." autocomplete="off">
+              <div class="ai-agent-ws-section-label">Recents</div>
+              <div id="ai-agent-ws-recents" class="ai-agent-ws-list"></div>
+              <div class="ai-agent-ws-section-label">Repos</div>
+              <div id="ai-agent-ws-repos" class="ai-agent-ws-list"></div>
+              <div id="ai-agent-ws-path-row">
+                <input id="ai-agent-ws-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                <button type="button" id="ai-agent-ws-path-go">打开</button>
+              </div>
+              <div class="ai-agent-ws-foot">
+                <button type="button" id="ai-agent-ws-use-existing">
+                  <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                  <span class="ai-agent-ws-item-main">Use Existing...</span>
+                  <span class="ai-agent-ws-chevron-r" aria-hidden="true"></span>
+                </button>
+                <button type="button" id="ai-agent-ws-new-folder">
+                  <svg class="ai-agent-ctx-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path>
+                    <path d="M12 11v6"></path><path d="M9 14h6"></path>
+                  </svg>
+                  New Folder
+                </button>
+              </div>
+              <div id="ai-agent-ws-flyout" aria-hidden="true">
+                <div id="ai-agent-ws-flyout-panels">
+                  <div data-flyout-panel="pc" id="ai-agent-ws-flyout-pc">
+                    <input id="ai-agent-ws-flyout-search" type="search" placeholder="Search This PC..." autocomplete="off">
+                    <div id="ai-agent-ws-flyout-list" class="ai-agent-ws-list"></div>
+                    <button type="button" id="ai-agent-ws-open-folder" class="ai-agent-ws-item">
+                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Open Folder</span></span>
+                    </button>
+                    <div id="ai-agent-ws-flyout-path">
+                      <input id="ai-agent-ws-flyout-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                      <button type="button" id="ai-agent-ws-flyout-go">打开</button>
+                    </div>
+                  </div>
+                  <div data-flyout-panel="use-existing" id="ai-agent-ws-flyout-use">
+                    <button type="button" id="ai-agent-ws-ue-open-folder" class="ai-agent-ws-item">
+                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Open Folder</span></span>
+                    </button>
+                    <button type="button" id="ai-agent-ws-ue-ssh" class="ai-agent-ws-item">
+                      <svg class="ai-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>
+                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Connect via SSH</span></span>
+                    </button>
+                    <div id="ai-agent-ws-flyout-path-ue">
+                      <input id="ai-agent-ws-ue-path-input" type="text" placeholder="D:\\code\\my-app" spellcheck="false">
+                      <button type="button" id="ai-agent-ws-ue-path-go">打开</button>
+                    </div>
+                  </div>
+                  <div data-flyout-panel="ssh-tree" id="ai-agent-ws-flyout-ssh-tree">
+                    <div id="ai-agent-ws-ssh-tree-head" class="ai-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
+                    <div id="ai-agent-ws-ssh-tree-list" class="ai-agent-ws-list"></div>
+                    <button type="button" id="ai-agent-ws-ssh-use-here" class="ai-agent-ws-item">
+                      <span class="ai-agent-ws-item-main"><span class="ai-agent-ws-item-name">Use this folder</span></span>
+                    </button>
+                  </div>
+                  <div data-flyout-panel="ssh-form" id="ai-agent-ws-flyout-ssh-form">
+                    <div id="ai-agent-ws-ssh-form" class="is-on">
+                      <label>ID<input id="ai-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                      <label>Label<input id="ai-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
+                      <label>Host<input id="ai-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
+                      <label>Port<input id="ai-agent-ws-ssh-port" type="number" value="22" min="1" max="65535"></label>
+                      <label>User<input id="ai-agent-ws-ssh-user" type="text" placeholder="wxj" autocomplete="off"></label>
+                      <label>Auth
+                        <select id="ai-agent-ws-ssh-auth">
+                          <option value="key">SSH Key</option>
+                          <option value="password">Password</option>
+                        </select>
+                      </label>
+                      <label id="ai-agent-ws-ssh-key-wrap">Key path<input id="ai-agent-ws-ssh-key" type="text" placeholder="~/.ssh/id_rsa" autocomplete="off"></label>
+                      <label id="ai-agent-ws-ssh-pass-wrap" style="display:none;">Password<input id="ai-agent-ws-ssh-pass" type="password" autocomplete="new-password"></label>
+                      <label>Default path<input id="ai-agent-ws-ssh-default" type="text" placeholder="/home/user" autocomplete="off"></label>
+                      <div id="ai-agent-ws-ssh-status"></div>
+                      <div id="ai-agent-ws-ssh-form-actions">
+                        <button type="button" id="ai-agent-ws-ssh-test">测试连接</button>
+                        <button type="button" id="ai-agent-ws-ssh-save">保存</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div id="ai-agent-compose-shell">
           <div id="ai-agent-slash-menu" role="listbox" aria-label="Skills"></div>
           <div id="ai-agent-attachments"></div>
@@ -1458,6 +2723,200 @@
             </div>
           </div>
         </div>
+        </div>
+      </div>
+      </div>
+      <aside id="ai-agent-ide-rail" aria-label="侧栏工具">
+        <button type="button" id="ai-agent-ide-rail-new" class="ai-agent-ide-rail-btn" title="新建" aria-label="新建">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+            <path d="M8 3.5v9"/>
+            <path d="M3.5 8h9"/>
+            <path d="M4 13.5h8"/>
+          </svg>
+          <span class="ai-agent-ide-rail-label">新建</span>
+        </button>
+        <button type="button" id="ai-agent-ide-rail-browser" class="ai-agent-ide-rail-btn" title="浏览器" aria-label="浏览器">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.5"/>
+            <path d="M2.5 8h11"/>
+            <path d="M8 2.5c1.8 1.8 2.7 3.6 2.7 5.5S9.8 11.7 8 13.5C6.2 11.7 5.3 9.9 5.3 8S6.2 4.3 8 2.5z"/>
+          </svg>
+          <span class="ai-agent-ide-rail-label">浏览器</span>
+        </button>
+        <button type="button" id="ai-agent-ide-rail-terminal" class="ai-agent-ide-rail-btn" title="终端" aria-label="终端">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 5.5L7 8l-3.5 2.5"/>
+            <path d="M8 11.5h4.5"/>
+          </svg>
+          <span class="ai-agent-ide-rail-label">终端</span>
+        </button>
+        <button type="button" id="ai-agent-ide-rail-files" class="ai-agent-ide-rail-btn" title="文件" aria-label="文件">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 2.5h5.5L12 5v8.5H4z"/>
+            <path d="M9.5 2.5V5H12"/>
+          </svg>
+          <span class="ai-agent-ide-rail-label">文件</span>
+        </button>
+        <button type="button" id="ai-agent-ide-rail-expand" class="ai-agent-ide-rail-btn" title="展开" aria-label="展开" aria-expanded="false">
+          <svg class="ai-agent-ide-rail-expand-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 4L5 8l4 4"/>
+            <path d="M12 4L8 8l4 4"/>
+          </svg>
+          <span class="ai-agent-ide-rail-label">收起</span>
+        </button>
+      </aside>
+      <aside id="ai-agent-ide" aria-label="代码编辑" data-panel="files">
+        <div id="ai-agent-ide-resize" title="拖动调整宽度" aria-hidden="true"></div>
+        <div id="ai-agent-ide-topbar">
+          <div id="ai-agent-ide-tabs">
+            <div id="ai-agent-ide-tabs-scroll"></div>
+            <button type="button" id="ai-agent-ide-maximize" title="全屏编辑器" aria-label="全屏编辑器" aria-pressed="false">
+              <span class="ai-agent-icon-expand" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6V3h3"/><path d="M13 6V3h-3"/><path d="M3 10v3h3"/><path d="M13 10v3h-3"/>
+                </svg>
+              </span>
+              <span class="ai-agent-icon-shrink" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 3v3H3"/><path d="M10 3v3h3"/><path d="M6 13v-3H3"/><path d="M10 13v-3h3"/>
+                </svg>
+              </span>
+            </button>
+          </div>
+          <div id="ai-agent-ide-top-actions">
+            <button id="ai-agent-toggle-ide-dock" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="true">
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
+                <rect x="10.5" y="2.5" width="4" height="11" fill="currentColor" opacity=".22"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="ai-agent-ide-body">
+          <div id="ai-agent-ide-editor">
+            <div id="ai-agent-ide-crumb">
+              <button type="button" id="ai-agent-ide-back" class="ai-agent-ide-icon-btn" title="上一个文件" aria-label="上一个文件" disabled>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 3L5 8l5 5"/>
+                </svg>
+              </button>
+              <button type="button" id="ai-agent-ide-forward" class="ai-agent-ide-icon-btn" title="下一个文件" aria-label="下一个文件" disabled>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M6 3l5 5-5 5"/>
+                </svg>
+              </button>
+              <span id="ai-agent-ide-crumb-name"></span>
+              <span id="ai-agent-ide-crumb-spacer"></span>
+              <div id="ai-agent-ide-view-tools">
+                <button type="button" id="ai-agent-ide-view-preview" class="ai-agent-ide-view-btn" title="预览">预览</button>
+                <button type="button" id="ai-agent-ide-view-source" class="ai-agent-ide-view-btn is-on" title="源码">源码</button>
+              </div>
+              <button type="button" id="ai-agent-ide-find-toggle" class="ai-agent-ide-icon-btn" title="查找 (Ctrl+F)" aria-label="查找">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.2"/>
+                  <path d="M10.2 10.2L13.5 13.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button type="button" id="ai-agent-ide-outline-toggle" class="ai-agent-ide-icon-btn" title="大纲" aria-label="大纲">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                  <path d="M3 4h10"/><path d="M3 8h7"/><path d="M3 12h10"/>
+                </svg>
+              </button>
+              <button type="button" id="ai-agent-ide-save" class="ai-agent-ide-icon-btn" title="保存 (Ctrl+S)" aria-label="保存">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3.5 2.5h7.2L13 4.8V13.5H3.5z"/>
+                  <path d="M5 2.5v3.5h5.5V2.5"/>
+                  <path d="M5 13.5v-4h6v4"/>
+                </svg>
+              </button>
+            </div>
+            <div id="ai-agent-ide-find">
+              <input id="ai-agent-ide-find-input" type="text" placeholder="在文件中查找">
+              <span id="ai-agent-ide-find-count"></span>
+              <button type="button" id="ai-agent-ide-find-prev" class="ai-agent-ide-icon-btn" title="上一个" aria-label="上一个">↑</button>
+              <button type="button" id="ai-agent-ide-find-next" class="ai-agent-ide-icon-btn" title="下一个" aria-label="下一个">↓</button>
+              <button type="button" id="ai-agent-ide-find-close" class="ai-agent-ide-icon-btn" title="关闭" aria-label="关闭">×</button>
+            </div>
+            <div id="ai-agent-ide-stage">
+              <div id="ai-agent-ide-code-wrap" style="display:none">
+                <div id="ai-agent-ide-gutter" aria-hidden="true"></div>
+                <div id="ai-agent-ide-code-pane">
+                  <pre id="ai-agent-ide-highlight" aria-hidden="true"><code></code></pre>
+                  <textarea id="ai-agent-ide-code" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div id="ai-agent-ide-preview" aria-label="Markdown 预览"></div>
+              <div id="ai-agent-ide-empty">打开文件或等 Agent 修改代码后，会显示在这里。</div>
+              <div id="ai-agent-ide-outline" aria-label="文档大纲"></div>
+            </div>
+          </div>
+          <div id="ai-agent-ide-explorer">
+            <div id="ai-agent-ide-tree-resize" title="拖动调整资源管理器宽度" aria-hidden="true"></div>
+            <div id="ai-agent-ide-explorer-head">
+              <strong id="ai-agent-ide-root-name">资源管理器</strong>
+              <div id="ai-agent-ide-explorer-actions">
+                <button type="button" id="ai-agent-ide-new-file" class="ai-agent-ide-icon-btn" title="新建文件" aria-label="新建文件">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 2.5h5.5L12 5v8.5H4z"/>
+                    <path d="M9.5 2.5V5H12"/>
+                    <path d="M8 7.5v4"/>
+                    <path d="M6 9.5h4"/>
+                  </svg>
+                </button>
+                <button type="button" id="ai-agent-ide-new-folder" class="ai-agent-ide-icon-btn" title="新建文件夹" aria-label="新建文件夹">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 4.5h4l1.2 1.3H13.5v6.7H2.5z"/>
+                    <path d="M8 8v4"/>
+                    <path d="M6 10h4"/>
+                  </svg>
+                </button>
+                <button type="button" id="ai-agent-ide-refresh" class="ai-agent-ide-icon-btn" title="刷新" aria-label="刷新">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M13 8a5 5 0 1 1-1.3-3.4"/>
+                    <path d="M13 2.5V5.5H10"/>
+                  </svg>
+                </button>
+                <button type="button" id="ai-agent-ide-collapse-all" class="ai-agent-ide-icon-btn" title="全部折叠" aria-label="全部折叠">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 4.5h10"/>
+                    <path d="M5 8h8"/>
+                    <path d="M7 11.5h6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="ai-agent-ide-tree"></div>
+          </div>
+          <div id="ai-agent-ide-panel-browser">
+            <div id="ai-agent-ide-browser-bar">
+              <input id="ai-agent-ide-browser-url" type="url" placeholder="https://" value="https://">
+              <button type="button" id="ai-agent-ide-browser-go" class="ai-agent-ide-icon-btn" title="前往" aria-label="前往">→</button>
+            </div>
+            <iframe id="ai-agent-ide-browser-frame" title="浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          </div>
+          <div id="ai-agent-ide-panel-terminal">
+            <div class="ai-agent-ide-panel-empty" style="display:none" id="ai-agent-ide-term-hint">
+              <div>
+                <strong>终端</strong>
+                在下方输入命令，回车执行（工作区目录）。
+              </div>
+            </div>
+            <textarea id="ai-agent-ide-term" spellcheck="false" placeholder="$ 在此输入命令，回车执行"></textarea>
+          </div>
+        </div>
+      </aside>
+      </div>
+      <div id="ai-agent-ide-ctx" role="menu" aria-hidden="true"></div>
+      <div id="ai-agent-nav-item-menu" role="menu" aria-hidden="true"></div>
+    </div>
+    <div id="ai-agent-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="ai-agent-confirm-title" aria-hidden="true">
+      <div id="ai-agent-confirm-card">
+        <h2 id="ai-agent-confirm-title">确认</h2>
+        <p id="ai-agent-confirm-message"></p>
+        <div id="ai-agent-confirm-actions">
+          <button type="button" id="ai-agent-confirm-cancel">取消</button>
+          <button type="button" class="danger" id="ai-agent-confirm-ok">确定</button>
         </div>
       </div>
     </div>
@@ -1583,6 +3042,100 @@
   var activeAbort = null;
   var stopRequested = false;
   var queueCollapsed = false;
+  // Per-conversation run registry — backend pumps can outlive the open tab/view.
+  var runSlots = Object.create(null);
+  function runSlotKey(convId) {
+    return convId == null || convId === "" ? "draft" : String(convId);
+  }
+  function emptyRunSlot() {
+    return {
+      sessionId: "",
+      busy: false,
+      pendingFollow: false,
+      settled: false, // pump finished in background; spinner off until user reopens
+      sendQueue: [],
+      queueCollapsed: false,
+      runStartedAt: 0,
+    };
+  }
+  function getRunSlot(convId) {
+    var key = runSlotKey(convId);
+    if (!runSlots[key]) runSlots[key] = emptyRunSlot();
+    return runSlots[key];
+  }
+  function migrateRunSlot(fromId, toId) {
+    if (fromId == null || toId == null) return;
+    if (runSlotKey(fromId) === runSlotKey(toId)) return;
+    var fromKey = runSlotKey(fromId);
+    var toKey = runSlotKey(toId);
+    var from = runSlots[fromKey];
+    if (!from) return;
+    var to = getRunSlot(toId);
+    to.sessionId = from.sessionId || to.sessionId;
+    to.busy = !!(from.busy || to.busy);
+    to.pendingFollow = !!(from.pendingFollow || to.pendingFollow);
+    to.sendQueue = (from.sendQueue && from.sendQueue.length) ? from.sendQueue.slice() : (to.sendQueue || []);
+    to.queueCollapsed = !!from.queueCollapsed;
+    to.runStartedAt = from.runStartedAt || to.runStartedAt;
+    delete runSlots[fromKey];
+  }
+  function markRunSlotBusy(convId, busy, session) {
+    if (convId == null) return;
+    var slot = getRunSlot(convId);
+    slot.busy = !!busy;
+    if (session) slot.sessionId = session;
+    if (busy) {
+      slot.settled = false;
+      slot.pendingFollow = true;
+    } else {
+      slot.pendingFollow = false;
+    }
+  }
+  function markRunSlotSettled(convId) {
+    if (convId == null) return;
+    var slot = getRunSlot(convId);
+    slot.busy = false;
+    slot.settled = true;
+    slot.pendingFollow = true; // still should /follow on open for final text
+  }
+  function isConversationBusy(convId) {
+    if (convId == null) return false;
+    var slot = runSlots[runSlotKey(convId)];
+    if (slot) {
+      if (slot.settled) return !!(slot.sendQueue && slot.sendQueue.length);
+      if (slot.busy || (slot.sendQueue && slot.sendQueue.length)) return true;
+    }
+    if (Number(convId) === Number(activeConversationId) && (isRunning || pendingFollow)) {
+      return true;
+    }
+    // Cold boot (no slot yet): use persisted streaming flag for spinner.
+    if (!slot) {
+      var list = conversationList || [];
+      for (var i = 0; i < list.length; i += 1) {
+        if (Number(list[i].id) === Number(convId)) {
+          return !!(list[i].streaming || list[i].pending);
+        }
+      }
+    }
+    return false;
+  }
+  function parkActiveRunToSlot(convId) {
+    if (convId == null) return getRunSlot(null);
+    var slot = getRunSlot(convId);
+    slot.sessionId = sessionId || slot.sessionId || "";
+    slot.sendQueue = (sendQueue && sendQueue.length) ? sendQueue.slice() : [];
+    slot.queueCollapsed = !!queueCollapsed;
+    slot.runStartedAt = runStartedAt || slot.runStartedAt || 0;
+    slot.busy = !!(isRunning || pendingFollow || activeAbort || slot.sendQueue.length || slot.busy);
+    slot.pendingFollow = !!(pendingFollow || slot.busy);
+    return slot;
+  }
+  window.getRunSlot = getRunSlot;
+  window.migrateRunSlot = migrateRunSlot;
+  window.markRunSlotBusy = markRunSlotBusy;
+  window.markRunSlotSettled = markRunSlotSettled;
+  window.isConversationBusy = isConversationBusy;
+  window.parkActiveRunToSlot = parkActiveRunToSlot;
   // Agent bubble left after ■ stop; removed when the user sends again.
   var stoppedAgentMsg = null;
   // Edit is staged until the bubble's own send; bottom composer stays independent.
@@ -1600,6 +3153,32 @@
   var logoutBtn = document.getElementById("ai-agent-logout");
   var userChip = document.getElementById("ai-agent-user-chip");
   var userNameEl = document.getElementById("ai-agent-user-name");
+  var navUserNameEl = document.getElementById("ai-agent-nav-user-name");
+  var navRailAvatarEl = document.getElementById("ai-agent-nav-rail-avatar");
+  var navNewBtn = document.getElementById("ai-agent-nav-new");
+  var activeConversationId = null;
+  var conversationList = [];
+  var activeWorkspaceRoot = "";
+  var homeWorkspaceRoot = "";
+  var chatTitleEl = document.getElementById("ai-agent-chat-title");
+  function setActiveWorkspace(root, title, opts) {
+    opts = opts || {};
+    activeWorkspaceRoot = (root || "").trim();
+    if (chatTitleEl && !opts.keepTitle) {
+      var name = title || "";
+      if (!name && activeWorkspaceRoot) {
+        if (homeWorkspaceRoot && activeWorkspaceRoot.toLowerCase() === homeWorkspaceRoot.toLowerCase()) {
+          name = "Home";
+        } else {
+          var parts = activeWorkspaceRoot.replace(/\\/g, "/").split("/");
+          name = parts[parts.length - 1] || activeWorkspaceRoot;
+        }
+      }
+      chatTitleEl.textContent = name || "Home";
+    }
+    if (typeof window.syncWorkspaceContextUi === "function") window.syncWorkspaceContextUi();
+    if (typeof updateCrumb === "function") updateCrumb();
+  }
   if (logoutBtn) {
     logoutBtn.onclick = function () {
       apiFetch(apiBase + "/api/auth/logout", { method: "POST" })
@@ -1613,14 +3192,22 @@
   function setCurrentUser(user) {
     currentUser = user || null;
     HISTORY_KEY = historyStorageKey();
+    var name = user && user.username ? String(user.username) : "";
     if (userChip && userNameEl) {
-      if (user && user.username) {
-        userNameEl.textContent = user.username;
+      if (name) {
+        userNameEl.textContent = name;
         userChip.classList.add("is-on");
       } else {
         userNameEl.textContent = "";
         userChip.classList.remove("is-on");
       }
+    }
+    if (navUserNameEl) navUserNameEl.textContent = name || "未登录";
+    var initial = name ? name.charAt(0).toUpperCase() : "?";
+    if (navRailAvatarEl) {
+      navRailAvatarEl.textContent = initial;
+      navRailAvatarEl.title = name ? ("账户：" + name) : "账户";
+      navRailAvatarEl.setAttribute("aria-label", name ? ("账户：" + name) : "账户");
     }
   }
   var modelOptions = (function () {

@@ -121,6 +121,17 @@
     };
   }
 
+  function historyAttachmentMeta(item) {
+    // Never persist base64 payloads — large images freeze the UI via
+    // JSON.stringify + localStorage + conversation PUT before/during stream.
+    return {
+      kind: (item && item.kind) || "file",
+      name: (item && item.name) || "file",
+      mime_type: (item && item.mime_type) || "",
+      has_data: !!(item && item.data && String(item.data).length),
+    };
+  }
+
   function collectHistoryMessages() {
     return Array.prototype.slice.call(threadDiv.querySelectorAll(".ai-agent-msg")).map(function (msg) {
       var body = msg.querySelector(".body");
@@ -130,17 +141,15 @@
       var role = kind === "user" ? "You" : (kind === "system" ? "System" : "Agent");
       var attachments = [];
       if (msg.__attachments && msg.__attachments.length) {
-        attachments = msg.__attachments.map(function (item) {
-          return {
-            kind: item.kind || "file",
-            name: item.name || "file",
-            mime_type: item.mime_type || "",
-            data: item.data || "",
-          };
-        });
+        attachments = msg.__attachments.map(historyAttachmentMeta);
       } else {
         Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-msg-images img")).forEach(function (img) {
-          attachments.push({ kind: "image", name: img.alt || "image", mime_type: "image/*" });
+          attachments.push({
+            kind: "image",
+            name: img.alt || "image",
+            mime_type: "image/*",
+            has_data: false,
+          });
         });
         Array.prototype.slice.call(msg.querySelectorAll(".ai-agent-file-chip")).forEach(function (chip) {
           var nameEl = chip.querySelector(".name");
@@ -148,6 +157,7 @@
             kind: "file",
             name: (nameEl && nameEl.textContent) || "file",
             mime_type: chip.getAttribute("data-mime") || "",
+            has_data: false,
           });
         });
       }
@@ -173,9 +183,26 @@
 
   function clearChatHistory() {
     try { localStorage.removeItem(historyStorageKey()); } catch (err) {}
-    apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider), {
-      method: "DELETE",
-    }).catch(function () {});
+    if (!activeConversationId) return;
+    apiFetch(
+      apiBase + "/api/conversations/" + encodeURIComponent(activeConversationId),
+      { method: "DELETE" }
+    )
+      .then(function () {
+        rememberActiveConversation(null);
+        if (typeof refreshConversationList === "function") return refreshConversationList();
+      })
+      .catch(function () {});
+  }
+
+  var historyListRefreshTimer = null;
+  function scheduleRefreshConversationList() {
+    if (typeof refreshConversationList !== "function") return;
+    if (historyListRefreshTimer) clearTimeout(historyListRefreshTimer);
+    historyListRefreshTimer = setTimeout(function () {
+      historyListRefreshTimer = null;
+      refreshConversationList();
+    }, 800);
   }
 
   function saveChatHistory(opts) {
@@ -183,7 +210,12 @@
       var forceStreaming = opts && Object.prototype.hasOwnProperty.call(opts, "streaming")
         ? !!opts.streaming
         : null;
-      var streaming = forceStreaming == null ? !!isRunning : forceStreaming;
+      var streaming = forceStreaming == null ? !!(isRunning || pendingFollow) : forceStreaming;
+      if (streaming && activeConversationId != null && typeof markRunSlotBusy === "function") {
+        markRunSlotBusy(activeConversationId, true, sessionId);
+      } else if (!streaming && activeConversationId != null && typeof markRunSlotBusy === "function" && !isRunning && !pendingFollow) {
+        markRunSlotBusy(activeConversationId, false);
+      }
       var payload = {
         bootId: serverBootId || "",
         sessionId: sessionId || "",
@@ -195,16 +227,42 @@
         savedAt: Date.now(),
       };
       var key = historyStorageKey();
-      localStorage.setItem(key, JSON.stringify(payload));
-      apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+      try {
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch (quotaErr) {
+        // Quota exceeded: drop local cache, still try server persist.
+        try { localStorage.removeItem(key); } catch (e2) {}
+      }
+      var hasMessages = !!(payload.messages && payload.messages.length);
+      // Empty placeholder stays as「新对话」until the first turn finishes.
+      if (!hasMessages) return;
+      var persist = function (convId) {
+        return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(convId), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           payload: payload,
           session_id: payload.sessionId || "",
           model: payload.model || "",
+          workspace_root: activeWorkspaceRoot || undefined,
         }),
-      }).catch(function () {});
+      }).then(function (res) { return res.json(); }).then(function (data) {
+          if (data && data.conversation) {
+            rememberActiveConversation(data.conversation.id);
+            if (data.conversation.title && chatTitleEl && !streaming) {
+              chatTitleEl.textContent = data.conversation.title;
+            }
+            // Avoid re-rendering the whole nav on every streaming tick.
+            if (streaming) scheduleRefreshConversationList();
+            else if (typeof refreshConversationList === "function") refreshConversationList();
+          }
+        });
+      };
+      if (activeConversationId) {
+        persist(activeConversationId).catch(function () {});
+      } else if (typeof ensureConversationId === "function") {
+        ensureConversationId().then(persist).catch(function () {});
+      }
     } catch (err) {
       // ponytail: quota / private mode — skip persistence
     }
@@ -518,6 +576,8 @@
     var show = isLandingState();
     sidebar.classList.toggle("is-empty", show);
     if (emptyEl) emptyEl.setAttribute("aria-hidden", show ? "false" : "true");
+    // Workspace context bar is landing-only; close its picker when chat starts.
+    if (!show && typeof closeContextPickers === "function") closeContextPickers();
   }
 
   function setFullscreen(on) {
@@ -582,14 +642,126 @@
   if (savedWidth) applySidebarWidth(savedWidth, false);
 
   trigger.onclick = openSidebar;
-  closeBtn.onclick = closeSidebar;
-  backdrop.onclick = closeSidebar;
+  if (closeBtn) closeBtn.onclick = closeSidebar;
+  if (backdrop) backdrop.onclick = closeSidebar;
   fullscreenBtn.onclick = function () { setFullscreen(!isFullscreen()); };
   resizeHandle.addEventListener("mousedown", startSidebarResize);
   window.addEventListener("resize", function () {
     if (isFullscreen()) return;
     var current = sidebar.getBoundingClientRect().width;
     applySidebarWidth(current, true);
+  });
+
+  // Left Repositories / history nav: drag resize + Ctrl+B toggle (Cursor-like).
+  var navEl = document.getElementById("ai-agent-nav");
+  var navResizeHandle = document.getElementById("ai-agent-nav-resize");
+  var navToggleBtn = document.getElementById("ai-agent-toggle-nav");
+  var NAV_WIDTH_KEY = "ai-agent-nav-width:" + provider;
+  var NAV_OPEN_KEY = "ai-agent-nav-open:" + provider;
+  var MIN_NAV_WIDTH = 180;
+  var MAX_NAV_WIDTH = 480;
+
+  function applyNavWidth(width, persist) {
+    if (!sidebar) return;
+    var w = Math.max(MIN_NAV_WIDTH, Math.min(MAX_NAV_WIDTH, Math.round(width)));
+    sidebar.style.setProperty("--ai-nav-width", w + "px");
+    if (persist !== false) {
+      try { localStorage.setItem(NAV_WIDTH_KEY, String(w)); } catch (err) {}
+    }
+    return w;
+  }
+
+  function isNavOpen() {
+    return !!(sidebar && !sidebar.classList.contains("nav-hidden"));
+  }
+
+  function setNavOpen(on) {
+    if (!sidebar) return;
+    sidebar.classList.toggle("nav-hidden", !on);
+    if (navToggleBtn) {
+      navToggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      navToggleBtn.classList.toggle("is-on", !!on);
+    }
+    var pinBrand = document.getElementById("ai-agent-nav-rail-brand");
+    if (pinBrand) {
+      // Same pinned node in both states; only the action/label changes.
+      pinBrand.title = on ? providerUi.name : "展开边栏 (Ctrl+B)";
+      pinBrand.setAttribute("aria-label", on ? providerUi.name : "展开边栏");
+    }
+    try { localStorage.setItem(NAV_OPEN_KEY, on ? "1" : "0"); } catch (err) {}
+    if (on && typeof closeRailChatsFlyout === "function") closeRailChatsFlyout();
+  }
+
+  function toggleNav() {
+    setNavOpen(!isNavOpen());
+  }
+
+  function startNavResize(event) {
+    if (!isFullscreen() || !isNavOpen()) return;
+    event.preventDefault();
+    var startX = event.clientX;
+    var startW = navEl ? navEl.getBoundingClientRect().width : 260;
+    sidebar.classList.add("is-nav-resizing");
+    document.body.style.cursor = "ew-resize";
+
+    function onMove(moveEvent) {
+      applyNavWidth(startW + (moveEvent.clientX - startX), true);
+    }
+
+    function onUp() {
+      sidebar.classList.remove("is-nav-resizing");
+      document.body.style.cursor = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  try {
+    var savedNavW = parseInt(localStorage.getItem(NAV_WIDTH_KEY) || "", 10);
+    if (savedNavW) applyNavWidth(savedNavW, false);
+    var savedNavOpen = localStorage.getItem(NAV_OPEN_KEY);
+    if (savedNavOpen === "0") setNavOpen(false);
+    else setNavOpen(true);
+  } catch (err) {
+    setNavOpen(true);
+  }
+
+  if (navToggleBtn) navToggleBtn.onclick = function () { toggleNav(); };
+  if (navResizeHandle) navResizeHandle.addEventListener("mousedown", startNavResize);
+
+  var navRailBrand = document.getElementById("ai-agent-nav-rail-brand");
+  var navRailNew = document.getElementById("ai-agent-nav-rail-new");
+  var navRailAvatar = document.getElementById("ai-agent-nav-rail-avatar");
+  if (navRailBrand) {
+    navRailBrand.onclick = function () {
+      if (!isNavOpen()) setNavOpen(true);
+    };
+  }
+  if (navRailNew) {
+    navRailNew.onclick = function () {
+      var btn = document.getElementById("ai-agent-nav-new");
+      if (btn) btn.click();
+      else setNavOpen(true);
+    };
+  }
+  if (navRailAvatar) {
+    navRailAvatar.onclick = function () {
+      setNavOpen(true);
+      var logout = document.getElementById("ai-agent-logout");
+      if (logout) logout.focus();
+    };
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    if (!(ev.ctrlKey || ev.metaKey)) return;
+    if (String(ev.key || "").toLowerCase() !== "b") return;
+    // Don't fight browser bookmarks when not in hub/fullscreen chat.
+    if (!hubFullscreen && !isFullscreen()) return;
+    ev.preventDefault();
+    toggleNav();
   });
 
   // Slash skills (`/name`) — project skills from /api/skills + Cursor setting_sources=project.

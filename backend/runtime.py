@@ -157,13 +157,31 @@ class SessionManager:
                 continue
             await self._close_agent(session.agent)
 
+    def _settings_for_workspace(self, workspace: str | None) -> dict:
+        from backend.ssh_workspace import is_ssh_uri
+        from backend.workspace import normalize_workspace_key, resolve_workspace_root
+
+        settings = dict(self.settings)
+        key = normalize_workspace_key(workspace, self.settings)
+        if is_ssh_uri(key):
+            settings["host_root"] = key
+        else:
+            settings["host_root"] = resolve_workspace_root(key, self.settings)
+        return settings
+
+    def _workspace_key(self, workspace: str | None) -> str:
+        return str(self._settings_for_workspace(workspace)["host_root"])
+
     async def get_or_create(
         self,
         session_id: str | None,
         model: str | dict | None = None,
         provider: str | None = None,
+        workspace: str | None = None,
     ) -> Session:
         await self.start()
+        from backend.ssh_workspace import is_ssh_uri
+
         prov = normalize_provider(provider or self.settings.get("provider") or "cursor")
         if isinstance(model, dict):
             selected_model = str(model.get("id") or self._default_model(prov))
@@ -172,19 +190,37 @@ class SessionManager:
             selected_model = model or self._default_model(prov)
             model_selection = model or self._default_model(prov)
         key = model_key(model_selection)
+        ws_key = self._workspace_key(workspace)
+        local_settings = self._settings_for_workspace(workspace)
+
+        if prov not in COMPAT_PROVIDERS and is_ssh_uri(ws_key):
+            raise RuntimeError(
+                "Cursor Agent 不支持 SSH 远程工作区。请改用 OpenAI 或 DeepSeek，"
+                "或切换到本机文件夹。"
+            )
 
         async with self._map_lock:
             await self._prune_idle_sessions()
             if session_id and session_id in self._sessions:
                 session = self._sessions[session_id]
-                if session.provider == prov and session.model_key == key:
+                same = (
+                    session.provider == prov
+                    and session.model_key == key
+                    and (session.workspace_root or "") == ws_key
+                )
+                if same:
                     self._touch(session)
                     return session
                 if session.provider == prov:
                     # Wait out in-flight turn before swapping the agent (avoids dual agents on one id).
                     async with session.lock:
                         current = self._sessions.get(session_id)
-                        if current is not None and current.provider == prov and current.model_key == key:
+                        if (
+                            current is not None
+                            and current.provider == prov
+                            and current.model_key == key
+                            and (current.workspace_root or "") == ws_key
+                        ):
                             self._touch(current)
                             return current
                         if current is not None:
@@ -206,12 +242,14 @@ class SessionManager:
 
             sid = session_id or uuid.uuid4().hex
             if prov in COMPAT_PROVIDERS:
-                agent = build_compat_handle(self.settings, prov)
+                agent = build_compat_handle(local_settings, prov)
             else:
                 await self._ensure_cursor_bridge()
                 assert self._client is not None
                 # Manage close() ourselves — stacking every agent on AsyncExitStack leaks on model switch.
-                agent = await self._client.agents.create(**self._agent_options(model_selection))
+                agent = await self._client.agents.create(
+                    **self._agent_options(model_selection, settings=local_settings)
+                )
             session = Session(
                 session_id=sid,
                 agent=agent,
@@ -219,10 +257,16 @@ class SessionManager:
                 model_key=key,
                 model_selection=model_selection,
                 provider=prov,
+                workspace_root=ws_key,
                 last_active=time.time(),
             )
             existing = self._sessions.get(sid)
-            if existing is not None and existing.provider == prov and existing.model_key == key:
+            if (
+                existing is not None
+                and existing.provider == prov
+                and existing.model_key == key
+                and (existing.workspace_root or "") == ws_key
+            ):
                 await self._close_agent(agent)
                 self._touch(existing)
                 return existing
@@ -236,10 +280,13 @@ class SessionManager:
             return default_model(provider)
         return str(self.settings.get("model") or "auto")
 
-    def _agent_options(self, model: str | dict):
+    def _session_settings(self, session: Session) -> dict:
+        return self._settings_for_workspace(session.workspace_root or None)
+
+    def _agent_options(self, model: str | dict, *, settings: dict | None = None):
         from backend.config import cursor_api_key
 
-        settings = self.settings
+        settings = settings or self.settings
         model_id = model.get("id") if isinstance(model, dict) else model
         label = model_id or settings["model"]
         opts: dict = {
@@ -346,12 +393,15 @@ class SessionManager:
         """Close the busy agent and create a fresh one (keeps session_id)."""
         await self._cancel_session_run(session, bump=False)
         old = session.agent
+        local = self._session_settings(session)
         if session.provider in COMPAT_PROVIDERS:
-            session.agent = build_compat_handle(self.settings, session.provider)
+            session.agent = build_compat_handle(local, session.provider)
             return
         assert self._client is not None
-        selection = session.model_selection or session.model or self.settings["model"]
-        session.agent = await self._client.agents.create(**self._agent_options(selection))
+        selection = session.model_selection or session.model or local["model"]
+        session.agent = await self._client.agents.create(
+            **self._agent_options(selection, settings=local)
+        )
         await self._close_agent(old)
 
     def _is_busy_error(self, err: Exception) -> bool:
@@ -385,8 +435,11 @@ class SessionManager:
         provider: str | None = None,
         thinking: bool | None = None,
         reasoning_effort: str | None = None,
+        workspace: str | None = None,
     ) -> dict:
-        session = await self.get_or_create(session_id, model, provider=provider)
+        session = await self.get_or_create(
+            session_id, model, provider=provider, workspace=workspace
+        )
         self._touch(session)
         if session.provider in COMPAT_PROVIDERS:
             # Hold lock for the whole turn (same as Cursor) so concurrent /chat can't interleave.
@@ -438,7 +491,9 @@ class SessionManager:
                         "status": "cancelled",
                         "model": session.model,
                     }
-                payload, files = build_message(message, attachments, self.settings, session)
+                payload, files = build_message(
+                    message, attachments, self._session_settings(session), session
+                )
                 meta = upload_meta(attachments, files)
                 run = await self._start_run(session, payload, mode)
                 if session.turn != turn:
@@ -699,7 +754,7 @@ class SessionManager:
 
             status = await stream_compat_turn(
                 session,
-                self.settings,
+                self._session_settings(session),
                 message=message,
                 mode=mode,
                 attachments=attachments,
@@ -734,7 +789,8 @@ class SessionManager:
 
         run = None
         forward_task = None
-        tracker = TurnChangeTracker(Path(self.settings["host_root"]))
+        local_settings = self._session_settings(session)
+        tracker = TurnChangeTracker(Path(local_settings["host_root"]))
         session._active_tracker = tracker
         try:
             input_block = input_block_reason(message)
@@ -748,7 +804,7 @@ class SessionManager:
                 self._emit_done(session, "cancelled")
                 return
 
-            payload, files = build_message(message, attachments, self.settings, session)
+            payload, files = build_message(message, attachments, local_settings, session)
             meta = upload_meta(attachments, files)
             if meta["images"] or meta["files"]:
                 self._emit(session, {
@@ -764,7 +820,7 @@ class SessionManager:
                 # order. call_soon_threadsafe deferred deltas and let cumulative assistant
                 # snapshots win the race → duplicated reply ("你好你好" / "正在正在").
                 try:
-                    event = sse_from_delta(update, session, self.settings)
+                    event = sse_from_delta(update, session, local_settings)
                 except Exception as exc:
                     event = {
                         "type": "error",
@@ -789,7 +845,7 @@ class SessionManager:
 
             async def forward_messages() -> None:
                 try:
-                    async for event in sse_from_run_messages(run, session, self.settings):
+                    async for event in sse_from_run_messages(run, session, local_settings):
                         await event_queue.put(event)
                 except Exception as exc:
                     await event_queue.put({
@@ -891,6 +947,7 @@ class SessionManager:
                 self._emit_done(session, "cancelled")
                 return
             status = getattr(result, "status", None) or "finished"
+            err_msg = None
             if str(status).lower() in {"error", "failed"}:
                 err_msg = (
                     getattr(result, "error", None)
@@ -910,8 +967,8 @@ class SessionManager:
             }
             if terminal:
                 done_extra["result"] = terminal
-                if str(status).lower() in {"error", "failed"}:
-                    done_extra["error"] = friendly_error(terminal)
+            if err_msg:
+                done_extra["error"] = friendly_error(str(err_msg if not terminal else terminal))
             self._emit_turn_changes(session, tracker)
             self._emit_done(session, status, **done_extra)
         except asyncio.CancelledError:
@@ -923,7 +980,7 @@ class SessionManager:
             msg = getattr(err, "message", None) or str(err)
             self._emit_error(session, msg)
             self._emit_turn_changes(session, tracker)
-            self._emit_done(session, "error")
+            self._emit_done(session, "error", error=friendly_error(msg))
         finally:
             session._active_tracker = None
             if session.active_run is run:
@@ -943,8 +1000,11 @@ class SessionManager:
         provider: str | None = None,
         thinking: bool | None = None,
         reasoning_effort: str | None = None,
+        workspace: str | None = None,
     ) -> AsyncIterator[dict]:
-        session = await self.get_or_create(session_id, model, provider=provider)
+        session = await self.get_or_create(
+            session_id, model, provider=provider, workspace=workspace
+        )
         self._touch(session)
         await self._launch_turn(
             session,

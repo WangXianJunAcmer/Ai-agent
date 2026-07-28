@@ -223,12 +223,24 @@
 
   function filesFromClipboardData(data) {
     // Clipboard screenshot / OS file paste → File list for handleFileSelection.
+    // Browsers often expose the same image via both data.files and data.items;
+    // dedupe by size/type/name (object identity alone is not enough).
     if (!data) return [];
     var out = [];
     var seen = new Set();
+    function fileKey(file) {
+      return [
+        file.name || "",
+        file.size || 0,
+        file.type || "",
+        file.lastModified || 0,
+      ].join("|");
+    }
     function pushFile(file) {
-      if (!file || seen.has(file)) return;
-      seen.add(file);
+      if (!file) return;
+      var key = fileKey(file);
+      if (seen.has(key)) return;
+      seen.add(key);
       if (file.name) {
         out.push(file);
         return;
@@ -241,6 +253,7 @@
     }
     if (data.files && data.files.length) {
       Array.prototype.forEach.call(data.files, pushFile);
+      return out;
     }
     var items = data.items || [];
     for (var i = 0; i < items.length; i++) {
@@ -347,6 +360,21 @@
     runStartedAt = 0;
   }
 
+  function ensureQuietThinkingHint() {
+    if (!isRunning || stopRequested) return;
+    var agents = threadDiv.querySelectorAll(".ai-agent-msg.agent");
+    var msg = agents.length ? agents[agents.length - 1] : null;
+    if (!msg || !threadDiv.contains(msg)) return;
+    // Already have a live tool/think/plan/explore card — nothing to fill.
+    if (typeof hasOtherLiveCard === "function" && hasOtherLiveCard(msg)) return;
+    var statusLive = msg.querySelector('.ai-agent-card.is-live[data-card-key="status-live"]');
+    var thinkLive = msg.querySelector('.ai-agent-card.is-live[data-card-key="think-live"]');
+    var planLive = msg.querySelector('.ai-agent-card.is-live[data-card-key="plan-live"]');
+    if (statusLive || thinkLive || planLive) return;
+    rememberActivity(msg, "Thinking");
+    noteWorking(msg, "Thinking");
+  }
+
   function startRunElapsedTimer() {
     stopRunElapsedTimer();
     runStartedAt = Date.now();
@@ -355,6 +383,7 @@
         stopRunElapsedTimer();
         return;
       }
+      ensureQuietThinkingHint();
       updateRunState();
     }, 1000);
   }
@@ -376,9 +405,30 @@
     if (isRunning && runStartedAt) {
       base = base + " · " + formatElapsed(Date.now() - runStartedAt);
     }
-    runState.textContent = base;
-    runState.classList.toggle("is-busy", !!isRunning || /Thinking|Running|Explor|Planning|中/.test(String(base)));
+    var busy = !!isRunning || /Thinking|Running|Explor|Planning|中/.test(String(base));
+    var nodes = document.querySelectorAll(".ai-agent-run-state");
+    if (nodes && nodes.length) {
+      Array.prototype.forEach.call(nodes, function (el) {
+        el.textContent = base;
+        el.classList.toggle("is-busy", busy);
+      });
+    } else if (runState) {
+      runState.textContent = base;
+      runState.classList.toggle("is-busy", busy);
+    }
+    syncNavRunningState();
     updateComposerButtons();
+  }
+
+  function syncNavRunningState() {
+    var rows = document.querySelectorAll(".ai-agent-nav-item");
+    Array.prototype.forEach.call(rows, function (row) {
+      var id = row.dataset ? row.dataset.convId : "";
+      var busy = typeof isConversationBusy === "function"
+        ? isConversationBusy(id)
+        : (row.classList.contains("is-active") && !!(isRunning || pendingFollow));
+      row.classList.toggle("is-running", !!busy);
+    });
   }
 
   function updateModeUI() {
@@ -428,6 +478,8 @@
   async function runOne(item) {
     // Manual ■ stop kept the incomplete reply visible; next send drops it.
     clearStoppedAgentOutput();
+    var runGen = sessionGeneration;
+    var runConvId = activeConversationId;
     var label = item.text || (item.files.length ? "(附件)" : "");
     appendMessage("You", label, "user", false, item.files);
     var uploadPayload = splitUploadPayload(item.files);
@@ -438,7 +490,10 @@
       syncModelPickerUI();
     }
     notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false, gen: sessionGeneration };
+    var state = { reply: "", finished: false, gen: runGen };
+    if (typeof markRunSlotBusy === "function" && runConvId != null) {
+      markRunSlotBusy(runConvId, true, sessionId);
+    }
     flushChatHistory({ streaming: true });
 
     var controller = new AbortController();
@@ -455,6 +510,7 @@
           model: item.model,
           mode: item.mode || "agent",
           provider: provider,
+          workspace: activeWorkspaceRoot || null,
           thinking: think.thinking,
           images: uploadPayload.images.length ? uploadPayload.images : null,
           files: uploadPayload.files.length ? uploadPayload.files : null,
@@ -485,22 +541,34 @@
       }
     } catch (err) {
       if (err && err.name === "AbortError") {
+        var detached = runGen !== sessionGeneration;
         // Keep whatever was already streamed; no "(已终止)/(已中断)" body text.
         // New-chat may have already detached this node — don't revive it.
-        if (threadDiv.contains(agentMsg)) {
+        if (!detached && threadDiv.contains(agentMsg)) {
           finalizeLiveCards(agentMsg);
           paintEnsuredReply(agentMsg, state.reply, true);
         }
-        if (stopRequested) {
+        if (stopRequested && !detached) {
           // Remember for cleanup on the next send; queue-↑ interrupt keeps it.
           if (threadDiv.contains(agentMsg)) stoppedAgentMsg = agentMsg;
           updateRunState("就绪");
           updateEmptyState();
           // Only explicit ■ stop cancels the backend. Refresh must leave the pump running.
           await requestCancel();
+          if (typeof markRunSlotBusy === "function" && runConvId != null) {
+            markRunSlotBusy(runConvId, false);
+          }
+        } else if (detached) {
+          // Switched chats: history was flushed before DOM swap; keep backend busy.
+          if (typeof markRunSlotBusy === "function" && runConvId != null) {
+            markRunSlotBusy(runConvId, true, sessionId);
+          }
         } else {
           // Refresh/leave: sync streaming=true while isRunning is still true.
           flushChatHistory({ streaming: true });
+          if (typeof markRunSlotBusy === "function" && runConvId != null) {
+            markRunSlotBusy(runConvId, true, sessionId);
+          }
         }
       } else if (isSoftNetworkError(err) && threadDiv.contains(agentMsg)) {
         // 长静默导致 fetch 抛错：后端可能仍在跑，跟未 finished 一样走 follow 重放。
@@ -539,7 +607,7 @@
     } finally {
       if (activeAbort === controller) activeAbort = null;
       // Keep blob preview URLs — thread thumbs still reference them until navigation.
-      scheduleSaveChatHistory();
+      if (runGen === sessionGeneration) scheduleSaveChatHistory();
     }
   }
 
@@ -549,6 +617,9 @@
     if (payload.session_id) {
       sessionId = payload.session_id;
       localStorage.setItem(sessionStorageKey, sessionId);
+      if (typeof markRunSlotBusy === "function" && activeConversationId != null) {
+        markRunSlotBusy(activeConversationId, true, sessionId);
+      }
       if (isRunning) flushChatHistory({ streaming: true });
     }
 
@@ -611,8 +682,6 @@
       }
       scheduleSaveChatHistory();
     } else if (payload.type === "upload") {
-      rememberActivity(agentMsg, "Uploaded attachments");
-      updateRunState("已接收附件");
       beginToolSegment(agentMsg);
       finalizePlanCard(agentMsg);
       var names = []
@@ -627,6 +696,11 @@
         detail: names,
         paths: (payload.files || []).map(function (f) { return f.path; }).filter(Boolean),
       });
+      // Upload card is past-tense; quiet model turns need a live Thinking cue
+      // or the UI looks frozen on "Uploaded attachments".
+      rememberActivity(agentMsg, "Thinking");
+      updateRunState("Thinking");
+      noteWorking(agentMsg, "Thinking");
     } else if (payload.type === "thinking") {
       // Seal on completed (one burst → one Thought card). Probe showed GPT and
       // Claude both get ~1 thinking-completed per burst; per-word spam was from
@@ -740,6 +814,9 @@
       renderTurnChanges(agentMsg, payload);
       getRunMeta(agentMsg).turnChangesShown = true;
       scheduleSaveChatHistory();
+      if (typeof openPathsFromTurnChanges === "function") {
+        openPathsFromTurnChanges(payload);
+      }
     } else if (payload.type === "error") {
       state.finished = true;
       finalizeLiveCards(agentMsg);
@@ -770,11 +847,14 @@
       } else if (doneStatus === "expired") {
         streamStandaloneText(agentMsg, "（上次回复已中断：服务已重启或会话已过期）", false);
       } else if (doneStatus === "error" || doneStatus === "failed") {
-        streamStandaloneText(
-          agentMsg,
-          "错误: " + formatAgentError(doneErr || "图片或请求处理失败，请重试或开新对话"),
-          false
-        );
+        // Avoid a second scary line when the error event already painted.
+        if (!agentMsg.querySelector(".ai-agent-segment-text")) {
+          streamStandaloneText(
+            agentMsg,
+            "错误: " + formatAgentError(doneErr || "Agent 执行失败，请重试或开新对话"),
+            false
+          );
+        }
       } else if (doneErr && !agentMsg.querySelector(".ai-agent-segment-text")) {
         streamStandaloneText(agentMsg, doneErr, false);
       } else if (!agentMsg.querySelector(".ai-agent-segment-text")) {
@@ -888,6 +968,8 @@
     // Mid-turn refresh → drop stale last agent bubble, replay live_events.
     // sessionId may be empty; backend find_running_session covers single-user mid-flight.
     if (isRunning && !pendingFollow) return;
+    var followGen = sessionGeneration;
+    var followConvId = activeConversationId;
     // Stale streaming=true after a finished turn must not delete the last reply.
     if (sessionId) {
       try {
@@ -895,7 +977,10 @@
           apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sessionId)
         );
         var st = stRes.ok ? await stRes.json() : null;
-        if (!st || !st.running) {
+        // Still running → follow live. Finished but events remain → one-shot replay
+        // (covers "left chat / refreshed while pump finished in background").
+        if (st && st.ok && !st.running && !(st.events > 0)) {
+          if (followGen !== sessionGeneration) return;
           pendingFollow = false;
           isRunning = false;
           stopRunElapsedTimer();
@@ -906,23 +991,34 @@
             paintEnsuredReply(lastIdle, "", true);
           }
           flushChatHistory({ streaming: false });
+          if (typeof markRunSlotBusy === "function" && followConvId != null) {
+            markRunSlotBusy(followConvId, false);
+          }
           updateRunState("就绪");
           updateComposerButtons();
+          syncNavRunningState();
           return;
+        }
+        if (!st || (!st.running && !(st.events > 0))) {
+          // Unknown session — keep going to follow; backend may return expired/done.
         }
       } catch (err) {
         // Offline / status failed — still try follow below.
       }
     }
+    if (followGen !== sessionGeneration) return;
     var agents = threadDiv.querySelectorAll(".ai-agent-msg.agent");
     if (agents.length) agents[agents.length - 1].remove();
     var agentMsg = appendMessage("Agent", "", "agent", true);
     notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false, gen: sessionGeneration };
+    var state = { reply: "", finished: false, gen: followGen };
 
     pendingFollow = false;
     isRunning = true;
     stopRequested = false;
+    if (typeof markRunSlotBusy === "function" && followConvId != null) {
+      markRunSlotBusy(followConvId, true, sessionId);
+    }
     startRunElapsedTimer();
     updateRunState("继续接收");
     updateEmptyState();
@@ -946,6 +1042,7 @@
     }
 
     function paintFollowResult() {
+      if (followGen !== sessionGeneration) return;
       if (!threadDiv.contains(agentMsg)) return;
       finalizeLiveCards(agentMsg);
       paintEnsuredReply(agentMsg, state.reply, true);
@@ -957,14 +1054,28 @@
     } catch (err) {
       if (err && err.name === "AbortError") {
         paintFollowResult();
-        if (stopRequested) await requestCancel();
-        else flushChatHistory({ streaming: true });
+        if (followGen !== sessionGeneration) {
+          if (typeof markRunSlotBusy === "function" && followConvId != null) {
+            markRunSlotBusy(followConvId, true, sessionId);
+          }
+        } else if (stopRequested) {
+          await requestCancel();
+          if (typeof markRunSlotBusy === "function" && followConvId != null) {
+            markRunSlotBusy(followConvId, false);
+          }
+        } else {
+          flushChatHistory({ streaming: true });
+          if (typeof markRunSlotBusy === "function" && followConvId != null) {
+            markRunSlotBusy(followConvId, true, sessionId);
+          }
+        }
       } else if (isSoftNetworkError(err) && state.reply && state.reply.trim()) {
         // 已收到部分/全部内容后断线：当作成功收尾，不弹「无法继续接收」。
         paintFollowResult();
       } else if (isSoftNetworkError(err)) {
         // 空内容断线：静默重试一次
         try {
+          if (followGen !== sessionGeneration) throw err;
           wipeAgentBubbleForReplay(agentMsg, state);
           notePlanning(agentMsg, "");
           await connectOnce();
@@ -972,51 +1083,83 @@
         } catch (err2) {
           if (err2 && err2.name === "AbortError") {
             paintFollowResult();
-            if (stopRequested) await requestCancel();
-            else flushChatHistory({ streaming: true });
-          } else if (threadDiv.contains(agentMsg)) {
+            if (followGen !== sessionGeneration) {
+              if (typeof markRunSlotBusy === "function" && followConvId != null) {
+                markRunSlotBusy(followConvId, true, sessionId);
+              }
+            } else if (stopRequested) {
+              await requestCancel();
+            } else {
+              flushChatHistory({ streaming: true });
+            }
+          } else if (followGen === sessionGeneration && threadDiv.contains(agentMsg)) {
             paintFollowResult();
             if (!(state.reply && state.reply.trim())) {
               streamStandaloneText(agentMsg, "无法继续接收上次回复，请再刷新一次或重新发送。", false);
             }
           }
         }
-      } else if (threadDiv.contains(agentMsg)) {
+      } else if (followGen === sessionGeneration && threadDiv.contains(agentMsg)) {
         paintFollowResult();
         var detail = (err && err.message) ? err.message : String(err);
         streamStandaloneText(agentMsg, "无法继续接收上次回复: " + formatAgentError(detail), false);
       }
     } finally {
+      if (followGen !== sessionGeneration) {
+        syncNavRunningState();
+        return;
+      }
       pendingFollow = false;
       isRunning = false;
       stopRequested = false;
       stopRunElapsedTimer();
       flushChatHistory({ streaming: false });
+      if (typeof markRunSlotBusy === "function" && followConvId != null) {
+        markRunSlotBusy(followConvId, false);
+      }
       updateRunState("就绪");
       updateEmptyState();
+      syncNavRunningState();
       if (sendQueue.length) drainQueue();
     }
   }
 
   async function drainQueue() {
     if (isRunning || pendingFollow) return;
+    var drainGen = sessionGeneration;
+    var drainConvId = activeConversationId;
     isRunning = true;
     stopRequested = false;
+    if (typeof markRunSlotBusy === "function" && drainConvId != null) {
+      markRunSlotBusy(drainConvId, true, sessionId);
+    }
     startRunElapsedTimer();
     updateRunState("处理中");
     while (sendQueue.length) {
-      if (stopRequested) break;
+      if (stopRequested || drainGen !== sessionGeneration) break;
       var item = sendQueue.shift();
+      if (typeof getRunSlot === "function" && drainConvId != null) {
+        getRunSlot(drainConvId).sendQueue = sendQueue.slice();
+      }
       renderQueue();
       updateRunState("处理中");
       await runOne(item);
-      if (stopRequested) break;
+      if (stopRequested || drainGen !== sessionGeneration) break;
+    }
+    if (drainGen !== sessionGeneration) {
+      // Detached mid-run: parked slot keeps busy/queue; don't touch the new view.
+      syncNavRunningState();
+      return;
     }
     isRunning = false;
     stopRequested = false;
     stopRunElapsedTimer();
     updateRunState("就绪");
     flushChatHistory({ streaming: false });
+    if (typeof markRunSlotBusy === "function" && drainConvId != null) {
+      markRunSlotBusy(drainConvId, false);
+    }
+    syncNavRunningState();
   }
 
   function stopConversation() {
@@ -1025,9 +1168,13 @@
     pendingFollow = false;
     if (activeAbort) activeAbort.abort();
     requestCancel();
+    if (typeof markRunSlotBusy === "function" && activeConversationId != null) {
+      markRunSlotBusy(activeConversationId, false);
+    }
     // Keep busy UI until drainQueue/follow finally clears isRunning.
     updateRunState(isRunning ? "正在停止" : "就绪");
     updateComposerButtons();
+    syncNavRunningState();
   }
 
   function requestCancel() {
@@ -1063,7 +1210,12 @@
       updateRunState("处理中");
       return;
     }
-    drainQueue();
+    var start = function () { drainQueue(); };
+    if (!activeConversationId && typeof ensureConversationId === "function") {
+      ensureConversationId().then(start).catch(start);
+      return;
+    }
+    start();
   }
 
   sendBtn.onclick = sendMessage;
@@ -1228,20 +1380,24 @@
     }
   });
   newChatBtn.onclick = function () {
-    if (isRunning || pendingFollow || sendQueue.length) {
-      if (!confirm("当前有进行中的任务或排队消息，确认清空并开始新对话？")) return;
+    if (typeof openNewAgentFlow === "function") {
+      openNewAgentFlow();
+      return;
     }
-    var cancelSid = sessionId;
+    if (typeof startNewConversationUi === "function") {
+      startNewConversationUi(false);
+      return;
+    }
+    // Fallback: park current run in background (do not cancel backend).
+    if (typeof detachActiveConversation === "function") {
+      detachActiveConversation({ clearActive: true });
+    }
     sessionGeneration += 1;
-    stopRequested = true;
+    stopRequested = false;
     pendingFollow = false;
-    if (activeAbort) activeAbort.abort();
-    if (cancelSid) {
-      apiFetch(apiBase + "/api/chat/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: cancelSid }),
-      }).catch(function () {});
+    if (activeAbort) {
+      try { activeAbort.abort(); } catch (err) {}
+      activeAbort = null;
     }
     sendQueue.forEach(function (item) {
       revokeFilePreviews(item.files);
@@ -1251,7 +1407,8 @@
     renderQueue();
     sessionId = "";
     localStorage.removeItem(sessionStorageKey);
-    clearChatHistory();
+    rememberActiveConversation(null);
+    try { localStorage.removeItem(historyStorageKey()); } catch (err) {}
     stoppedAgentMsg = null;
     leaveEditMode();
     clearThreadMessages();
@@ -1260,7 +1417,6 @@
     stopRunElapsedTimer();
     updateEmptyState();
     updateRunState("就绪");
-    // Abort is async — a late stream chunk must not leave empty greeting hidden.
     requestAnimationFrame(updateEmptyState);
   };
   // Auth + per-user history from server, then follow if needed.
@@ -1308,17 +1464,12 @@
       .then(function (res) { return res.json(); })
       .then(function (me) {
         setCurrentUser(me && me.user ? me.user : null);
-        return apiFetch(apiBase + "/api/history/" + encodeURIComponent(provider));
-      })
-      .then(function (res) { return res.json(); })
-      .then(function (hist) {
-        try {
-          var bootRestored = restoreChatHistory(hist && hist.payload ? hist.payload : null);
-          bootRestoredStreaming = !!(bootRestored && bootRestored.streaming);
-        } catch (err) {
-          console.warn("Ai-agent history restore failed", err);
-          bootRestoredStreaming = false;
+        if (typeof bootstrapConversations === "function") {
+          return bootstrapConversations();
         }
+        return null;
+      })
+      .then(function () {
         updateEmptyState();
         if (bootRestoredStreaming) {
           pendingFollow = true;
@@ -1336,7 +1487,14 @@
   })();
   function persistUnloadState() {
     // Force streaming while a turn is in flight — drainQueue may clear isRunning mid-unload.
-    flushChatHistory({ streaming: !!(isRunning || activeAbort) });
+    var busy = !!(isRunning || pendingFollow || activeAbort);
+    if (busy && activeConversationId != null && typeof markRunSlotBusy === "function") {
+      markRunSlotBusy(activeConversationId, true, sessionId);
+    }
+    if (activeConversationId != null && typeof parkActiveRunToSlot === "function") {
+      parkActiveRunToSlot(activeConversationId);
+    }
+    flushChatHistory({ streaming: busy });
     try {
       localStorage.setItem(SIDEBAR_OPEN_KEY, sidebar.classList.contains("open") ? "1" : "0");
       localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, isFullscreen() ? "1" : "0");
@@ -1344,6 +1502,45 @@
   }
   window.addEventListener("pagehide", persistUnloadState);
   window.addEventListener("beforeunload", persistUnloadState);
+
+  // Poll background chats so sidebar spinners clear when pumps finish (even if tab was away).
+  var backgroundRunPollTimer = null;
+  function pollBackgroundRunStatuses() {
+    var targets = [];
+    if (typeof runSlots !== "undefined" && runSlots) {
+      Object.keys(runSlots).forEach(function (key) {
+        var slot = runSlots[key];
+        if (!slot || !slot.busy || !slot.sessionId) return;
+        if (key !== "draft" && Number(key) === Number(activeConversationId) && (isRunning || pendingFollow)) {
+          return;
+        }
+        targets.push({ id: key === "draft" ? null : key, sessionId: slot.sessionId });
+      });
+    }
+    (conversationList || []).forEach(function (c) {
+      if (!c || !c.streaming || !c.session_id) return;
+      if (Number(c.id) === Number(activeConversationId) && (isRunning || pendingFollow)) return;
+      if (targets.some(function (t) { return Number(t.id) === Number(c.id); })) return;
+      targets.push({ id: c.id, sessionId: c.session_id });
+    });
+    targets.forEach(function (t) {
+      apiFetch(apiBase + "/api/chat/status?session_id=" + encodeURIComponent(t.sessionId))
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (st) {
+          if (!st || st.running) return;
+          // Pump finished: stop spinner, keep payload.streaming for reopen /follow.
+          if (t.id != null && typeof markRunSlotSettled === "function") {
+            markRunSlotSettled(t.id);
+          }
+          if (typeof renderConversationList === "function") renderConversationList();
+          else syncNavRunningState();
+        })
+        .catch(function () {});
+    });
+  }
+  if (!backgroundRunPollTimer) {
+    backgroundRunPollTimer = setInterval(pollBackgroundRunStatuses, 4000);
+  }
 
   // ponytail: table self-check — ?mdcheck=1 on host page
   if (/\bmdcheck=1\b/.test(String(location.search || ""))) {

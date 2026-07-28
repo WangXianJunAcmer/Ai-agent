@@ -49,6 +49,95 @@ def db_session():
         conn.close()
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(r[1]) for r in rows}
+
+
+def _conversations_has_user_provider_unique(conn: sqlite3.Connection) -> bool:
+    indexes = conn.execute("PRAGMA index_list(conversations)").fetchall()
+    for idx in indexes:
+        if not bool(idx[2]):
+            continue
+        name = idx[1]
+        info = conn.execute(f"PRAGMA index_info({name})").fetchall()
+        col_names = [c[2] for c in info]
+        if col_names == ["user_id", "provider"]:
+            return True
+    return False
+
+
+def _migrate_conversations(conn: sqlite3.Connection) -> None:
+    """Upgrade single-slot conversations (UNIQUE user+provider) → multi-chat list."""
+    exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'"
+    ).fetchone()
+    if exists is None:
+        return
+    cols = _table_columns(conn, "conversations")
+    needs_rebuild = (
+        "title" not in cols
+        or "created_at" not in cols
+        or _conversations_has_user_provider_unique(conn)
+    )
+    if not needs_rebuild:
+        return
+
+    has_title = "title" in cols
+    has_created = "created_at" in cols
+    title_expr = (
+        "COALESCE(NULLIF(trim(title), ''), '新对话')"
+        if has_title
+        else (
+            "COALESCE(NULLIF(trim(json_extract(payload_json, '$.messages[0].text')), ''), "
+            "'新对话')"
+        )
+    )
+    created_expr = (
+        "COALESCE(created_at, updated_at, datetime('now'))"
+        if has_created
+        else "COALESCE(updated_at, datetime('now'))"
+    )
+    conn.executescript(
+        f"""
+        CREATE TABLE conversations_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          title TEXT NOT NULL DEFAULT '新对话',
+          agent_session_id TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL DEFAULT '',
+          payload_json TEXT NOT NULL DEFAULT '{{}}',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO conversations_new (
+          id, user_id, provider, title, agent_session_id, model, payload_json,
+          created_at, updated_at
+        )
+        SELECT
+          id,
+          user_id,
+          provider,
+          {title_expr},
+          agent_session_id,
+          model,
+          payload_json,
+          {created_expr},
+          COALESCE(updated_at, datetime('now'))
+        FROM conversations;
+
+        DROP TABLE conversations;
+        ALTER TABLE conversations_new RENAME TO conversations;
+        CREATE INDEX IF NOT EXISTS idx_conversations_user_provider
+          ON conversations(user_id, provider);
+        CREATE INDEX IF NOT EXISTS idx_conversations_updated
+          ON conversations(updated_at);
+        """
+    )
+
+
 def init_db() -> None:
     with db_session() as conn:
         conn.executescript(
@@ -73,17 +162,39 @@ def init_db() -> None:
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
               provider TEXT NOT NULL,
+              title TEXT NOT NULL DEFAULT '新对话',
+              workspace_root TEXT NOT NULL DEFAULT '',
               agent_session_id TEXT NOT NULL DEFAULT '',
               model TEXT NOT NULL DEFAULT '',
               payload_json TEXT NOT NULL DEFAULT '{}',
-              updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-              UNIQUE(user_id, provider)
+              pinned INTEGER NOT NULL DEFAULT 0,
+              archived INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
-            CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);
+            CREATE INDEX IF NOT EXISTS idx_conversations_user_provider
+              ON conversations(user_id, provider);
+            CREATE INDEX IF NOT EXISTS idx_conversations_updated
+              ON conversations(updated_at);
             """
         )
+        _migrate_conversations(conn)
+        cols = _table_columns(conn, "conversations")
+        if "workspace_root" not in cols:
+            conn.execute(
+                "ALTER TABLE conversations ADD COLUMN workspace_root TEXT NOT NULL DEFAULT ''"
+            )
+        cols = _table_columns(conn, "conversations")
+        if "pinned" not in cols:
+            conn.execute(
+                "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+            )
+        if "archived" not in cols:
+            conn.execute(
+                "ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+            )
         row = conn.execute(
             "SELECT id, username FROM users WHERE username_norm = ?",
             (ADMIN_USERNAME.lower(),),

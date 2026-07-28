@@ -43,7 +43,13 @@ def make_tool_kit(
     tracker=None,
 ) -> tuple[list[dict], dict[str, Callable[..., str]]]:
     """Return (OpenAI tools schemas, name → executor)."""
-    host_root = Path(settings["host_root"]).resolve()
+    from backend.ssh_workspace import is_ssh_uri
+
+    root_raw = settings["host_root"]
+    if is_ssh_uri(str(root_raw)):
+        return _make_ssh_tool_kit(settings, allow_write=allow_write)
+
+    host_root = Path(root_raw).resolve()
     # Plan mode passes allow_write=False while config may still have allow_repo_write=True —
     # gate shell mutations on the effective flag, not the raw config.
     guard = {**settings, "allow_repo_write": bool(allow_write)}
@@ -196,6 +202,142 @@ def make_tool_kit(
         if len(out) > _MAX_SHELL_OUT:
             out = out[:_MAX_SHELL_OUT] + "\n… truncated"
         return f"exit={proc.returncode}\n{out}" if out else f"exit={proc.returncode}"
+
+    executors: dict[str, Callable[..., str]] = {
+        "read_file": read_file,
+        "list_dir": list_dir,
+        "glob_files": glob_files,
+        "grep": grep,
+        "run_shell": run_shell,
+    }
+    if allow_write:
+        executors["write_file"] = write_file
+        executors["str_replace"] = str_replace
+
+    schemas = [_openai_schema(name, fn) for name, fn in executors.items()]
+    return schemas, executors
+
+
+def _make_ssh_tool_kit(
+    settings: dict,
+    *,
+    allow_write: bool,
+) -> tuple[list[dict], dict[str, Callable[..., str]]]:
+    from backend.ssh_workspace import (
+        list_tree,
+        parse_ssh_uri,
+        read_file as ssh_read,
+        run_command,
+        write_file as ssh_write,
+    )
+
+    host_id, remote = parse_ssh_uri(str(settings["host_root"]))
+    guard = {**settings, "allow_repo_write": bool(allow_write)}
+
+    def _block(name: str, args: dict) -> str | None:
+        return repo_write_block_reason(guard, name, args) or sensitive_tool_block_reason(
+            name, args
+        )
+
+    def read_file(path: str) -> str:
+        blocked = _block("read", {"path": path})
+        if blocked:
+            return blocked
+        try:
+            data = ssh_read(host_id, remote, path or ".")
+            return str(data.get("content") or "")
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def list_dir(path: str = ".") -> str:
+        blocked = _block("ls", {"path": path})
+        if blocked:
+            return blocked
+        try:
+            data = list_tree(host_id, remote, path or ".", depth=1)
+            lines = []
+            for e in data.get("entries") or []:
+                name = e.get("name") or ""
+                lines.append(f"{name}/" if e.get("type") == "dir" else name)
+            return "\n".join(lines) or "(empty)"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def glob_files(pattern: str) -> str:
+        blocked = _block("glob", {"glob_pattern": pattern})
+        if blocked:
+            return blocked
+        pat = (pattern or "").strip() or "*"
+        # Remote find via shell (bounded).
+        cmd = f"find . -type f -name {json.dumps(pat)} 2>/dev/null | head -n 200"
+        try:
+            result = run_command(host_id, remote, cmd, timeout=_SHELL_TIMEOUT)
+            out = str(result.get("output") or "").strip()
+            return out or "(no matches)"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def grep(pattern: str, path: str = ".", glob: str = "") -> str:
+        blocked = _block("grep", {"pattern": pattern, "path": path, "glob_pattern": glob})
+        if blocked:
+            return blocked
+        target = (path or ".").strip() or "."
+        include = f" --include={json.dumps(glob)}" if glob else ""
+        cmd = (
+            f"grep -RIn{include} -- {json.dumps(pattern)} {json.dumps(target)} 2>/dev/null"
+            " | head -n 80"
+        )
+        try:
+            result = run_command(host_id, remote, cmd, timeout=_SHELL_TIMEOUT)
+            out = str(result.get("output") or "").strip()
+            return out or "(no matches)"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def write_file(path: str, content: str = "", contents: str = "", fileText: str = "", file_text: str = "", **_extra) -> str:
+        if not allow_write:
+            return "writes disabled (plan mode or allow_repo_write=false)"
+        blocked = _block("write", {"path": path})
+        if blocked:
+            return blocked
+        body = content or contents or fileText or file_text
+        if not isinstance(body, str):
+            body = "" if body is None else str(body)
+        try:
+            ssh_write(host_id, remote, path, body)
+            return f"wrote {len(body)} chars to {path}"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def str_replace(path: str, old_string: str = "", new_string: str = "", **_extra) -> str:
+        if not allow_write:
+            return "writes disabled (plan mode or allow_repo_write=false)"
+        blocked = _block("strreplace", {"path": path})
+        if blocked:
+            return blocked
+        try:
+            data = ssh_read(host_id, remote, path)
+            text = str(data.get("content") or "")
+            if old_string not in text:
+                return "old_string not found"
+            ssh_write(host_id, remote, path, text.replace(old_string, new_string, 1))
+            return f"updated {path}"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
+
+    def run_shell(command: str) -> str:
+        blocked = _block("shell", {"command": command})
+        if blocked:
+            return blocked
+        try:
+            result = run_command(host_id, remote, command, timeout=_SHELL_TIMEOUT)
+            out = str(result.get("output") or "")
+            if len(out) > _MAX_SHELL_OUT:
+                out = out[:_MAX_SHELL_OUT] + "\n… truncated"
+            code = result.get("exit_code")
+            return f"exit={code}\n{out}" if out else f"exit={code}"
+        except Exception as err:  # noqa: BLE001
+            return str(getattr(err, "detail", None) or err)
 
     executors: dict[str, Callable[..., str]] = {
         "read_file": read_file,
