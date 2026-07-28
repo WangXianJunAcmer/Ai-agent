@@ -261,6 +261,7 @@ class SessionManager:
                 model_selection=model_selection,
                 provider=prov,
                 workspace_root=ws_key,
+                local_cwd=str(local_settings.get("host_root") or ""),
                 last_active=time.time(),
             )
             existing = self._sessions.get(sid)
@@ -293,10 +294,14 @@ class SessionManager:
             session.provider not in COMPAT_PROVIDERS
             and is_ssh_uri(ws)
         ):
-            from backend.ssh_mirror import ensure_mirror
-
             settings = dict(settings)
-            settings["host_root"] = str(ensure_mirror(ws))
+            if session.local_cwd:
+                settings["host_root"] = session.local_cwd
+            else:
+                from backend.ssh_mirror import ensure_mirror
+
+                settings["host_root"] = str(ensure_mirror(ws))
+                session.local_cwd = settings["host_root"]
             settings["ssh_uri"] = ws
         return settings
 

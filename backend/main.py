@@ -387,12 +387,15 @@ class _WsCtx:
 
 
 def _ws_ctx(root_raw: str | None) -> _WsCtx:
-    from backend.ssh_workspace import is_ssh_uri
+    from backend.ssh_workspace import effective_default_path, is_ssh_uri
     from backend.workspace import resolve_workspace_root
 
     ws_key = _normalize_ws(root_raw)
     if is_ssh_uri(ws_key):
         host_id, remote = _ssh_parts(ws_key)
+        # Match mirror/picker: bare ssh://host/ means project/home, not FS root.
+        if remote in {"/", "", "."}:
+            remote = effective_default_path(host_id)
         return _WsCtx(key=ws_key, is_ssh=True, host_id=host_id, remote=remote)
     return _WsCtx(
         key=ws_key,

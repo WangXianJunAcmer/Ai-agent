@@ -376,11 +376,12 @@
     #coding-agent-ide-maximize .coding-agent-icon-shrink { display: none; }
     #coding-agent-sidebar.ide-maximized #coding-agent-ide-maximize .coding-agent-icon-expand { display: none; }
     #coding-agent-sidebar.ide-maximized #coding-agent-ide-maximize .coding-agent-icon-shrink { display: grid; }
-    /* Maximized IDE: keep chat title topbar, hide thread/composer, IDE fills the rest. */
+    /* Maximized IDE: title + tabs one row (title hugs text); explorer left, editor right. */
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-workspace {
       display: grid;
-      grid-template-columns: auto 1fr;
-      grid-template-rows: auto 1fr;
+      grid-template-columns: auto max-content minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      column-gap: 0;
     }
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-nav-shell {
       grid-column: 1;
@@ -389,28 +390,59 @@
       max-height: none;
     }
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-main {
+      display: contents;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-topbar {
       grid-column: 2;
       grid-row: 1;
-      display: flex;
-      flex: none;
-      width: auto;
-      min-width: 0;
-      min-height: 0;
+      height: 35px;
+      width: max-content;
+      max-width: min(280px, 36vw);
+      padding: 0 8px 0 10px;
+      background: #ececec;
+      border-bottom: 1px solid var(--ai-border);
+      border-right: 0;
+      backdrop-filter: none;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-top-actions {
+      display: none !important;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-brand strong {
+      font-size: 13px;
     }
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-scroll-wrap,
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-footer {
       display: none !important;
     }
-    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide {
-      grid-column: 2;
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide,
+    #coding-agent-sidebar.is-fullscreen.has-ide.ide-maximized #coding-agent-ide {
+      display: contents;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-topbar {
+      grid-column: 3;
+      grid-row: 1;
+      min-width: 0;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-body {
+      grid-column: 2 / -1;
       grid-row: 2;
-      display: flex;
-      flex: none;
-      width: auto;
-      max-width: none;
       min-width: 0;
       min-height: 0;
-      height: auto;
+      flex-direction: row-reverse; /* explorer left → opened file to the right */
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-panel-terminal {
+      grid-column: 2 / -1;
+      grid-row: 2;
+      min-width: 0;
+      min-height: 0;
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-editor {
+      border-right: 0;
+      border-left: 1px solid var(--ai-border);
+    }
+    #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-tree-resize {
+      left: auto;
+      right: -3px;
     }
     #coding-agent-sidebar.has-ide.ide-maximized #coding-agent-ide-resize { display: none; }
     #coding-agent-ide-top-actions {
@@ -434,7 +466,12 @@
       display: inline-flex; align-items: center; gap: 6px;
       border: 0; border-right: 1px solid rgba(0,0,0,.06); background: transparent;
       padding: 0 8px 0 10px; font: 12px/1.2 inherit; color: var(--ai-muted);
-      cursor: pointer; max-width: 180px; height: 100%; position: relative;
+      cursor: grab; max-width: 180px; height: 100%; position: relative;
+    }
+    .coding-agent-ide-tab:active { cursor: grabbing; }
+    .coding-agent-ide-tab.is-dragging { opacity: .45; }
+    .coding-agent-ide-tab.is-drag-over {
+      box-shadow: inset 2px 0 0 #0078d4;
     }
     .coding-agent-ide-tab:hover { background: rgba(255,255,255,.45); color: var(--ai-text); }
     .coding-agent-ide-tab.is-active {
@@ -705,6 +742,7 @@
     .coding-agent-ide-tree-icon.is-env { color: #888; }
     .coding-agent-ide-tree-icon.is-bat,
     .coding-agent-ide-tree-icon.is-sh { color: #3e7a3e; }
+    .coding-agent-ide-tree-icon.is-img { color: #0a7ea4; font-size: 9px; }
     .coding-agent-ide-tree-label {
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

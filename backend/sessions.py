@@ -29,6 +29,8 @@ class Session:
     provider: str = "cursor"
     # Absolute workspace path for this agent session (project root).
     workspace_root: str = ""
+    # Local cwd for Cursor (may be ssh mirror path); avoids re-ensure_mirror on every turn.
+    local_cwd: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_run: object | None = None
     # Bumped on cancel so a dying stream knows it was interrupted.

@@ -47,6 +47,21 @@ _SKIP_DIRS = {
 _MAX_TREE_ENTRIES = 800
 _MAX_READ = 400_000
 _MAX_WRITE = 1_000_000
+_MAX_IMAGE_READ = 8_000_000
+_IMAGE_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+}
+
+
+def image_mime_for(name: str) -> str | None:
+    ext = Path(str(name or "")).suffix.lower()
+    return _IMAGE_MIME.get(ext)
 
 
 def home_workspace() -> Path:
@@ -171,15 +186,30 @@ def list_tree(root: Path, rel: str = ".", *, depth: int = 2) -> dict:
 
 
 def read_file(root: Path, rel: str) -> dict:
+    import base64
+
     path = _safe_path(root, rel)
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
+    mime = image_mime_for(rel) or image_mime_for(path.name)
+    limit = _MAX_IMAGE_READ if mime else _MAX_READ
     try:
         data = path.read_bytes()
     except OSError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-    if len(data) > _MAX_READ:
-        raise HTTPException(status_code=400, detail=f"文件过大（>{_MAX_READ} bytes）")
+    if len(data) > limit:
+        raise HTTPException(status_code=400, detail=f"文件过大（>{limit} bytes）")
+    if mime:
+        return {
+            "root": str(root),
+            "path": rel.replace("\\", "/"),
+            "content": "",
+            "size": len(data),
+            "media": "image",
+            "mime": mime,
+            "encoding": "base64",
+            "data_base64": base64.b64encode(data).decode("ascii"),
+        }
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:

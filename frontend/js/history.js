@@ -1833,8 +1833,9 @@
     clearTimeout(sshSearchJumpTimer);
     var go = function () {
       if (sshBrowse.hostId !== hostId) return;
-      // Already listing the parent of the abs query — just refilter.
-      if (sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.dir)) {
+      var cur = sshPathNorm(sshBrowse.path);
+      // Already inside the typed path (e.g. browsed into /tmp while q is /tmp).
+      if (cur === sshPathNorm(parsed.full) || cur === sshPathNorm(parsed.dir)) {
         renderSshFlyoutList(hostId);
         return;
       }
@@ -1845,9 +1846,13 @@
       }
       loadSshTree(hostId, parsed.dir, { keepSearch: true });
     };
-    // Instant if cached; otherwise short debounce while typing /t → /tm → /tmp
-    if (readSshTreeCache(hostId, parsed.dir)) go();
-    else sshSearchJumpTimer = setTimeout(go, 120);
+    if (readSshTreeCache(hostId, parsed.dir)
+      || sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.dir)
+      || sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.full)) {
+      go();
+    } else {
+      sshSearchJumpTimer = setTimeout(go, 120);
+    }
   }
 
   function guessSshHome(hostId) {
@@ -1875,13 +1880,20 @@
     var rawQ = wsSshSearch ? String(wsSshSearch.value || "").trim() : "";
     var parsed = parseSshPathQuery(rawQ);
     var q = rawQ.toLowerCase();
-    var nameFilter = parsed ? parsed.filter : q;
-    var atAbsParent = parsed
-      && sshPathNorm(sshBrowse.path) === sshPathNorm(parsed.dir);
+    var cur = sshPathNorm(sshBrowse.path);
+    var atAbsExact = parsed && cur === sshPathNorm(parsed.full);
+    var atAbsParent = parsed && cur === sshPathNorm(parsed.dir);
+    // Prefix search filters parent; exact path (or drilled-in) lists that dir unfiltered.
+    var nameFilter = "";
+    if (parsed) {
+      nameFilter = atAbsExact ? "" : String(parsed.filter || "");
+    } else {
+      nameFilter = q;
+    }
     wsSshTreeList.innerHTML = "";
 
-    // Absolute path typed but parent dir not loaded yet — wait, don't filter cwd.
-    if (parsed && !atAbsParent) {
+    // Waiting for parent of an abs prefix query (e.g. /tm while still on /home/…).
+    if (parsed && !atAbsParent && !atAbsExact) {
       var wait = document.createElement("div");
       wait.className = "coding-agent-ws-item-path";
       wait.style.padding = "6px 8px";
@@ -1933,26 +1945,35 @@
       wsSshTreeList.appendChild(up);
     }
 
-    // Abs path: filter parent dir. Plain text: filter current dir only.
     var entries = (sshTreeEntries || []).filter(function (e) {
       if (!nameFilter) return true;
       var name = String(e.name || "").toLowerCase();
       var path = String(e.path || "").toLowerCase();
-      if (parsed) {
+      if (parsed && !atAbsExact) {
         return name.indexOf(nameFilter) === 0 || name.indexOf(nameFilter) >= 0;
       }
       return name.indexOf(nameFilter) >= 0 || path.indexOf(nameFilter) >= 0;
     });
     entries.forEach(function (e) {
       if (e.type && e.type !== "dir") return;
+      var abs = String(e.path || "");
+      if (abs && abs.charAt(0) !== "/") {
+        abs = (sshBrowse.path === "/" ? "/" : (sshBrowse.path.replace(/\/+$/, "") + "/")) + abs;
+      }
+      if (!abs) abs = e.name || "";
       var btn = document.createElement("button");
       btn.type = "button";
       btn.className = "coding-agent-ws-item";
       btn.innerHTML = WS_ICON_FOLDER
         + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
         + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
-      btn.querySelector(".coding-agent-ws-item-name").textContent = e.name || e.path;
-      btn.onclick = function () { loadSshTree(hostId, e.path); };
+      btn.querySelector(".coding-agent-ws-item-name").textContent = abs;
+      btn.title = abs;
+      btn.onclick = function () {
+        // Clear abs search so drilling in doesn't stick on "加载 / …".
+        if (wsSshSearch) wsSshSearch.value = "";
+        loadSshTree(hostId, e.path);
+      };
       wsSshTreeList.appendChild(btn);
     });
 
@@ -2492,9 +2513,15 @@
           return String(e.name || "").toLowerCase() === filter;
         }) || (dirs.length === 1 ? dirs[0] : null);
       }
-      if (hit) loadSshTree(sshBrowse.hostId, hit.path, { keepSearch: false });
-      else if (!filter) loadSshTree(sshBrowse.hostId, parsed.full, { keepSearch: false });
-      else loadSshTree(sshBrowse.hostId, parsed.dir, { keepSearch: true });
+      if (hit) {
+        if (wsSshSearch) wsSshSearch.value = "";
+        loadSshTree(sshBrowse.hostId, hit.path, { keepSearch: false });
+      } else if (!filter) {
+        if (wsSshSearch) wsSshSearch.value = "";
+        loadSshTree(sshBrowse.hostId, parsed.full, { keepSearch: false });
+      } else {
+        loadSshTree(sshBrowse.hostId, parsed.dir, { keepSearch: true });
+      }
     });
   }
   if (wsUeOpenFolder) {

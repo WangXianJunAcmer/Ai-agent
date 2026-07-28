@@ -14,6 +14,7 @@ from backend.ssh_hosts import get_host
 
 _CLIENTS: dict[str, Any] = {}
 _OS_CACHE: dict[str, dict] = {}
+_HOME_CACHE: dict[str, str] = {}
 _LOCK = threading.Lock()
 _MAX_READ = 400_000
 _MAX_WRITE = 1_000_000
@@ -148,6 +149,7 @@ def get_client(host_id: str):
                 return client
             _CLIENTS.pop(hid, None)
             _OS_CACHE.pop(hid, None)
+            _HOME_CACHE.pop(hid, None)
             stale = client
     if stale is not None:
         try:
@@ -168,6 +170,7 @@ def get_client(host_id: str):
                 return existing
         _CLIENTS[hid] = client
         _OS_CACHE.pop(hid, None)
+        _HOME_CACHE.pop(hid, None)
         return client
 
 
@@ -176,6 +179,7 @@ def drop_client(host_id: str) -> None:
     with _LOCK:
         client = _CLIENTS.pop(hid, None)
         _OS_CACHE.pop(hid, None)
+        _HOME_CACHE.pop(hid, None)
     if client is not None:
         try:
             client.close()
@@ -304,10 +308,17 @@ def _cmd_exe_quote(arg: str) -> str:
 
 def remote_home(host_id: str) -> str:
     """Resolve the remote login home directory (not filesystem root '/')."""
-    host = get_host(host_id, include_secrets=False)
+    hid = str(host_id or "").strip()
+    with _LOCK:
+        cached = _HOME_CACHE.get(hid)
+        if cached:
+            return cached
+
+    host = get_host(hid, include_secrets=False)
     user = str(host.get("user") or "").strip() or "user"
-    client = get_client(host_id)
-    remote_os = detect_remote_os(host_id)
+    client = get_client(hid)
+    remote_os = detect_remote_os(hid)
+    home = ""
     if str(remote_os.get("family") or "") == "windows":
         probes = (
             'cmd.exe /d /s /c "echo %USERPROFILE%"',
@@ -317,23 +328,31 @@ def remote_home(host_id: str) -> str:
             try:
                 code, out_b, _err = _exec_raw(client, probe, timeout=10)
                 text = _decode_remote(out_b).strip().splitlines()
-                home = (text[0] if text else "").strip().strip('"')
-                if code == 0 and home and "echo" not in home.lower():
-                    return home.replace("\\", "/")
+                candidate = (text[0] if text else "").strip().strip('"')
+                if code == 0 and candidate and "echo" not in candidate.lower():
+                    home = candidate.replace("\\", "/")
+                    break
             except Exception:
                 continue
-        return f"C:/Users/{user}"
-    try:
-        code, out_b, _err = _exec_raw(
-            client, 'printf %s "${HOME:-}"; echo', timeout=10
-        )
-        text = _decode_remote(out_b).strip().splitlines()
-        home = (text[0] if text else "").strip()
-        if code == 0 and home.startswith("/"):
-            return posixpath.normpath(home) or f"/home/{user}"
-    except Exception:
-        pass
-    return f"/home/{user}"
+        if not home:
+            home = f"C:/Users/{user}"
+    else:
+        try:
+            code, out_b, _err = _exec_raw(
+                client, 'printf %s "${HOME:-}"; echo', timeout=10
+            )
+            text = _decode_remote(out_b).strip().splitlines()
+            candidate = (text[0] if text else "").strip()
+            if code == 0 and candidate.startswith("/"):
+                home = posixpath.normpath(candidate) or f"/home/{user}"
+        except Exception:
+            pass
+        if not home:
+            home = f"/home/{user}"
+
+    with _LOCK:
+        _HOME_CACHE[hid] = home
+    return home
 
 
 def effective_default_path(host_id: str, host: dict | None = None) -> str:
@@ -484,18 +503,36 @@ def _is_dir(attr) -> bool:
 
 
 def read_file(host_id: str, root: str, rel: str) -> dict:
+    import base64
+
+    from backend.workspace import _MAX_IMAGE_READ, _MAX_READ, image_mime_for
+
     client = get_client(host_id)
     path = _safe_remote(root, rel)
+    mime = image_mime_for(rel) or image_mime_for(posixpath.basename(path))
+    limit = _MAX_IMAGE_READ if mime else _MAX_READ
     sftp = client.open_sftp()
     try:
         with sftp.open(path, "rb") as fh:
-            data = fh.read(_MAX_READ + 1)
+            data = fh.read(limit + 1)
     except OSError as err:
         raise HTTPException(status_code=404, detail=f"文件不存在: {err}") from err
     finally:
         sftp.close()
-    if len(data) > _MAX_READ:
-        raise HTTPException(status_code=400, detail=f"文件过大（>{_MAX_READ} bytes）")
+    if len(data) > limit:
+        raise HTTPException(status_code=400, detail=f"文件过大（>{limit} bytes）")
+    if mime:
+        return {
+            "root": format_ssh_uri(host_id, root),
+            "path": rel.replace("\\", "/"),
+            "content": "",
+            "size": len(data),
+            "ssh": True,
+            "media": "image",
+            "mime": mime,
+            "encoding": "base64",
+            "data_base64": base64.b64encode(data).decode("ascii"),
+        }
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as err:

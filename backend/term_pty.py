@@ -420,11 +420,20 @@ def open_ssh_session(
     family = str(remote_os.get("family") or "unix")
 
     try:
-        channel = client.invoke_shell(
-            term="xterm-256color",
-            width=cols,
-            height=rows,
-        )
+        if family == "windows":
+            # Match run_command: force cmd.exe so `cd /d` works (default shell is often PS).
+            transport = client.get_transport()
+            if transport is None:
+                raise RuntimeError("SSH transport inactive")
+            channel = transport.open_session()
+            channel.get_pty(term="xterm-256color", width=cols, height=rows)
+            channel.exec_command("cmd.exe")
+        else:
+            channel = client.invoke_shell(
+                term="xterm-256color",
+                width=cols,
+                height=rows,
+            )
     except Exception as err:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"SSH shell 启动失败: {err}") from err
 

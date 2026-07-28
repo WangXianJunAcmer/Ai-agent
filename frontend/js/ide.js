@@ -46,6 +46,8 @@
   var ideNavIndex = -1;
   var ideExpanded = {};
   var ideChildrenCache = {};
+  var ideTreeWorkspace = "";
+  var ideTreeLoading = false;
   var ideClipboard = null; // { mode: 'copy'|'cut', path, type }
   var ideCtxTarget = null; // { path, type }
   var ideOutline = document.getElementById("coding-agent-ide-outline");
@@ -108,7 +110,9 @@
     onMove: function (e) {
       if (!ideExplorer) return;
       var rect = ideExplorer.getBoundingClientRect();
-      applyIdeTreeWidth(rect.right - e.clientX);
+      // Maximized: explorer is on the left (resize on its right edge).
+      if (ideIsMaximized()) applyIdeTreeWidth(e.clientX - rect.left);
+      else applyIdeTreeWidth(rect.right - e.clientX);
     },
   });
 
@@ -168,6 +172,14 @@
     return /\.(md|markdown)$/i.test(String(path || ""));
   }
 
+  function isImagePath(path) {
+    return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(path || ""));
+  }
+
+  function isImageTab(tab) {
+    return !!(tab && (tab.media === "image" || isImagePath(tab.path)));
+  }
+
   function tabKey(tab) {
     if (!tab) return "";
     var kind = tab.kind || "file";
@@ -198,6 +210,7 @@
 
   function setIdeOpen(on, panel) {
     if (!sidebar) return;
+    var wasOpen = ideIsOpen();
     if (panel) setIdePanel(panel);
     sidebar.classList.toggle("has-ide", !!on);
     try { localStorage.setItem("coding-agent-ide-open:" + provider, on ? "1" : "0"); } catch (err) {}
@@ -205,7 +218,11 @@
     if (on) {
       if (ideRootName) ideRootName.textContent = ideExplorerTitle();
       if (currentIdePanel() === "files") {
-        refreshIdeTree();
+        // Don't re-fetch the whole tree on every file/image click — that flashes "空目录".
+        var root = workspaceRoot();
+        var hasRoots = !!(ideChildrenCache["."] && ideChildrenCache["."].length);
+        if (!wasOpen || ideTreeWorkspace !== root || !hasRoots) refreshIdeTree();
+        else renderIdeTree();
         syncEditorChrome();
       }
     }
@@ -320,6 +337,36 @@
   function syncEditorView() {
     var tab = activeTab();
     var hasFile = !!(tab && ideActivePath);
+    var img = hasFile && isImageTab(tab);
+    if (img) {
+      if (ideViewTools) ideViewTools.classList.toggle("is-on", false);
+      if (ideOutlineToggle) ideOutlineToggle.style.display = "none";
+      if (ideEditor) ideEditor.classList.toggle("is-preview", true);
+      if (ideCodeWrap) ideCodeWrap.style.display = "none";
+      if (ideCode) ideCode.readOnly = true;
+      if (idePreview) {
+        idePreview.style.display = "block";
+        var mime = tab.mime || "image/png";
+        var b64 = tab.dataBase64 || "";
+        idePreview.innerHTML = "";
+        if (b64) {
+          var imgEl = document.createElement("img");
+          imgEl.alt = tab.path || "image";
+          imgEl.src = "data:" + mime + ";base64," + b64;
+          imgEl.style.maxWidth = "100%";
+          imgEl.style.maxHeight = "100%";
+          imgEl.style.objectFit = "contain";
+          imgEl.style.display = "block";
+          imgEl.style.margin = "0 auto";
+          idePreview.appendChild(imgEl);
+        } else {
+          idePreview.textContent = "无法加载图片";
+        }
+      }
+      setOutlineOpen(false);
+      return;
+    }
+    if (ideCode) ideCode.readOnly = false;
     var md = hasFile && isMarkdownPath(ideActivePath);
     if (md && tab && tab.view !== "preview" && tab.view !== "source") tab.view = "preview";
     var preview = !!(md && tab && tab.view === "preview");
@@ -514,6 +561,7 @@
     if (ext === "json") return "is-json";
     if (ext === "yml" || ext === "yaml") return "is-yml";
     if (ext === "env" || name === ".env" || name === ".env.example") return "is-env";
+    if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp" || ext === "bmp" || ext === "svg") return "is-img";
     if (ext === "bat" || ext === "cmd") return "is-bat";
     if (ext === "sh" || ext === "bash" || ext === "zsh") return "is-sh";
     return "";
@@ -528,6 +576,7 @@
     if (ext === "md" || ext === "markdown") return "M↓";
     if (ext === "json") return "{}";
     if (ext === "yml" || ext === "yaml") return "!";
+    if (ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp" || ext === "bmp" || ext === "svg") return "IMG";
     if (ext === "bat" || ext === "sh") return "$>";
     if (name === ".gitignore") return "gi";
     if (String(name).indexOf(".env") === 0) return "⚙";
@@ -601,28 +650,30 @@
     ideCrumbName.title = "";
   }
 
+  function readApiJson(res) {
+    return res.json().then(function (data) {
+      if (!res.ok) {
+        var detail = (data && (data.detail || data.message)) || res.statusText;
+        if (Array.isArray(detail)) detail = detail.map(function (x) { return x.msg || JSON.stringify(x); }).join("; ");
+        throw new Error(detail || "request failed");
+      }
+      return data;
+    });
+  }
+
   function fsApi(path, body) {
     return apiFetch(apiBase + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(Object.assign({ root: workspaceRoot() }, body || {})),
-    }).then(function (res) {
-      return res.json().then(function (data) {
-        if (!res.ok) {
-          var detail = (data && (data.detail || data.message)) || res.statusText;
-          if (Array.isArray(detail)) detail = detail.map(function (x) { return x.msg || JSON.stringify(x); }).join("; ");
-          throw new Error(detail || "request failed");
-        }
-        return data;
-      });
-    });
+    }).then(readApiJson);
   }
 
   function fetchPathInfo(rel) {
     return apiFetch(
       apiBase + "/api/workspace/info?root=" + encodeURIComponent(workspaceRoot()) +
         "&path=" + encodeURIComponent(rel || ".")
-    ).then(function (res) { return res.json(); });
+    ).then(readApiJson);
   }
 
   function copyText(text) {
@@ -811,6 +862,16 @@
     }
   }
 
+  function reorderIdeTab(fromKey, toKey) {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    var fromIdx = ideOpenTabs.findIndex(function (t) { return tabKey(t) === fromKey; });
+    var toIdx = ideOpenTabs.findIndex(function (t) { return tabKey(t) === toKey; });
+    if (fromIdx < 0 || toIdx < 0) return;
+    var moved = ideOpenTabs.splice(fromIdx, 1)[0];
+    ideOpenTabs.splice(toIdx, 0, moved);
+    renderIdeTabs();
+  }
+
   function renderIdeTabs() {
     if (!ideTabs) return;
     ideTabs.innerHTML = "";
@@ -819,6 +880,8 @@
       var key = tabKey(tab);
       var btn = document.createElement("button");
       btn.type = "button";
+      btn.draggable = true;
+      btn.dataset.tabKey = key;
       var label = kind === "file"
         ? (tab.displayName || fileBase(tab.path))
         : (tab.title || kind);
@@ -855,6 +918,36 @@
         hideIdeCtx();
         showIdeTabCtx(ev.clientX, ev.clientY, key);
       };
+      btn.addEventListener("dragstart", function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest(".coding-agent-ide-tab-close")) {
+          ev.preventDefault();
+          return;
+        }
+        ev.dataTransfer.setData("text/plain", key);
+        ev.dataTransfer.effectAllowed = "move";
+        btn.classList.add("is-dragging");
+      });
+      btn.addEventListener("dragend", function () {
+        btn.classList.remove("is-dragging");
+        ideTabs.querySelectorAll(".coding-agent-ide-tab.is-drag-over").forEach(function (el) {
+          el.classList.remove("is-drag-over");
+        });
+      });
+      btn.addEventListener("dragover", function (ev) {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
+        btn.classList.add("is-drag-over");
+      });
+      btn.addEventListener("dragleave", function () {
+        btn.classList.remove("is-drag-over");
+      });
+      btn.addEventListener("drop", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        btn.classList.remove("is-drag-over");
+        var from = ev.dataTransfer.getData("text/plain");
+        reorderIdeTab(from, key);
+      });
       ideTabs.appendChild(btn);
     });
   }
@@ -942,7 +1035,7 @@
     var existing = ideOpenTabs.find(function (t) {
       return (t.kind || "file") === "file" && t.path === path;
     });
-    if (existing && !opts.forceReload) {
+    if (existing && !opts.forceReload && !(existing.media === "image" && !existing.dataBase64)) {
       activateIdeTab(tabKey(existing), true);
       return Promise.resolve(existing);
     }
@@ -950,9 +1043,10 @@
       apiBase + "/api/workspace/file?root=" + encodeURIComponent(workspaceRoot()) +
         "&path=" + encodeURIComponent(path)
     )
-      .then(function (res) { return res.json(); })
+      .then(readApiJson)
       .then(function (data) {
-        if (!data || data.content == null) throw new Error("read failed");
+        var isImg = data && (data.media === "image" || (data.encoding === "base64" && data.data_base64));
+        if (!isImg && (!data || data.content == null)) throw new Error("read failed");
         var tab = existing || {
           id: path,
           kind: "file",
@@ -964,17 +1058,34 @@
         };
         tab.kind = "file";
         tab.id = path;
-        tab.content = String(data.content);
-        tab.original = tab.content;
-        tab.dirty = false;
-        tab.unsaved = false;
-        if (!tab.view) tab.view = isMarkdownPath(path) ? "preview" : "source";
+        tab.path = path;
+        if (isImg) {
+          tab.media = "image";
+          tab.mime = data.mime || "image/png";
+          tab.dataBase64 = data.data_base64 || "";
+          tab.content = "";
+          tab.original = "";
+          tab.view = "preview";
+          tab.dirty = false;
+          tab.unsaved = false;
+        } else {
+          tab.media = "";
+          tab.mime = "";
+          tab.dataBase64 = "";
+          tab.content = String(data.content);
+          tab.original = tab.content;
+          tab.dirty = false;
+          tab.unsaved = false;
+          if (!tab.view) tab.view = isMarkdownPath(path) ? "preview" : "source";
+        }
         if (!existing) ideOpenTabs.push(tab);
         activateIdeTab(tabKey(tab), true);
         return tab;
       })
       .catch(function (err) {
         console.warn("openIdeFile", err);
+        var msg = (err && err.message) ? String(err.message) : "打开失败";
+        if (typeof window.alert === "function") window.alert(msg);
       });
   }
 
@@ -984,6 +1095,7 @@
       return (t.kind || "file") === "file" && t.path === ideActivePath;
     });
     if (!tab) return Promise.resolve();
+    if (isImageTab(tab)) return Promise.resolve();
     tab.content = ideCode.value;
     return apiFetch(apiBase + "/api/workspace/file", {
       method: "PUT",
@@ -994,7 +1106,7 @@
         content: tab.content,
       }),
     })
-      .then(function (res) { return res.json(); })
+      .then(readApiJson)
       .then(function () {
         tab.original = tab.content;
         tab.dirty = false;
@@ -1051,7 +1163,7 @@
       apiBase + "/api/workspace/tree?root=" + encodeURIComponent(workspaceRoot()) +
         "&path=" + encodeURIComponent(key) + "&depth=1"
     )
-      .then(function (res) { return res.json(); })
+      .then(readApiJson)
       .then(function (data) {
         var entries = (data && data.entries) || [];
         ideChildrenCache[key] = entries;
@@ -1390,7 +1502,7 @@
     if (!roots.length) {
       var empty = document.createElement("div");
       empty.style.cssText = "padding:10px 12px;color:#6b6b6b;font-size:12px";
-      empty.textContent = "空目录或无权访问";
+      empty.textContent = ideTreeLoading ? "加载中…" : "空目录或无权访问";
       ideTree.appendChild(empty);
       return;
     }
@@ -1419,22 +1531,34 @@
   function refreshIdeTree() {
     if (!ideTree) return Promise.resolve();
     if (ideRootName) ideRootName.textContent = ideExplorerTitle();
-    ideChildrenCache = {};
+    var root = workspaceRoot();
+    // Keep old entries visible while reloading — wiping caused "空目录" flash on every open.
+    ideTreeLoading = true;
+    if (!(ideChildrenCache["."] && ideChildrenCache["."].length)) renderIdeTree();
     return fetchTreeEntries(".")
       .then(function () {
+        ideTreeWorkspace = root;
         var paths = Object.keys(ideExpanded);
         var chain = Promise.resolve();
         paths.forEach(function (p) {
           chain = chain.then(function () { return fetchTreeEntries(p).catch(function () {}); });
         });
-        return chain.then(function () { renderIdeTree(); });
+        return chain.then(function () {
+          ideTreeLoading = false;
+          renderIdeTree();
+        });
       })
       .catch(function () {
-        ideTree.innerHTML = "";
-        var err = document.createElement("div");
-        err.style.cssText = "padding:10px 12px;color:#6b6b6b;font-size:12px";
-        err.textContent = "加载文件树失败";
-        ideTree.appendChild(err);
+        ideTreeLoading = false;
+        if (!(ideChildrenCache["."] && ideChildrenCache["."].length)) {
+          ideTree.innerHTML = "";
+          var err = document.createElement("div");
+          err.style.cssText = "padding:10px 12px;color:#6b6b6b;font-size:12px";
+          err.textContent = "加载文件树失败";
+          ideTree.appendChild(err);
+        } else {
+          renderIdeTree();
+        }
       });
   }
 
@@ -1851,6 +1975,14 @@
     return isTerminalActive();
   }
 
+  /** Switch to file explorer / an open file tab — never creates a file. */
+  function showFileView() {
+    if (!ideIsOpen()) setIdeOpen(true, "files");
+    var fileTab = ideOpenTabs.find(function (t) { return (t.kind || "file") === "file"; });
+    if (fileTab) activateIdeTab(tabKey(fileTab), false);
+    else focusExplorerForFile();
+  }
+
   function focusExplorerForFile() {
     setIdeOpen(true, "files");
     if (!ideOpenTabs.some(function (t) { return (t.kind || "file") === "file"; })) {
@@ -1951,8 +2083,7 @@
         var kind = btn.getAttribute("data-ide-new");
         closeIdeNewMenu();
         if (kind === "file") {
-          focusExplorerForFile();
-          createEntry("file", { path: ".", isDir: true });
+          showFileView();
         } else if (kind === "terminal") {
           openOrFocusSpecialPage("terminal", { forceNew: true });
         }
@@ -1991,15 +2122,9 @@
       }
       return;
     }
-    // Ctrl+G
-    if (termFront) {
-      // terminal → file view (prefer an open file tab)
-      var fileTab = ideOpenTabs.find(function (t) { return (t.kind || "file") === "file"; });
-      if (fileTab) activateIdeTab(tabKey(fileTab), false);
-      else focusExplorerForFile();
-    } else {
-      minimizeIdeSidebar(); // file → collapse IDE rail
-    }
+    // Ctrl+G: closed / terminal → file view; file in front → collapse rail.
+    if (!ideIsOpen() || termFront) showFileView();
+    else minimizeIdeSidebar();
   });
 
   try {
