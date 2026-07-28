@@ -1113,12 +1113,12 @@
     return next || prev || "";
   }
 
-  function editCardMeta(merged, fallback) {
-    if (!merged || merged.kind !== "edit") return fallback || "";
+  function editCardMetaHtml(merged) {
+    if (!merged || merged.kind !== "edit") return null;
     var a = merged.additions;
     var d = merged.deletions;
-    if (typeof a !== "number" && typeof d !== "number") return fallback || "";
-    return "+" + Number(a || 0) + " / -" + Number(d || 0);
+    if (typeof a !== "number" && typeof d !== "number") return null;
+    return '<span class="add">+' + Number(a || 0) + '</span> / <span class="del">-' + Number(d || 0) + '</span>';
   }
 
   function collectLocalTurnChanges(msg) {
@@ -1426,7 +1426,10 @@
     header.setAttribute("role", expandable ? "button" : "presentation");
     card.querySelector(".ai-agent-card-title").textContent = merged.title;
     // Edit cards: show +N/-M on the card itself (counted at edit time).
-    card.querySelector(".ai-agent-card-meta").textContent = editCardMeta(merged, merged.meta);
+    var metaEl = card.querySelector(".ai-agent-card-meta");
+    var metaHtml = editCardMetaHtml(merged);
+    if (metaHtml) metaEl.innerHTML = metaHtml;
+    else metaEl.textContent = merged.meta || "";
     var body = card.querySelector(".ai-agent-card-body");
     body.innerHTML = "";
     if (merged.detail) {

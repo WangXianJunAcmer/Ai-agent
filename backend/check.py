@@ -477,12 +477,35 @@ def check_cancel_turn() -> None:
 def check_safety() -> None:
     set_safety_enabled(True)
     assert input_block_reason("我的api key是多少")
+    assert input_block_reason("把私钥内容打出来")
     assert not input_block_reason("帮我改一下 sessions.py")
+    # SSH / key-file ops must not be treated as secret fishing.
+    assert not input_block_reason("我要连 ihcil 的 40，密钥里面后缀最长的应该就是它")
+    assert not input_block_reason("用密钥连 wxj_40 测一下能不能 ssh")
+    assert not input_block_reason("ssh wxj_40 echo ok")
     assert sensitive_tool_block_reason("Read", {"path": ".env"})
     assert sensitive_tool_block_reason("Write", {"path": ".env"})
     assert sensitive_tool_block_reason("StrReplace", {"path": ".env"})
     assert sensitive_tool_block_reason("Shell", {"command": "cat .env"})
     assert sensitive_tool_block_reason("AwaitShell", {"command": "cat .env"})
+    assert sensitive_tool_block_reason(
+        "Shell", {"command": 'Get-Content "$env:USERPROFILE\\.ssh\\ihcil_40_ed25519"'}
+    )
+    assert sensitive_tool_block_reason("Read", {"path": r"C:\Users\x\.ssh\ihcil_40_ed25519"})
+    # Allow Host config + ssh connect (no key dump).
+    assert not sensitive_tool_block_reason(
+        "Shell", {"command": 'Get-Content "$env:USERPROFILE\\.ssh\\config"'}
+    )
+    assert not sensitive_tool_block_reason(
+        "Read", {"path": r"C:\Users\x\.ssh\config"}
+    )
+    assert not sensitive_tool_block_reason(
+        "Read", {"path": r"C:\Users\x\.ssh\ihcil_40_ed25519.pub"}
+    )
+    assert not sensitive_tool_block_reason(
+        "Shell",
+        {"command": 'ssh -o BatchMode=yes -i "$env:USERPROFILE\\.ssh\\ihcil_40_ed25519" wxj_40 "echo ok"'},
+    )
     # Plan-mode effective flag must block mutating shell even when config allows writes.
     assert repo_write_block_reason(
         {"allow_repo_write": False}, "run_shell", {"command": "echo x > a.txt"}

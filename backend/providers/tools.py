@@ -13,25 +13,16 @@ from typing import Any, Callable
 
 from backend.repo_write_guard import repo_write_block_reason
 from backend.safety import sensitive_tool_block_reason
+from backend.workspace import resolve_in_root
 
 _MAX_READ = 200_000
 _MAX_SHELL_OUT = 50_000
 _SHELL_TIMEOUT = 60
 
 
-def _resolve_in_root(host_root: Path, path: str) -> Path:
-    raw = (path or "").strip() or "."
-    candidate = (host_root / raw).resolve() if not Path(raw).is_absolute() else Path(raw).resolve()
-    try:
-        candidate.relative_to(host_root)
-    except ValueError as err:
-        raise ValueError(f"path escapes workspace: {path}") from err
-    return candidate
-
-
 def _safe_resolve(host_root: Path, path: str) -> Path | str:
     try:
-        return _resolve_in_root(host_root, path)
+        return resolve_in_root(host_root, path)
     except ValueError as err:
         return str(err)
 
@@ -159,7 +150,7 @@ def make_tool_kit(
         if tracker is not None:
             tracker.snapshot_before(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body, encoding="utf-8")
+        target.write_text(body, encoding="utf-8", newline="\n")
         _track(path)
         return f"wrote {len(body)} chars to {path}"
 
@@ -179,7 +170,7 @@ def make_tool_kit(
         text = target.read_text(encoding="utf-8")
         if old_string not in text:
             return "old_string not found"
-        target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
+        target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8", newline="\n")
         _track(path)
         return f"updated {path}"
 
@@ -188,20 +179,20 @@ def make_tool_kit(
         if blocked:
             return blocked
         try:
-            proc = subprocess.run(
-                command,
-                shell=True,
-                cwd=str(host_root),
-                capture_output=True,
-                text=True,
-                timeout=_SHELL_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired:
-            return f"timeout after {_SHELL_TIMEOUT}s"
-        out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
-        if len(out) > _MAX_SHELL_OUT:
-            out = out[:_MAX_SHELL_OUT] + "\n… truncated"
-        return f"exit={proc.returncode}\n{out}" if out else f"exit={proc.returncode}"
+            from backend.workspace import run_command as ws_run
+
+            result = ws_run(Path(host_root), command, timeout=float(_SHELL_TIMEOUT))
+        except Exception as exc:  # noqa: BLE001
+            from fastapi import HTTPException
+
+            if isinstance(exc, HTTPException):
+                return str(exc.detail)
+            return f"shell error: {exc}"
+        text = str(result.get("output") or "")
+        code = int(result.get("exit_code") or 0)
+        if len(text) > _MAX_SHELL_OUT:
+            text = text[:_MAX_SHELL_OUT] + "\n… truncated"
+        return f"exit={code}\n{text}" if text else f"exit={code}"
 
     executors: dict[str, Callable[..., str]] = {
         "read_file": read_file,
@@ -224,6 +215,7 @@ def _make_ssh_tool_kit(
     allow_write: bool,
 ) -> tuple[list[dict], dict[str, Callable[..., str]]]:
     from backend.ssh_workspace import (
+        detect_remote_os,
         list_tree,
         parse_ssh_uri,
         read_file as ssh_read,
@@ -233,11 +225,60 @@ def _make_ssh_tool_kit(
 
     host_id, remote = parse_ssh_uri(str(settings["host_root"]))
     guard = {**settings, "allow_repo_write": bool(allow_write)}
+    remote_family = str((detect_remote_os(host_id) or {}).get("family") or "unix")
 
     def _block(name: str, args: dict) -> str | None:
         return repo_write_block_reason(guard, name, args) or sensitive_tool_block_reason(
             name, args
         )
+
+    def _ps_single(text: str) -> str:
+        """Escape for PowerShell single-quoted string ('' → one quote)."""
+        return str(text).replace("'", "''")
+
+    def _normalize_tool_paths(output: str) -> str:
+        """Normalize PS/find paths: backslash→slash, strip ./, relativize Windows abs paths."""
+        from backend.ssh_workspace import _posix_ssh_path_to_win
+
+        root_win = _posix_ssh_path_to_win(remote).replace("\\", "/").rstrip("/")
+        roots = {root_win.lower()}
+        if len(root_win) >= 3 and root_win[0] == "/" and root_win[2] == ":":
+            roots.add(root_win[1:].lower())
+
+        def _strip_root(path: str) -> str:
+            norm = path.replace("\\", "/").strip()
+            if norm.startswith("./"):
+                norm = norm[2:]
+            low = norm.lower()
+            for r in roots:
+                if low == r:
+                    return "."
+                pfx = r + "/"
+                if low.startswith(pfx):
+                    return norm[len(pfx) :]
+            return norm
+
+        out_lines: list[str] = []
+        for line in str(output or "").splitlines():
+            raw = line.rstrip("\r")
+            if not raw.strip():
+                continue
+            # Absolute Windows path with optional :line:text suffix (C:\a\b.py:12:hit)
+            if re.match(r"^[A-Za-z]:[\\/]", raw) or raw.startswith("\\\\"):
+                # Split after the path: first : that is followed by digits:
+                m = re.match(r"^([A-Za-z]:[^:]*?|\\\\[^:]+?):(\d+:.*)$", raw.replace("/", "\\"))
+                if m:
+                    out_lines.append(_strip_root(m.group(1)) + ":" + m.group(2).replace("\\", "/"))
+                else:
+                    out_lines.append(_strip_root(raw))
+            else:
+                # Relative / Unix — only normalize separators on the path side if grep-shaped
+                gm = re.match(r"^([^:]+):(\d+:.*)$", raw)
+                if gm and ("/" in gm.group(1) or "\\" in gm.group(1) or "." in gm.group(1)):
+                    out_lines.append(_strip_root(gm.group(1)) + ":" + gm.group(2))
+                else:
+                    out_lines.append(_strip_root(raw))
+        return "\n".join(out_lines)
 
     def read_file(path: str) -> str:
         blocked = _block("read", {"path": path})
@@ -268,11 +309,27 @@ def _make_ssh_tool_kit(
         if blocked:
             return blocked
         pat = (pattern or "").strip() or "*"
-        # Remote find via shell (bounded).
-        cmd = f"find . -type f -name {json.dumps(pat)} 2>/dev/null | head -n 200"
+        # Leaf name for -Filter / find -name (Path.glob-style prefixes stripped).
+        leaf = pat.replace("\\", "/").rsplit("/", 1)[-1] or "*"
+        if remote_family == "windows":
+            # Via run_command → cmd cd, then PowerShell (same stack as local PTY tooling).
+            # Resolve-Path -Relative so agent read_file gets workspace-relative paths.
+            ps = _ps_single(leaf)
+            cmd = (
+                "powershell -NoProfile -Command "
+                f"Get-ChildItem -Recurse -File -Filter '{ps}' -ErrorAction SilentlyContinue "
+                "| Select-Object -First 200 "
+                "| ForEach-Object { "
+                "$r = Resolve-Path -Relative -Path $_.FullName; "
+                "if ($r.StartsWith('.\\')) { $r = $r.Substring(2) }; "
+                "$r "
+                "}"
+            )
+        else:
+            cmd = f"find . -type f -name {json.dumps(leaf)} 2>/dev/null | head -n 200"
         try:
             result = run_command(host_id, remote, cmd, timeout=_SHELL_TIMEOUT)
-            out = str(result.get("output") or "").strip()
+            out = _normalize_tool_paths(str(result.get("output") or "").strip())
             return out or "(no matches)"
         except Exception as err:  # noqa: BLE001
             return str(getattr(err, "detail", None) or err)
@@ -282,14 +339,31 @@ def _make_ssh_tool_kit(
         if blocked:
             return blocked
         target = (path or ".").strip() or "."
-        include = f" --include={json.dumps(glob)}" if glob else ""
-        cmd = (
-            f"grep -RIn{include} -- {json.dumps(pattern)} {json.dumps(target)} 2>/dev/null"
-            " | head -n 80"
-        )
+        if remote_family == "windows":
+            ps_pat = _ps_single(pattern)
+            ps_target = _ps_single(target)
+            ps_glob = _ps_single((glob or "*").strip() or "*")
+            cmd = (
+                "powershell -NoProfile -Command "
+                f"Get-ChildItem -Path '{ps_target}' -Recurse -File -Filter '{ps_glob}' "
+                "-ErrorAction SilentlyContinue "
+                f"| Select-String -Pattern '{ps_pat}' -ErrorAction SilentlyContinue "
+                "| Select-Object -First 80 "
+                "| ForEach-Object { "
+                "$r = Resolve-Path -Relative -Path $_.Path; "
+                "if ($r.StartsWith('.\\')) { $r = $r.Substring(2) }; "
+                "$r + ':' + $_.LineNumber + ':' + $_.Line "
+                "}"
+            )
+        else:
+            include = f" --include={json.dumps(glob)}" if glob else ""
+            cmd = (
+                f"grep -RIn{include} -- {json.dumps(pattern)} {json.dumps(target)} 2>/dev/null"
+                " | head -n 80"
+            )
         try:
             result = run_command(host_id, remote, cmd, timeout=_SHELL_TIMEOUT)
-            out = str(result.get("output") or "").strip()
+            out = _normalize_tool_paths(str(result.get("output") or "").strip())
             return out or "(no matches)"
         except Exception as err:  # noqa: BLE001
             return str(getattr(err, "detail", None) or err)

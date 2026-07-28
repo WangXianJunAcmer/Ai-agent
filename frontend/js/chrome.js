@@ -207,23 +207,43 @@
 
   function saveChatHistory(opts) {
     try {
-      var forceStreaming = opts && Object.prototype.hasOwnProperty.call(opts, "streaming")
+      opts = opts || {};
+      var forceStreaming = Object.prototype.hasOwnProperty.call(opts, "streaming")
         ? !!opts.streaming
         : null;
       var streaming = forceStreaming == null ? !!(isRunning || pendingFollow) : forceStreaming;
-      if (streaming && activeConversationId != null && typeof markRunSlotBusy === "function") {
-        markRunSlotBusy(activeConversationId, true, sessionId);
-      } else if (!streaming && activeConversationId != null && typeof markRunSlotBusy === "function" && !isRunning && !pendingFollow) {
-        markRunSlotBusy(activeConversationId, false);
+      // Pin target conversation at call time — never let a late PUT steal focus
+      // or write the current thread into a previously active chat.
+      var saveConvId = opts.convId != null ? opts.convId : activeConversationId;
+      // DOM-based saves only while this chat is the open one.
+      if (saveConvId == null || activeConversationId == null
+          || Number(saveConvId) !== Number(activeConversationId)) {
+        return Promise.resolve();
+      }
+      var eventCursor = 0;
+      var slotSession = "";
+      if (typeof getRunSlot === "function" && saveConvId != null) {
+        try {
+          var slot = getRunSlot(saveConvId);
+          slotSession = (slot && slot.sessionId) || "";
+          eventCursor = Number((slot && slot.eventCursor) || 0) || 0;
+        } catch (e) {}
+      }
+      var persistSession = slotSession || sessionId || "";
+      if (streaming && saveConvId != null && typeof markRunSlotBusy === "function") {
+        markRunSlotBusy(saveConvId, true, persistSession || undefined);
+      } else if (!streaming && saveConvId != null && typeof markRunSlotBusy === "function" && !isRunning && !pendingFollow) {
+        markRunSlotBusy(saveConvId, false);
       }
       var payload = {
         bootId: serverBootId || "",
-        sessionId: sessionId || "",
+        sessionId: persistSession,
         model: modelField.value || defaultModel,
         messages: collectHistoryMessages(),
         // streaming: mid-turn; refresh must /follow (pending kept for older caches)
         streaming: streaming,
         pending: streaming,
+        eventCursor: streaming ? eventCursor : 0,
         savedAt: Date.now(),
       };
       var key = historyStorageKey();
@@ -235,44 +255,61 @@
       }
       var hasMessages = !!(payload.messages && payload.messages.length);
       // Empty placeholder stays as「新对话」until the first turn finishes.
-      if (!hasMessages) return;
+      if (!hasMessages) return Promise.resolve();
       var persist = function (convId) {
-        return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(convId), {
+        if (convId == null) return Promise.resolve();
+        var targetId = Number(convId);
+        // Re-check: user may have switched after messages were collected.
+        if (Number(activeConversationId) !== targetId) return Promise.resolve();
+        return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(targetId), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          payload: payload,
-          session_id: payload.sessionId || "",
-          model: payload.model || "",
-          workspace_root: activeWorkspaceRoot || undefined,
-        }),
-      }).then(function (res) { return res.json(); }).then(function (data) {
-          if (data && data.conversation) {
-            rememberActiveConversation(data.conversation.id);
+          body: JSON.stringify({
+            payload: payload,
+            session_id: payload.sessionId || "",
+            model: payload.model || "",
+            // Do NOT send workspace_root here — affiliation is fixed at create time.
+          }),
+        }).then(function (res) { return res.json(); }).then(function (data) {
+          if (!(data && data.conversation)) return;
+          // Only touch active UI when this save is still for the open chat.
+          if (Number(activeConversationId) === targetId) {
             if (data.conversation.title && chatTitleEl && !streaming) {
-              chatTitleEl.textContent = data.conversation.title;
+              var nextTitle = String(data.conversation.title || "").trim();
+              // Skip placeholders — title appears after first-round auto-title.
+              if (nextTitle && !(typeof isPlaceholderTitle === "function" && isPlaceholderTitle(nextTitle))) {
+                chatTitleEl.textContent = nextTitle;
+              }
             }
-            // Avoid re-rendering the whole nav on every streaming tick.
-            if (streaming) scheduleRefreshConversationList();
-            else if (typeof refreshConversationList === "function") refreshConversationList();
           }
+          // Always refresh sidebar so auto-titles show up for the right row.
+          if (streaming) scheduleRefreshConversationList();
+          else if (typeof refreshConversationList === "function") refreshConversationList();
         });
       };
-      if (activeConversationId) {
-        persist(activeConversationId).catch(function () {});
-      } else if (typeof ensureConversationId === "function") {
-        ensureConversationId().then(persist).catch(function () {});
-      }
+      return persist(saveConvId).catch(function () {});
     } catch (err) {
       // ponytail: quota / private mode — skip persistence
+      return Promise.resolve();
     }
   }
 
-  function scheduleSaveChatHistory() {
+  function scheduleSaveChatHistory(opts) {
+    opts = opts || null;
+    var scheduledConvId = (opts && opts.convId != null)
+      ? opts.convId
+      : activeConversationId;
     if (historySaveTimer) clearTimeout(historySaveTimer);
     historySaveTimer = setTimeout(function () {
       historySaveTimer = null;
-      saveChatHistory();
+      if (scheduledConvId == null
+          || activeConversationId == null
+          || Number(scheduledConvId) !== Number(activeConversationId)) {
+        return;
+      }
+      var nextOpts = opts ? Object.assign({}, opts) : {};
+      nextOpts.convId = scheduledConvId;
+      saveChatHistory(nextOpts);
     }, 200);
   }
 
@@ -281,7 +318,7 @@
       clearTimeout(historySaveTimer);
       historySaveTimer = null;
     }
-    saveChatHistory(opts || null);
+    return saveChatHistory(opts || null);
   }
 
   function restoreWorklog(msg, cards) {
@@ -334,9 +371,15 @@
     if (data.model) setSelectedModel(data.model, false);
     clearThreadMessages();
     (data.messages || []).forEach(function (item) {
+      var text = String(item.text || "");
+      // Drop stale interruption notices saved by older clients after a bad follow.
+      if (/上次回复已中断|会话已过期/.test(text) && text.replace(/\s+/g, "").length < 40) {
+        var kind = item.kind || (item.role === "You" || item.role === "user" ? "user" : "agent");
+        if (kind !== "user") return;
+      }
       var msg = appendMessage(
         item.role || (item.kind === "user" ? "You" : "Agent"),
-        item.text || "",
+        text,
         item.kind || "agent",
         !!item.markdown,
         item.attachments || []
@@ -578,6 +621,11 @@
     if (emptyEl) emptyEl.setAttribute("aria-hidden", show ? "false" : "true");
     // Workspace context bar is landing-only; close its picker when chat starts.
     if (!show && typeof closeContextPickers === "function") closeContextPickers();
+    // Empty landing: no header title until first-round auto-title arrives.
+    if (show) {
+      if (chatTitleEl) chatTitleEl.textContent = "";
+      if (typeof updateCrumb === "function") updateCrumb();
+    }
   }
 
   function setFullscreen(on) {

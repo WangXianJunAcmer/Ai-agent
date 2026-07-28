@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator, Callable
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.auth import (
+    REMEMBER_DAYS,
     TOKEN_COOKIE,
     create_user,
     current_user,
@@ -31,6 +32,7 @@ from backend.auth import (
     issue_token,
     require_user,
     revoke_token,
+    user_from_token,
     user_public,
     verify_login,
 )
@@ -327,7 +329,9 @@ class WorkspaceTransferRequest(BaseModel):
 class WorkspaceExecRequest(BaseModel):
     root: str | None = None
     command: str
+    cwd: str | None = None
     timeout: float | None = 30.0
+    conda_env: str | None = None
 
 
 class SshHostUpsert(BaseModel):
@@ -352,6 +356,46 @@ def _ssh_parts(ws_key: str) -> tuple[str, str]:
     from backend.ssh_workspace import parse_ssh_uri
 
     return parse_ssh_uri(ws_key)
+
+
+class _WsCtx:
+    """Resolved workspace for local Path APIs or SSH host_id + remote root."""
+
+    __slots__ = ("key", "is_ssh", "host_id", "remote", "local")
+
+    def __init__(
+        self,
+        *,
+        key: str,
+        is_ssh: bool,
+        host_id: str | None = None,
+        remote: str | None = None,
+        local: Path | None = None,
+    ) -> None:
+        self.key = key
+        self.is_ssh = is_ssh
+        self.host_id = host_id
+        self.remote = remote
+        self.local = local
+
+
+def _ws_ctx(root_raw: str | None) -> _WsCtx:
+    from backend.ssh_workspace import is_ssh_uri
+    from backend.workspace import resolve_workspace_root
+
+    ws_key = _normalize_ws(root_raw)
+    if is_ssh_uri(ws_key):
+        host_id, remote = _ssh_parts(ws_key)
+        return _WsCtx(key=ws_key, is_ssh=True, host_id=host_id, remote=remote)
+    return _WsCtx(
+        key=ws_key,
+        is_ssh=False,
+        local=resolve_workspace_root(ws_key, settings),
+    )
+
+
+def _ssh_unsupported(detail: str) -> None:
+    raise HTTPException(status_code=400, detail=detail)
 
 
 frontend_dir = ROOT / "frontend"
@@ -403,7 +447,7 @@ def _inject_page(name: str, *, provider: str = "cursor") -> Response:
 
 
 def _set_auth_cookie(response: Response, token: str, *, remember: bool) -> None:
-    # remember → 30 days; otherwise browser-session cookie (no max_age).
+    # remember → REMEMBER_DAYS; otherwise browser-session cookie (no max_age).
     kwargs = {
         "key": TOKEN_COOKIE,
         "value": token,
@@ -412,7 +456,7 @@ def _set_auth_cookie(response: Response, token: str, *, remember: bool) -> None:
         "path": "/",
     }
     if remember:
-        kwargs["max_age"] = 30 * 24 * 3600
+        kwargs["max_age"] = int(REMEMBER_DAYS) * 24 * 3600
     response.set_cookie(**kwargs)
 
 
@@ -545,6 +589,19 @@ async def conversations_put(conv_id: int, req: ConversationPutRequest, request: 
     if existing is None:
         raise HTTPException(status_code=404, detail="对话不存在")
     payload = dict(req.payload or {})
+    # Background poll may only clear streaming without rewriting messages.
+    if payload.pop("_clearStreamingOnly", None):
+        try:
+            existing_payload = json.loads(existing.get("payload_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            existing_payload = {}
+        if not isinstance(existing_payload, dict):
+            existing_payload = {}
+        existing_payload["streaming"] = False
+        existing_payload["pending"] = False
+        if req.session_id:
+            existing_payload["sessionId"] = str(req.session_id).strip()
+        payload = existing_payload
     session_id = (req.session_id or payload.get("sessionId") or "").strip()
     model = (req.model or payload.get("model") or "").strip()
     title = req.title
@@ -553,17 +610,16 @@ async def conversations_put(conv_id: int, req: ConversationPutRequest, request: 
         title = title_from_payload(payload, fallback=str(existing.get("title") or "新对话"))
     elif title is None:
         title = None
-    ws = None
-    if req.workspace_root is not None:
-        ws = _normalize_ws(req.workspace_root)
+    # PUT persists messages/session only. Workspace affiliation is set at create
+    # (or via explicit PATCH). Ignoring req.workspace_root prevents accidental moves.
     row = update_conversation(
         uid,
         int(conv_id),
         payload_json=json.dumps(payload, ensure_ascii=False),
-        agent_session_id=session_id,
-        model=model,
+        agent_session_id=session_id if session_id else None,
+        model=model if model else None,
         title=title,
-        workspace_root=ws,
+        workspace_root=None,
     )
     return {"ok": True, "conversation": public_conversation(row)}
 
@@ -720,183 +776,294 @@ async def workspace_tree(
     path: str = ".",
     depth: int = 2,
 ):
-    from backend.ssh_workspace import is_ssh_uri, list_tree as ssh_list_tree
-    from backend.workspace import list_tree, resolve_workspace_root
+    from backend.ssh_workspace import list_tree as ssh_list_tree
+    from backend.workspace import list_tree
 
     require_user(request)
-    ws_key = _normalize_ws(root or None)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return {"ok": True, **ssh_list_tree(host_id, remote, path, depth=max(1, min(depth, 4)))}
-    ws = resolve_workspace_root(ws_key, settings)
-    return {"ok": True, **list_tree(ws, path, depth=max(1, min(depth, 4)))}
+    ctx = _ws_ctx(root or None)
+    depth_n = max(1, min(depth, 4))
+    if ctx.is_ssh:
+        return {"ok": True, **ssh_list_tree(ctx.host_id, ctx.remote, path, depth=depth_n)}
+    return {"ok": True, **list_tree(ctx.local, path, depth=depth_n)}
 
 
 @app.get("/api/workspace/file")
 async def workspace_file_get(request: Request, root: str = "", path: str = ""):
-    from backend.ssh_workspace import is_ssh_uri, read_file as ssh_read_file
-    from backend.workspace import read_file, resolve_workspace_root
+    from backend.ssh_workspace import read_file as ssh_read_file
+    from backend.workspace import read_file
 
     require_user(request)
     if not (path or "").strip():
         raise HTTPException(status_code=422, detail="path required")
-    ws_key = _normalize_ws(root or None)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return {"ok": True, **ssh_read_file(host_id, remote, path)}
-    ws = resolve_workspace_root(ws_key, settings)
-    return {"ok": True, **read_file(ws, path)}
+    ctx = _ws_ctx(root or None)
+    if ctx.is_ssh:
+        return {"ok": True, **ssh_read_file(ctx.host_id, ctx.remote, path)}
+    return {"ok": True, **read_file(ctx.local, path)}
 
 
 @app.put("/api/workspace/file")
 async def workspace_file_put(req: WorkspaceFilePut, request: Request):
-    from backend.ssh_workspace import is_ssh_uri, write_file as ssh_write_file
-    from backend.workspace import resolve_workspace_root, write_file
+    from backend.ssh_workspace import write_file as ssh_write_file
+    from backend.workspace import write_file
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_write_file(host_id, remote, req.path, req.content)
-    ws = resolve_workspace_root(ws_key, settings)
-    return write_file(ws, req.path, req.content)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        return ssh_write_file(ctx.host_id, ctx.remote, req.path, req.content)
+    return write_file(ctx.local, req.path, req.content)
 
 
 @app.post("/api/workspace/create")
 async def workspace_create(req: WorkspacePathRequest, request: Request):
-    from backend.ssh_workspace import create_file as ssh_create_file, is_ssh_uri
-    from backend.workspace import create_file, resolve_workspace_root
+    from backend.ssh_workspace import create_file as ssh_create_file
+    from backend.workspace import create_file
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_create_file(host_id, remote, req.path, req.content or "")
-    ws = resolve_workspace_root(ws_key, settings)
-    return create_file(ws, req.path, req.content or "")
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        return ssh_create_file(ctx.host_id, ctx.remote, req.path, req.content or "")
+    return create_file(ctx.local, req.path, req.content or "")
 
 
 @app.post("/api/workspace/mkdir")
 async def workspace_mkdir(req: WorkspacePathRequest, request: Request):
-    from backend.ssh_workspace import create_dir as ssh_create_dir, is_ssh_uri
-    from backend.workspace import create_dir, resolve_workspace_root
+    from backend.ssh_workspace import create_dir as ssh_create_dir
+    from backend.workspace import create_dir
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_create_dir(host_id, remote, req.path)
-    ws = resolve_workspace_root(ws_key, settings)
-    return create_dir(ws, req.path)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        return ssh_create_dir(ctx.host_id, ctx.remote, req.path)
+    return create_dir(ctx.local, req.path)
 
 
 @app.post("/api/workspace/rename")
 async def workspace_rename(req: WorkspaceRenameRequest, request: Request):
-    from backend.ssh_workspace import is_ssh_uri, rename_entry as ssh_rename
-    from backend.workspace import rename_entry, resolve_workspace_root
+    from backend.ssh_workspace import rename_entry as ssh_rename
+    from backend.workspace import rename_entry
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_rename(host_id, remote, req.path, req.new_name)
-    ws = resolve_workspace_root(ws_key, settings)
-    return rename_entry(ws, req.path, req.new_name)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        return ssh_rename(ctx.host_id, ctx.remote, req.path, req.new_name)
+    return rename_entry(ctx.local, req.path, req.new_name)
 
 
 @app.post("/api/workspace/delete")
 async def workspace_delete(req: WorkspacePathRequest, request: Request):
-    from backend.ssh_workspace import delete_entry as ssh_delete, is_ssh_uri
-    from backend.workspace import delete_entry, resolve_workspace_root
+    from backend.ssh_workspace import delete_entry as ssh_delete
+    from backend.workspace import delete_entry
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_delete(host_id, remote, req.path)
-    ws = resolve_workspace_root(ws_key, settings)
-    return delete_entry(ws, req.path)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        return ssh_delete(ctx.host_id, ctx.remote, req.path)
+    return delete_entry(ctx.local, req.path)
 
 
 @app.post("/api/workspace/copy")
 async def workspace_copy(req: WorkspaceTransferRequest, request: Request):
-    from backend.ssh_workspace import is_ssh_uri
-    from backend.workspace import copy_entry, resolve_workspace_root
+    from backend.workspace import copy_entry
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        raise HTTPException(status_code=400, detail="SSH 工作区暂不支持复制，请用远程 shell")
-    ws = resolve_workspace_root(ws_key, settings)
-    return copy_entry(ws, req.path, req.dest)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        _ssh_unsupported("SSH 工作区暂不支持复制，请用远程 shell")
+    return copy_entry(ctx.local, req.path, req.dest)
 
 
 @app.post("/api/workspace/move")
 async def workspace_move(req: WorkspaceTransferRequest, request: Request):
-    from backend.ssh_workspace import is_ssh_uri
-    from backend.workspace import move_entry, resolve_workspace_root
+    from backend.workspace import move_entry
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        raise HTTPException(status_code=400, detail="SSH 工作区暂不支持移动，请用远程 shell")
-    ws = resolve_workspace_root(ws_key, settings)
-    return move_entry(ws, req.path, req.dest)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        _ssh_unsupported("SSH 工作区暂不支持移动，请用远程 shell")
+    return move_entry(ctx.local, req.path, req.dest)
 
 
 @app.get("/api/workspace/info")
 async def workspace_info(request: Request, root: str = "", path: str = "."):
-    from backend.ssh_workspace import is_ssh_uri, path_info as ssh_path_info
-    from backend.workspace import path_info, resolve_workspace_root
+    from backend.ssh_workspace import path_info as ssh_path_info
+    from backend.workspace import path_info
 
     require_user(request)
-    ws_key = _normalize_ws(root or None)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_path_info(host_id, remote, path or ".")
-    ws = resolve_workspace_root(ws_key, settings)
-    return path_info(ws, path or ".")
+    ctx = _ws_ctx(root or None)
+    if ctx.is_ssh:
+        return ssh_path_info(ctx.host_id, ctx.remote, path or ".")
+    return path_info(ctx.local, path or ".")
 
 
 @app.get("/api/workspace/git")
 async def workspace_git(request: Request, root: str = ""):
-    from backend.ssh_workspace import git_info_remote, is_ssh_uri
-    from backend.workspace import git_info, resolve_workspace_root
+    from backend.ssh_workspace import git_info_remote
+    from backend.workspace import git_info
 
     require_user(request)
-    ws_key = _normalize_ws(root or None)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return git_info_remote(host_id, remote)
-    ws = resolve_workspace_root(ws_key, settings)
-    return git_info(ws)
+    ctx = _ws_ctx(root or None)
+    if ctx.is_ssh:
+        return git_info_remote(ctx.host_id, ctx.remote)
+    return git_info(ctx.local)
 
 
 @app.post("/api/workspace/reveal")
 async def workspace_reveal(req: WorkspacePathRequest, request: Request):
-    from backend.ssh_workspace import is_ssh_uri
-    from backend.workspace import resolve_workspace_root, reveal_in_os
+    from backend.workspace import reveal_in_os
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        raise HTTPException(status_code=400, detail="SSH 远程路径无法在本机资源管理器打开")
-    ws = resolve_workspace_root(ws_key, settings)
-    return reveal_in_os(ws, req.path)
+    ctx = _ws_ctx(req.root)
+    if ctx.is_ssh:
+        _ssh_unsupported("SSH 远程路径无法在本机资源管理器打开")
+    return reveal_in_os(ctx.local, req.path)
 
 
 @app.post("/api/workspace/exec")
 async def workspace_exec(req: WorkspaceExecRequest, request: Request):
-    from backend.ssh_workspace import is_ssh_uri, run_command as ssh_run
-    from backend.workspace import resolve_workspace_root, run_command
+    from backend.ssh_workspace import run_command as ssh_run
+    from backend.workspace import run_command
 
     require_user(request)
-    ws_key = _normalize_ws(req.root)
-    if is_ssh_uri(ws_key):
-        host_id, remote = _ssh_parts(ws_key)
-        return ssh_run(host_id, remote, req.command, timeout=float(req.timeout or 30))
-    ws = resolve_workspace_root(ws_key, settings)
-    return run_command(ws, req.command, timeout=float(req.timeout or 30))
+    ctx = _ws_ctx(req.root)
+    timeout = float(req.timeout or 30)
+    if ctx.is_ssh:
+        return ssh_run(
+            ctx.host_id,
+            ctx.remote,
+            req.command,
+            cwd=req.cwd,
+            timeout=timeout,
+        )
+    return run_command(
+        ctx.local,
+        req.command,
+        cwd=req.cwd,
+        timeout=timeout,
+        conda_env=req.conda_env,
+    )
+
+
+@app.websocket("/api/workspace/term/ws")
+async def workspace_term_ws(websocket: WebSocket):
+    """Realtime PTY: binary frames = stdin/stdout; text JSON = resize/ready/exit/error."""
+    from backend.term_pty import drop_session, open_local_session, open_ssh_session
+
+    # Auth: cookie (upgrade) or ?token= (Bearer embeds)
+    token = (websocket.query_params.get("token") or "").strip()
+    cookie = (websocket.cookies.get(TOKEN_COOKIE) or "").strip()
+    user = user_from_token(token or cookie or None)
+    if user is None:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    uid = int(user["id"])
+    root_raw = (websocket.query_params.get("root") or "").strip()
+    cwd = (websocket.query_params.get("cwd") or "").strip() or None
+    shell_id = (websocket.query_params.get("shell_id") or "").strip() or None
+    try:
+        cols = int(websocket.query_params.get("cols") or 80)
+        rows = int(websocket.query_params.get("rows") or 24)
+    except ValueError:
+        cols, rows = 80, 24
+
+    sess = None
+    try:
+        ctx = _ws_ctx(root_raw or None)
+        if ctx.is_ssh:
+            sess = open_ssh_session(
+                user_id=uid,
+                host_id=ctx.host_id,
+                remote_cwd=cwd or ctx.remote,
+                cols=cols,
+                rows=rows,
+                shell_id=shell_id,
+            )
+        else:
+            sess = open_local_session(
+                user_id=uid,
+                root=ctx.local,
+                cwd=cwd,
+                cols=cols,
+                rows=rows,
+                shell_id=shell_id,
+            )
+        await websocket.send_text(
+            json.dumps({"type": "ready", "shell_id": sess.shell_id}, ensure_ascii=False)
+        )
+    except HTTPException as err:
+        detail = err.detail if isinstance(err.detail, str) else "无法启动终端"
+        await websocket.send_text(
+            json.dumps({"type": "error", "message": detail}, ensure_ascii=False)
+        )
+        await websocket.close(code=4400)
+        return
+    except Exception as err:  # noqa: BLE001
+        await websocket.send_text(
+            json.dumps({"type": "error", "message": str(err)}, ensure_ascii=False)
+        )
+        await websocket.close(code=1011)
+        return
+
+    async def _pump_out() -> None:
+        assert sess is not None
+        while True:
+            kind, payload = await asyncio.to_thread(sess.out_q.get)
+            if kind == "data":
+                await websocket.send_bytes(payload if isinstance(payload, (bytes, bytearray)) else bytes(payload))
+            elif kind == "exit":
+                await websocket.send_text(
+                    json.dumps({"type": "exit", "code": int(payload or 0)}, ensure_ascii=False)
+                )
+                break
+            else:
+                break
+
+    pump = asyncio.create_task(_pump_out())
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            data = message.get("bytes")
+            if data is not None:
+                sess.write(bytes(data))
+                continue
+            text = message.get("text")
+            if text is None:
+                continue
+            try:
+                msg = json.loads(text)
+            except json.JSONDecodeError:
+                # Treat plain text as stdin (UTF-8)
+                sess.write(text.encode("utf-8", errors="replace"))
+                continue
+            if not isinstance(msg, dict):
+                continue
+            mtype = str(msg.get("type") or "")
+            if mtype == "resize":
+                try:
+                    c = int(msg.get("cols") or cols)
+                    r = int(msg.get("rows") or rows)
+                except (TypeError, ValueError):
+                    continue
+                sess.resize(c, r)
+            elif mtype == "stdin":
+                raw = msg.get("data")
+                if isinstance(raw, str):
+                    sess.write(raw.encode("utf-8", errors="replace"))
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        pump.cancel()
+        try:
+            await pump
+        except Exception:
+            pass
+        if sess is not None:
+            drop_session(uid, sess.shell_id)
 
 
 @app.get("/api/ssh/hosts")
@@ -933,6 +1100,16 @@ async def ssh_hosts_test(host_id: str, request: Request):
 
     require_user(request)
     return test_connection(host_id)
+
+
+@app.get("/api/ssh/hosts/{host_id}/os")
+async def ssh_hosts_os(host_id: str, request: Request, refresh: bool = False):
+    """Detect remote OS/shell (Windows→cmd, Linux/macOS→bash/sh)."""
+    from backend.ssh_workspace import detect_remote_os
+
+    require_user(request)
+    info = detect_remote_os(host_id, force=bool(refresh))
+    return {"ok": True, "id": host_id, "os": info, **info}
 
 
 @app.get("/api/ssh/hosts/{host_id}/tree")
@@ -1206,13 +1383,20 @@ def main():
     # reload=True is unsafe for this service: the WatchFiles parent keeps its
     # initial watch set for the whole process lifetime, and agent file writes
     # under cwd kill mid-turn SSE. Prefer a manual restart while developing.
+    # Pass the app object (not "backend.main:app") so Windows does not spawn a
+    # second worker under the venv base interpreter (Anaconda python.exe). That
+    # split caused pid-file ≠ listener and intermittent "Bridge request failed
+    # with HTTP 502" from orphan / mismatched cursor-sdk-bridge processes.
     run_kwargs = {
-        "app": "backend.main:app",
+        "app": app,
         "host": host,
         "port": port,
-        "reload": bool(settings["reload"]),
+        "reload": False,
     }
     if settings["reload"]:
+        # reload requires an import string; keep it opt-in and document the risk.
+        run_kwargs["app"] = "backend.main:app"
+        run_kwargs["reload"] = True
         run_kwargs["reload_dirs"] = [str(ROOT / "backend"), str(ROOT / "frontend")]
     uvicorn.run(**run_kwargs)
 

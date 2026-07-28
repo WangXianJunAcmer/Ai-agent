@@ -1,4 +1,9 @@
-"""Input/output safety: block secret fishing; intercept secret outputs; block sensitive reads."""
+"""Input/output safety: block secret fishing; scrub leaks; block secret-file reads.
+
+Design (Codex/GPT style): no nagging safety prompts in the chat. Guards are silent
+tool/input/output filters. Connecting via SSH and reading ~/.ssh/config Host lines
+are allowed; dumping private key / .env / API key contents is not.
+"""
 
 from __future__ import annotations
 
@@ -13,16 +18,34 @@ from backend.repo_write_guard import (
     normalize_tool_name,
 )
 
-# ponytail: 启发式双向拦密；漏网靠已知密钥精确擦除。升级：SDK SandboxOptions / DLP。
+# Ask to *reveal* secret values — not operational talk about keys / SSH.
 _SECRET_ASK_RE = re.compile(
     r"(?:"
-    r"(?:密码|口令|password|passwd|api[\s_-]?key|secret|密钥|私钥|凭证|token|凭据)"
+    r"(?:密码|口令|password|passwd|api[\s_-]?key|secret|私钥|凭证|token|凭据|API\s*密钥)"
     r".{0,24}"
-    r"(?:是什么|是多少|告诉|给我|输出|打印|查看|多少|啥|多少钱|多少啊)"
+    r"(?:是什么|是多少|告诉我|发给我|输出|打印|复述|明文|全文|内容)"
     r"|"
-    r"(?:是什么|告诉|给我|输出|打印|查看|多少|啥)"
+    r"(?:是什么|告诉我|发给我|输出|打印|复述|明文)"
     r".{0,24}"
-    r"(?:密码|口令|password|passwd|api[\s_-]?key|secret|密钥|私钥|凭证|token)"
+    r"(?:密码|口令|password|passwd|api[\s_-]?key|secret|私钥|凭证|token|凭据|API\s*密钥)"
+    r"|"
+    # 「密钥」 alone is common in SSH ops; only block clear reveal intent.
+    r"密钥.{0,16}(?:是什么|内容|正文|明文|告诉我|发给我|输出|打印|复述)"
+    r"|"
+    r"(?:把|将)?.{0,8}密钥.{0,12}(?:打出来|发我|发给我|贴出来)"
+    r")",
+    re.I | re.S,
+)
+
+# Operational intents that must never trip secret-ask (connect, pick key file, etc.).
+_SECRET_OPS_ALLOW_RE = re.compile(
+    r"(?:"
+    r"\bssh\b|SSH|HostName|IdentityFile|known_hosts"
+    r"|(?:连接|连上|连一下|登录|登陆).{0,24}(?:服务器|主机|机器|ssh|SSH|\d{1,3})"
+    r"|(?:用|使用).{0,8}密钥.{0,20}(?:连|登录|登陆|ssh|SSH)"
+    r"|密钥(?:文件|路径|名|后缀|哪个|哪一个)"
+    r"|(?:哪个|哪一个).{0,12}密钥"
+    r"|~/?\.ssh|\.ssh[/\\]"
     r")",
     re.I | re.S,
 )
@@ -40,29 +63,49 @@ _ILLEGAL_ASK_RE = re.compile(
     re.I | re.S,
 )
 
+# Private keys / .env / credentials — NOT config, known_hosts, or *.pub.
 _SENSITIVE_PATH_RE = re.compile(
     r"(?:"
     r"(?:^|[/\\])\.env(?:\.[A-Za-z0-9._-]+)?$"
     r"|(?:^|[/\\])(?:credentials|secrets?)(?:\.[A-Za-z0-9._-]+)?$"
     r"|\.pem$"
-    r"|(?:^|[/\\])id_rsa(?:\.pub)?$"
-    r"|(?:^|[/\\])id_ed25519(?:\.pub)?$"
+    r"|(?:^|[/\\])id_(?:rsa|ed25519|ecdsa|dsa)$"
     r"|service[_-]?account.*\.json$"
+    # Any non-pub file under .ssh except config / known_hosts
+    r"|(?:^|[/\\])\.ssh[/\\](?!(?:config|known_hosts(?:\.old)?)$)(?!.*\.pub$)[^/\\]+$"
     r")",
     re.I,
 )
 
-_SHELL_SENSITIVE_RE = re.compile(
+_SHELL_READER_RE = re.compile(
+    r"\b(?:cat|less|more|head|tail|bat|type|Get-Content|gc)\b",
+    re.I,
+)
+
+# Targets that mean "dump secret file contents" (not ssh -i path, not config).
+_SHELL_SECRET_TARGET_RE = re.compile(
     r"(?:"
-    r"\b(?:cat|less|more|head|tail|bat|type)\b[^\n|;]*"
-    r"(?:\.env\b|credentials|id_rsa|\.pem\b)"
-    r"|"
-    r"\b(?:grep|rg|awk|sed)\b[^\n|;]*"
-    r"(?:\.env\b|password|api[_-]?key|CURSOR_API_KEY)"
+    r"\.env\b"
+    r"|credentials"
+    r"|\.pem\b"
+    r"|(?:^|[/\\\"'\\s])id_(?:rsa|ed25519|ecdsa|dsa)\b"
+    r"|[/\\]\.ssh[/\\](?!(?:config|known_hosts(?:\.old)?)\b)(?![^\s\"']*\.pub\b)[^\s\"']+"
+    r")",
+    re.I,
+)
+
+_SHELL_ENV_DUMP_RE = re.compile(
+    r"(?:"
+    r"\b(?:grep|rg|awk|sed|Select-String)\b[^\n|;]*(?:\.env\b|password|api[_-]?key|CURSOR_API_KEY)"
     r"|"
     r"open\s*\(\s*['\"][^'\"]*(?:\.env)['\"]"
     r"|"
-    r"\benv\b|\bprintenv\b|\becho\s+\$[A-Z_]*KEY"
+    r"\bprintenv\b"
+    r"|"
+    r"\becho\s+\$[A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)"
+    # Bare `env` / `env |` — not PowerShell `$env:VAR` and not `ENV_FOO=`.
+    r"|"
+    r"(?<!\$)\benv\b(?!:)(?!\s+\w+=)"
     r")",
     re.I,
 )
@@ -102,7 +145,7 @@ _SECRET_ASSIGNMENT_RES: list[re.Pattern[str]] = [
     re.compile(
         r"(?i)((?:api[_-]?key|password|passwd|secret|token|access[_-]?key|CURSOR_API_KEY)\s*[=:：]\s*)(['\"]?)([^\s'\"|,}{]+)\2"
     ),
-    re.compile(r"(?i)((?:密码|口令|密钥|凭证)\s*[=:：]\s*)([^\s|，,；;]+)"),
+    re.compile(r"(?i)((?:密码|口令|私钥|凭证)\s*[=:：]\s*)([^\s|，,；;]+)"),
     re.compile(
         r"(?i)((?:password|passwd|密码|口令)\s*[|｜]\s*)(`?)([A-Za-z0-9!@#$%^&*._-]{6,64})\2"
     ),
@@ -114,29 +157,12 @@ _REDACT_PATTERNS += [
     (_SECRET_ASSIGNMENT_RES[2], r"\1\2[REDACTED]\2"),
 ]
 
-INPUT_BLOCK_SECRET = (
-    "不允许询问或索取密码、API Key、数据库凭证等敏感信息。"
-    "请到有权限的配置源自行查看，不要让助手读取或复述密钥。"
-)
-OUTPUT_BLOCK_SECRET = (
-    "不允许输出密码、API Key、数据库凭证等敏感信息。"
-    "相关内容已拦截，请到有权限的配置源自行查看。"
-)
-INPUT_BLOCK_ILLEGAL = (
-    "该请求涉及违法或高危用途，助手不会提供相关协助。"
-)
-SENSITIVE_READ_BLOCK = (
-    "禁止读取含密钥的配置/凭证文件（如 .env、私钥、credentials）。"
-    "请勿让助手打开或输出这些文件内容。"
-)
+# User/agent-facing notices: short, silent — no policy essays about what *is* allowed.
+INPUT_BLOCK_SECRET = "我不能提供密码、API Key 或私钥内容。"
+OUTPUT_BLOCK_SECRET = "回复中含敏感内容，已省略。"
+INPUT_BLOCK_ILLEGAL = "该请求涉及违法或高危用途，助手不会提供相关协助。"
+SENSITIVE_READ_BLOCK = "无法读取该敏感文件。"
 
-_POLICY_PREFIX = (
-    "【安全策略】禁止读取或输出任何密钥/密码/API Key/数据库凭证/私钥；"
-    "禁止打开 .env、credentials、*.pem、id_rsa 等敏感文件；"
-    "禁止用 Shell 打印环境变量中的密钥（env/printenv/$CURSOR_API_KEY）；"
-    "用户若索取上述信息，应拒绝并说明需自行到配置源查看；"
-    "禁止协助违法或网络攻击类请求。\n\n"
-)
 
 # Exact secrets from process settings (api_key); never log these.
 _KNOWN_SECRETS: list[str] = []
@@ -175,6 +201,8 @@ def input_block_reason(text: str) -> str | None:
         return None
     if _ILLEGAL_ASK_RE.search(msg):
         return INPUT_BLOCK_ILLEGAL
+    if _SECRET_OPS_ALLOW_RE.search(msg):
+        return None
     if _SECRET_ASK_RE.search(msg):
         return INPUT_BLOCK_SECRET
     return None
@@ -201,6 +229,19 @@ def is_sensitive_path(path: str) -> bool:
     return bool(_SENSITIVE_PATH_RE.search(p))
 
 
+def _shell_reads_secret(cmd: str) -> bool:
+    """True only when the command would dump secret file / env contents."""
+    text = cmd or ""
+    if _SHELL_ENV_DUMP_RE.search(text):
+        # Allow ssh even if the line somehow mentions env-looking tokens elsewhere.
+        if re.search(r"(?i)\bssh\b", text) and not _SHELL_READER_RE.search(text):
+            return False
+        return True
+    if _SHELL_READER_RE.search(text) and _SHELL_SECRET_TARGET_RE.search(text):
+        return True
+    return False
+
+
 def sensitive_tool_block_reason(name: str, args) -> str | None:
     """Block tools that would read secret-bearing files or dump env secrets."""
     if not _SAFETY_ENABLED:
@@ -210,20 +251,17 @@ def sensitive_tool_block_reason(name: str, args) -> str | None:
     if norm in _READ_TOOL_NAMES or norm in WRITE_TOOL_NAMES or norm == "write":
         for path in args_paths(args):
             if is_sensitive_path(path):
-                return f"{SENSITIVE_READ_BLOCK} 拦截工具: 「{name}」（目标: {path}）"
+                return SENSITIVE_READ_BLOCK
         if isinstance(args, dict):
             # glob_pattern / pattern cover Grep/Glob targeting sensitive names
             for key in ("glob_pattern", "pattern"):
                 val = args.get(key)
                 if isinstance(val, str) and is_sensitive_path(val):
-                    return f"{SENSITIVE_READ_BLOCK} 拦截工具: 「{name}」（目标: {val}）"
+                    return SENSITIVE_READ_BLOCK
     if norm in SHELL_TOOL_NAMES:
         cmd = cmd_from_args(args)
-        if cmd and _SHELL_SENSITIVE_RE.search(cmd):
-            preview = " ".join(cmd.split())
-            if len(preview) > 80:
-                preview = preview[:80] + "…"
-            return f"{SENSITIVE_READ_BLOCK} 拦截 Shell: `{preview}`"
+        if cmd and _shell_reads_secret(cmd):
+            return SENSITIVE_READ_BLOCK
     return None
 
 
@@ -291,7 +329,5 @@ def scrub_reply(text: str) -> str:
 
 
 def policy_prefix(session) -> str:
-    if not _SAFETY_ENABLED or getattr(session, "safety_injected", False):
-        return ""
-    session.safety_injected = True
-    return _POLICY_PREFIX
+    """Never inject safety prose into the user message (Codex/GPT style)."""
+    return ""

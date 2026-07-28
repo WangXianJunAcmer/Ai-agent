@@ -154,6 +154,13 @@ def extract_token(request: Request) -> str | None:
     cookie = request.cookies.get(TOKEN_COOKIE)
     if cookie:
         return cookie.strip()
+    # WebSocket cannot set Authorization; clients may pass ?token=
+    try:
+        q = request.query_params.get("token")
+    except Exception:
+        q = None
+    if q:
+        return str(q).strip() or None
     return None
 
 

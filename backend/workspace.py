@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,12 +11,21 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from backend.providers.tools import _resolve_in_root
+
+def resolve_in_root(host_root: Path, path: str) -> Path:
+    """Resolve path under host_root; raise ValueError if it escapes the workspace."""
+    raw = (path or "").strip() or "."
+    candidate = (host_root / raw).resolve() if not Path(raw).is_absolute() else Path(raw).resolve()
+    try:
+        candidate.relative_to(host_root)
+    except ValueError as err:
+        raise ValueError(f"path escapes workspace: {path}") from err
+    return candidate
 
 
 def _safe_path(root: Path, rel: str) -> Path:
     try:
-        return _resolve_in_root(root, rel)
+        return resolve_in_root(root, rel)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 
@@ -110,7 +120,7 @@ def workspace_label(root: Path | str) -> str:
 
 
 def list_tree(root: Path, rel: str = ".", *, depth: int = 2) -> dict:
-    base = _resolve_in_root(root, rel)
+    base = _safe_path(root, rel)
     if not base.exists():
         raise HTTPException(status_code=404, detail="路径不存在")
     if not base.is_dir():
@@ -138,7 +148,6 @@ def list_tree(root: Path, rel: str = ".", *, depth: int = 2) -> dict:
                 continue
             if name.startswith(".") and name not in {".gitignore", ".env.example"}:
                 continue
-            rel_path = f"{prefix}/{name}".lstrip("/") if prefix != "." else name
             if prefix == ".":
                 rel_path = name
             else:
@@ -409,36 +418,162 @@ def git_info(root: Path) -> dict:
     return {"ok": True, "root": str(root), "is_repo": True, "branch": branch}
 
 
-def run_command(root: Path, command: str, *, timeout: float = 30.0) -> dict:
+def _decode_console_bytes(data: bytes | None) -> str:
+    """Decode Windows cmd / shell output (often GBK) into Unicode text."""
+    raw = data or b""
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    candidates: list[str] = []
+    if sys.platform.startswith("win"):
+        candidates.extend(["gbk", "cp936", "mbcs"])
+    try:
+        import locale
+
+        pref = (locale.getpreferredencoding(False) or "").strip()
+        if pref and pref.lower() not in {c.lower() for c in candidates}:
+            candidates.append(pref)
+    except Exception:
+        pass
+    for enc in candidates:
+        try:
+            return raw.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _windows_cmd_exe() -> str:
+    comspec = (os.environ.get("ComSpec") or "").strip()
+    if comspec and comspec.lower().endswith("cmd.exe") and Path(comspec).is_file():
+        return comspec
+    windir = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
+    candidate = str(Path(windir) / "System32" / "cmd.exe")
+    return candidate if Path(candidate).is_file() else "cmd.exe"
+
+
+def _resolve_exec_cwd(root: Path, cwd: str | None) -> Path:
+    """Resolve an optional cwd under (or equal to) the workspace root."""
+    base = root.resolve()
+    raw = (cwd or "").strip()
+    if not raw or raw in {".", "./", ".\\"}:
+        return base
+    try:
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = (base / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+    except OSError as err:
+        raise HTTPException(status_code=400, detail=f"无效工作目录: {err}") from err
+    try:
+        candidate.relative_to(base)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="工作目录超出工作区") from err
+    if not candidate.exists() or not candidate.is_dir():
+        raise HTTPException(status_code=400, detail="工作目录不存在")
+    return candidate
+
+
+_CONDA_ENV_RE = re.compile(r"^[\w.\-]+$")
+
+
+def sanitize_conda_env(name: str | None) -> str:
+    env = (name or "").strip()
+    if not env or env in {".", ".."} or not _CONDA_ENV_RE.match(env):
+        return ""
+    return env
+
+
+def wrap_command_with_conda(command: str, conda_env: str | None, *, windows: bool) -> str:
+    """Prefix a one-shot shell line so conda activate persists for this command only."""
+    env = sanitize_conda_env(conda_env)
+    cmd = (command or "").strip()
+    if not env or not cmd:
+        return cmd
+    if windows:
+        # call is required so activate.bat can mutate this cmd.exe /c session.
+        return (
+            f'call conda.bat activate {env} >nul 2>&1 '
+            f'|| call conda activate {env} >nul 2>&1 '
+            f'|| call activate {env} >nul 2>&1 '
+            f'& {cmd}'
+        )
+    return (
+        'if command -v conda >/dev/null 2>&1; then '
+        'eval "$(conda shell.bash hook 2>/dev/null)" || '
+        'true; '
+        f'conda activate {env} 2>/dev/null || true; '
+        "fi; "
+        f"{{ {cmd}; }}"
+    )
+
+
+def run_command(
+    root: Path,
+    command: str,
+    *,
+    cwd: str | None = None,
+    timeout: float = 30.0,
+    conda_env: str | None = None,
+) -> dict:
+    """Run one line through the real system shell: Windows → cmd.exe, else /bin/sh."""
     cmd = (command or "").strip()
     if not cmd:
         raise HTTPException(status_code=422, detail="command required")
     if len(cmd) > 4000:
         raise HTTPException(status_code=400, detail="命令过长")
+    work = _resolve_exec_cwd(root, cwd)
+    env = os.environ.copy()
+    env.setdefault("FORCE_COLOR", "1")
+    env.setdefault("CLICOLOR_FORCE", "1")
+    env.setdefault("TERM", "xterm-256color")
+    windows = sys.platform.startswith("win")
+    active_conda = sanitize_conda_env(conda_env)
+    launch = wrap_command_with_conda(cmd, active_conda, windows=windows)
+    # Never inherit a PowerShell-as-COMSPEC surprise: call cmd.exe explicitly on Windows.
+    if windows:
+        argv = [_windows_cmd_exe(), "/d", "/s", "/c", launch]
+        shell_name = "cmd"
+    else:
+        argv = ["/bin/sh", "-c", launch]
+        shell_name = "sh"
     try:
         completed = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=str(root),
+            argv,
+            shell=False,
+            cwd=str(work),
             capture_output=True,
-            text=True,
+            text=False,
             timeout=max(1.0, min(timeout, 120.0)),
-            encoding="utf-8",
-            errors="replace",
+            env=env,
         )
     except subprocess.TimeoutExpired as err:
         raise HTTPException(status_code=400, detail="命令超时") from err
     except OSError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
-    out = (completed.stdout or "") + (("\n" + completed.stderr) if completed.stderr else "")
-    if len(out) > 200_000:
-        out = out[:200_000] + "\n…(truncated)"
+    out = _decode_console_bytes(completed.stdout)
+    err = _decode_console_bytes(completed.stderr)
+    text = out + (("\n" + err) if err else "")
+    if len(text) > 200_000:
+        text = text[:200_000] + "\n…(truncated)"
     return {
         "ok": True,
         "root": str(root),
+        "cwd": str(work),
         "command": cmd,
+        "shell": shell_name,
+        "conda_env": active_conda or None,
+        "os_family": "windows" if windows else "unix",
+        "os_label": (
+            "Windows" if windows
+            else ("macOS" if sys.platform == "darwin" else "Linux")
+        ),
         "exit_code": completed.returncode,
-        "output": out,
+        "output": text,
     }
 
 

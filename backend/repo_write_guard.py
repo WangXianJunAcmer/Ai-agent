@@ -148,11 +148,12 @@ def identity_prefix(session, settings: dict) -> str:
     if getattr(session, "identity_injected", False) or settings.get("allow_repo_write", True):
         return ""
     session.identity_injected = True
+    # Read-only write guard only — secret-file policy lives in safety.py tool filters,
+    # not as nagging prompt text the user can "feel" in every turn.
     return (
         "【只读模式】禁止修改本仓库任何文件：不要使用 Write / StrReplace / Delete / "
         "EditNotebook，也不要用 Shell 做 rm/mv/tee/重定向写文件/git 写操作。"
         "只允许 Read / Grep / Glob / 只读 Shell。"
-        "禁止读取 .env、credentials、私钥等含密钥文件。"
         f"上传暂存目录 {UPLOAD_DIR}/ 除外。用户若要求改代码，请说明需管理员打开 "
         "agent.allow_repo_write，并给出建议改动说明，不要自行落盘。\n\n"
     )

@@ -490,11 +490,12 @@
       syncModelPickerUI();
     }
     notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false, gen: runGen };
+    var state = { reply: "", finished: false, gen: runGen, convId: runConvId, sessionId: sessionId || "", eventCursor: 0 };
     if (typeof markRunSlotBusy === "function" && runConvId != null) {
-      markRunSlotBusy(runConvId, true, sessionId);
+      markRunSlotBusy(runConvId, true, state.sessionId || sessionId);
+      if (typeof getRunSlot === "function") getRunSlot(runConvId).eventCursor = 0;
     }
-    flushChatHistory({ streaming: true });
+    flushChatHistory({ streaming: true, convId: runConvId });
 
     var controller = new AbortController();
     activeAbort = controller;
@@ -559,15 +560,15 @@
             markRunSlotBusy(runConvId, false);
           }
         } else if (detached) {
-          // Switched chats: history was flushed before DOM swap; keep backend busy.
+          // Switched chats: keep parked slot session — do NOT pass global sessionId.
           if (typeof markRunSlotBusy === "function" && runConvId != null) {
-            markRunSlotBusy(runConvId, true, sessionId);
+            markRunSlotBusy(runConvId, true);
           }
         } else {
           // Refresh/leave: sync streaming=true while isRunning is still true.
-          flushChatHistory({ streaming: true });
+          flushChatHistory({ streaming: true, convId: runConvId });
           if (typeof markRunSlotBusy === "function" && runConvId != null) {
-            markRunSlotBusy(runConvId, true, sessionId);
+            markRunSlotBusy(runConvId, true, state.sessionId || sessionId);
           }
         }
       } else if (isSoftNetworkError(err) && threadDiv.contains(agentMsg)) {
@@ -607,7 +608,7 @@
     } finally {
       if (activeAbort === controller) activeAbort = null;
       // Keep blob preview URLs — thread thumbs still reference them until navigation.
-      if (runGen === sessionGeneration) scheduleSaveChatHistory();
+      if (runGen === sessionGeneration) scheduleSaveChatHistory({ convId: runConvId });
     }
   }
 
@@ -617,10 +618,14 @@
     if (payload.session_id) {
       sessionId = payload.session_id;
       localStorage.setItem(sessionStorageKey, sessionId);
-      if (typeof markRunSlotBusy === "function" && activeConversationId != null) {
-        markRunSlotBusy(activeConversationId, true, sessionId);
+      if (state) state.sessionId = payload.session_id;
+      var streamConvId = (state && state.convId != null) ? state.convId : activeConversationId;
+      if (typeof markRunSlotBusy === "function" && streamConvId != null) {
+        markRunSlotBusy(streamConvId, true, payload.session_id);
       }
-      if (isRunning) flushChatHistory({ streaming: true });
+      if (isRunning && state && state.gen === sessionGeneration) {
+        flushChatHistory({ streaming: true, convId: streamConvId });
+      }
     }
 
     if (payload.resolved_model || payload.type === "model_resolved") {
@@ -845,7 +850,10 @@
       if (painted) {
         /* reply painted (incl. sealedReplyLen reset path) */
       } else if (doneStatus === "expired") {
-        streamStandaloneText(agentMsg, "（上次回复已中断：服务已重启或会话已过期）", false);
+        // Keep any restored reply; never replace it with an interruption notice.
+        if (!state.hadRestoredAgent && !(state.reply && state.reply.trim())) {
+          // Empty mid-flight with no restore — leave bubble blank.
+        }
       } else if (doneStatus === "error" || doneStatus === "failed") {
         // Avoid a second scary line when the error event already painted.
         if (!agentMsg.querySelector(".ai-agent-segment-text")) {
@@ -882,7 +890,19 @@
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
     var buffer = "";
-    var seen = 0;
+    if (state && state.eventCursor == null) state.eventCursor = 0;
+
+    function bumpCursor() {
+      if (!state) return;
+      state.eventCursor = (Number(state.eventCursor) || 0) + 1;
+      var cid = state.convId != null ? state.convId : activeConversationId;
+      if (cid != null && typeof getRunSlot === "function") {
+        try { getRunSlot(cid).eventCursor = state.eventCursor; } catch (e) {}
+      }
+      if (agentMsg && typeof getRunMeta === "function") {
+        getRunMeta(agentMsg).eventCursor = state.eventCursor;
+      }
+    }
 
     function applyDataLine(raw) {
       var line = String(raw || "").trim();
@@ -894,7 +914,7 @@
         return;
       }
       if (payload && payload.type === "heartbeat") return;
-      seen += 1;
+      bumpCursor();
       applyStreamPayload(agentMsg, payload, state);
     }
 
@@ -920,7 +940,31 @@
       finalizeLiveCards(agentMsg);
       paintEnsuredReply(agentMsg, state.reply, true);
     }
-    return { finished: !!state.finished, seen: seen };
+    return { finished: !!state.finished, seen: Number(state.eventCursor) || 0 };
+  }
+
+  function agentBubbleReplyText(agentMsg) {
+    if (!agentMsg) return "";
+    var parts = [];
+    Array.prototype.slice.call(
+      agentMsg.querySelectorAll(".ai-agent-segment-text, .ai-agent-msg-main > .body")
+    ).forEach(function (el) {
+      if (el.classList.contains("ai-agent-worklog")) return;
+      var t = el.getAttribute("data-raw-text") || el.textContent || "";
+      if (t) parts.push(t);
+    });
+    return parts.join("\n\n");
+  }
+
+  function followAfterIndex(convId, agentMsg) {
+    var after = 0;
+    if (convId != null && typeof getRunSlot === "function") {
+      try { after = Math.max(after, Number(getRunSlot(convId).eventCursor || 0) || 0); } catch (e) {}
+    }
+    if (agentMsg && agentMsg.__runMeta && agentMsg.__runMeta.eventCursor != null) {
+      after = Math.max(after, Number(agentMsg.__runMeta.eventCursor) || 0);
+    }
+    return after;
   }
 
   function isSoftNetworkError(err) {
@@ -952,11 +996,15 @@
 
   async function fetchFollowReplay(agentMsg, state, signal) {
     wipeAgentBubbleForReplay(agentMsg, state);
+    if (state) state.eventCursor = 0;
+    if (state && state.convId != null && typeof getRunSlot === "function") {
+      try { getRunSlot(state.convId).eventCursor = 0; } catch (e) {}
+    }
     var res = await apiFetch(apiBase + "/api/chat/follow", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: signal,
-      body: JSON.stringify({ session_id: sessionId || null }),
+      body: JSON.stringify({ session_id: sessionId || null, after: 0 }),
     });
     if (res.ok && res.body) {
       await consumeAgentSse(res, agentMsg, state, signal);
@@ -965,7 +1013,7 @@
   }
 
   async function followIfNeeded() {
-    // Mid-turn refresh → drop stale last agent bubble, replay live_events.
+    // Mid-turn refresh / chat switch → continue live_events from eventCursor (not from 0).
     // sessionId may be empty; backend find_running_session covers single-user mid-flight.
     if (isRunning && !pendingFollow) return;
     var followGen = sessionGeneration;
@@ -1008,21 +1056,72 @@
     }
     if (followGen !== sessionGeneration) return;
     var agents = threadDiv.querySelectorAll(".ai-agent-msg.agent");
-    if (agents.length) agents[agents.length - 1].remove();
-    var agentMsg = appendMessage("Agent", "", "agent", true);
-    notePlanning(agentMsg, "");
-    var state = { reply: "", finished: false, gen: followGen };
+    var agentMsg;
+    var hadRestoredAgent = false;
+    if (agents.length) {
+      // Reuse restored bubble — do NOT delete it first (expired follow used to wipe the reply).
+      agentMsg = agents[agents.length - 1];
+      hadRestoredAgent = !!(
+        agentMsg.querySelector(".ai-agent-segment-text")
+        || agentMsg.querySelector(".ai-agent-worklog .ai-agent-card")
+        || (agentMsg.textContent || "").replace(/\s+/g, "").length > 2
+      );
+    } else {
+      agentMsg = appendMessage("Agent", "", "agent", true);
+      notePlanning(agentMsg, "");
+    }
+    var afterIdx = followAfterIndex(followConvId, agentMsg);
+    var state = {
+      reply: "",
+      finished: false,
+      gen: followGen,
+      convId: followConvId,
+      sessionId: sessionId || "",
+      hadRestoredAgent: hadRestoredAgent,
+      eventCursor: afterIdx,
+    };
+    // Resume from saved DOM: seed reply/cursor so new events append instead of replaying.
+    if (hadRestoredAgent && afterIdx > 0) {
+      state.reply = agentBubbleReplyText(agentMsg);
+      if (typeof getRunMeta === "function") {
+        var resumeMeta = getRunMeta(agentMsg);
+        resumeMeta.sealedReplyLen = Math.max(
+          Number(resumeMeta.sealedReplyLen || 0) || 0,
+          state.reply.length
+        );
+        resumeMeta.eventCursor = afterIdx;
+      }
+      finalizeThoughtCard(agentMsg);
+      finalizeLiveCards(agentMsg);
+    } else if (hadRestoredAgent && afterIdx <= 0) {
+      // Cursor unknown (older payload / never flushed). Always wipe + replay from 0 —
+      // jumping to st.events would skip buffered live_events that never hit the DOM.
+      wipeAgentBubbleForReplay(agentMsg, state);
+      afterIdx = 0;
+      state.eventCursor = 0;
+      state.hadRestoredAgent = false;
+      hadRestoredAgent = false;
+      if (followConvId != null && typeof getRunSlot === "function") {
+        try { getRunSlot(followConvId).eventCursor = 0; } catch (e2) {}
+      }
+    }
 
     pendingFollow = false;
     isRunning = true;
     stopRequested = false;
     if (typeof markRunSlotBusy === "function" && followConvId != null) {
-      markRunSlotBusy(followConvId, true, sessionId);
+      markRunSlotBusy(followConvId, true, state.sessionId || sessionId);
+      if (typeof getRunSlot === "function") {
+        getRunSlot(followConvId).eventCursor = Math.max(
+          Number(getRunSlot(followConvId).eventCursor || 0) || 0,
+          afterIdx
+        );
+      }
     }
     startRunElapsedTimer();
     updateRunState("继续接收");
     updateEmptyState();
-    flushChatHistory({ streaming: true });
+    flushChatHistory({ streaming: true, convId: followConvId });
 
     async function connectOnce() {
       var controller = new AbortController();
@@ -1032,7 +1131,10 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
-          body: JSON.stringify({ session_id: sessionId || null }),
+          body: JSON.stringify({
+            session_id: sessionId || null,
+            after: afterIdx,
+          }),
         });
         if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
         await consumeAgentSse(res, agentMsg, state, controller.signal);
@@ -1056,7 +1158,7 @@
         paintFollowResult();
         if (followGen !== sessionGeneration) {
           if (typeof markRunSlotBusy === "function" && followConvId != null) {
-            markRunSlotBusy(followConvId, true, sessionId);
+            markRunSlotBusy(followConvId, true);
           }
         } else if (stopRequested) {
           await requestCancel();
@@ -1064,9 +1166,9 @@
             markRunSlotBusy(followConvId, false);
           }
         } else {
-          flushChatHistory({ streaming: true });
+          flushChatHistory({ streaming: true, convId: followConvId });
           if (typeof markRunSlotBusy === "function" && followConvId != null) {
-            markRunSlotBusy(followConvId, true, sessionId);
+            markRunSlotBusy(followConvId, true, state.sessionId || sessionId);
           }
         }
       } else if (isSoftNetworkError(err) && state.reply && state.reply.trim()) {
@@ -1085,12 +1187,12 @@
             paintFollowResult();
             if (followGen !== sessionGeneration) {
               if (typeof markRunSlotBusy === "function" && followConvId != null) {
-                markRunSlotBusy(followConvId, true, sessionId);
+                markRunSlotBusy(followConvId, true);
               }
             } else if (stopRequested) {
               await requestCancel();
             } else {
-              flushChatHistory({ streaming: true });
+              flushChatHistory({ streaming: true, convId: followConvId });
             }
           } else if (followGen === sessionGeneration && threadDiv.contains(agentMsg)) {
             paintFollowResult();
@@ -1113,7 +1215,7 @@
       isRunning = false;
       stopRequested = false;
       stopRunElapsedTimer();
-      flushChatHistory({ streaming: false });
+      flushChatHistory({ streaming: false, convId: followConvId });
       if (typeof markRunSlotBusy === "function" && followConvId != null) {
         markRunSlotBusy(followConvId, false);
       }
@@ -1137,6 +1239,8 @@
     updateRunState("处理中");
     while (sendQueue.length) {
       if (stopRequested || drainGen !== sessionGeneration) break;
+      // Switched chats mid-queue: stop touching this view.
+      if (drainConvId != null && Number(activeConversationId) !== Number(drainConvId)) break;
       var item = sendQueue.shift();
       if (typeof getRunSlot === "function" && drainConvId != null) {
         getRunSlot(drainConvId).sendQueue = sendQueue.slice();
@@ -1145,8 +1249,10 @@
       updateRunState("处理中");
       await runOne(item);
       if (stopRequested || drainGen !== sessionGeneration) break;
+      if (drainConvId != null && Number(activeConversationId) !== Number(drainConvId)) break;
     }
-    if (drainGen !== sessionGeneration) {
+    if (drainGen !== sessionGeneration
+        || (drainConvId != null && Number(activeConversationId) !== Number(drainConvId))) {
       // Detached mid-run: parked slot keeps busy/queue; don't touch the new view.
       syncNavRunningState();
       return;
@@ -1155,7 +1261,7 @@
     stopRequested = false;
     stopRunElapsedTimer();
     updateRunState("就绪");
-    flushChatHistory({ streaming: false });
+    flushChatHistory({ streaming: false, convId: drainConvId });
     if (typeof markRunSlotBusy === "function" && drainConvId != null) {
       markRunSlotBusy(drainConvId, false);
     }
@@ -1205,17 +1311,47 @@
     if (editingUserMsg) leaveEditMode();
     var item = enqueueCurrentCompose();
     if (!item) return;
-    if (isRunning || pendingFollow) {
-      renderQueue();
-      updateRunState("处理中");
+    var startGen = sessionGeneration;
+    var start = function () {
+      if (startGen !== sessionGeneration && !conversationSwitching) {
+        // Generation bumped by an unrelated detach; if switch finished and this is
+        // still the active chat queue, continue.
+      }
+      if (typeof conversationSwitching !== "undefined" && conversationSwitching) {
+        if (typeof whenConversationReady === "function") {
+          whenConversationReady().then(function () {
+            if (isRunning || pendingFollow) {
+              renderQueue();
+              updateRunState("处理中");
+              return;
+            }
+            drainQueue();
+          });
+          return;
+        }
+      }
+      if (isRunning || pendingFollow) {
+        renderQueue();
+        updateRunState("处理中");
+        return;
+      }
+      drainQueue();
+    };
+    var kick = function () {
+      if (!activeConversationId && typeof ensureConversationId === "function") {
+        ensureConversationId().then(function (id) {
+          if (id == null) return;
+          start();
+        }).catch(start);
+        return;
+      }
+      start();
+    };
+    if (typeof whenConversationReady === "function") {
+      whenConversationReady().then(kick).catch(kick);
       return;
     }
-    var start = function () { drainQueue(); };
-    if (!activeConversationId && typeof ensureConversationId === "function") {
-      ensureConversationId().then(start).catch(start);
-      return;
-    }
-    start();
+    kick();
   }
 
   sendBtn.onclick = sendMessage;
@@ -1494,7 +1630,7 @@
     if (activeConversationId != null && typeof parkActiveRunToSlot === "function") {
       parkActiveRunToSlot(activeConversationId);
     }
-    flushChatHistory({ streaming: busy });
+    flushChatHistory({ streaming: busy, convId: activeConversationId });
     try {
       localStorage.setItem(SIDEBAR_OPEN_KEY, sidebar.classList.contains("open") ? "1" : "0");
       localStorage.setItem(SIDEBAR_FULLSCREEN_KEY, isFullscreen() ? "1" : "0");
@@ -1520,6 +1656,13 @@
     (conversationList || []).forEach(function (c) {
       if (!c || !c.streaming || !c.session_id) return;
       if (Number(c.id) === Number(activeConversationId) && (isRunning || pendingFollow)) return;
+      // Already noted as finished-with-events awaiting /follow — don't re-poll forever.
+      if (typeof getRunSlot === "function") {
+        try {
+          var parked = getRunSlot(c.id);
+          if (parked && parked.pendingFollow && !parked.busy) return;
+        } catch (e0) {}
+      }
       if (targets.some(function (t) { return Number(t.id) === Number(c.id); })) return;
       targets.push({ id: c.id, sessionId: c.session_id });
     });
@@ -1528,9 +1671,53 @@
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (st) {
           if (!st || st.running) return;
-          // Pump finished: stop spinner, keep payload.streaming for reopen /follow.
-          if (t.id != null && typeof markRunSlotSettled === "function") {
+          var hasEvents = !!(st.ok && st.events > 0);
+          // Pump finished: stop spinner. If live_events remain, leave pendingFollow so
+          // reopening can one-shot /follow and persist the final reply.
+          if (t.id != null && typeof getRunSlot === "function") {
+            try {
+              var slot = getRunSlot(t.id);
+              slot.busy = false;
+              if (hasEvents) {
+                slot.settled = false;
+                slot.pendingFollow = true;
+                if (t.sessionId) slot.sessionId = t.sessionId;
+              } else if (typeof markRunSlotSettled === "function") {
+                markRunSlotSettled(t.id);
+              } else {
+                slot.settled = true;
+                slot.pendingFollow = false;
+                slot.eventCursor = 0;
+              }
+            } catch (e) {
+              if (!hasEvents && typeof markRunSlotSettled === "function") {
+                markRunSlotSettled(t.id);
+              }
+            }
+          } else if (t.id != null && !hasEvents && typeof markRunSlotSettled === "function") {
             markRunSlotSettled(t.id);
+          }
+          if (t.id != null && !hasEvents) {
+            // Nothing left to replay — clear server streaming so sidebar stays accurate.
+            apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(t.id), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: t.sessionId || "",
+                payload: {
+                  _clearStreamingOnly: true,
+                  sessionId: t.sessionId || "",
+                },
+              }),
+            })
+              .then(function () {
+                if (typeof refreshConversationList === "function") return refreshConversationList();
+              })
+              .catch(function () {});
+          } else if (t.id != null && hasEvents) {
+            // Keep streaming=true so a full page reload can still /follow and paint
+            // the final reply. In-memory slot.busy=false already hides the spinner.
+            if (typeof refreshConversationList === "function") refreshConversationList();
           }
           if (typeof renderConversationList === "function") renderConversationList();
           else syncNavRunningState();

@@ -124,6 +124,28 @@
     return normPath(p) === normPath(homeWorkspaceRoot);
   }
 
+  // Last non-Home repo the user focused (sidebar group / opened agent).
+  // Last non-home repo the user focused (sidebar group). Per-repo「+」uses the group path
+  // directly; top「新建 Agent」defaults to No Repo and ignores this.
+  var focusedRepoPath = "";
+
+  function focusRepoWorkspace(path, name) {
+    var ws = String(path || "").trim();
+    if (!ws) return;
+    if (!isHomePath(ws)) focusedRepoPath = ws;
+    setRepoCollapsed(ws, false);
+    // Only keep chat title when a real conversation is open; empty landing must not
+    // keep a previous agent auto-title (e.g. first-message residue).
+    var keepTitle = !!(
+      activeConversationId
+      && sidebar
+      && !sidebar.classList.contains("is-empty")
+    );
+    setActiveWorkspace(ws, name || workspaceDisplayName(ws), { keepTitle: keepTitle });
+    if (typeof refreshIdeTree === "function") refreshIdeTree();
+    if (!keepTitle && typeof updateCrumb === "function") updateCrumb();
+  }
+
   function relativeTime(iso) {
     if (!iso) return "";
     var t = Date.parse(String(iso).replace(" ", "T") + "Z");
@@ -246,6 +268,9 @@
       head.querySelector(".ai-agent-repo-name").textContent = group.name;
       head.querySelector(".ai-agent-repo-count").textContent = String(group.agents.length);
       head.querySelector(".ai-agent-repo-toggle").onclick = function () {
+        // Focusing the group updates workspace context for IDE / picker; top「新建 Agent」
+        // still defaults to No Repo unless the user picks a repo.
+        if (group.path) focusRepoWorkspace(group.path, group.name);
         var next = !box.classList.contains("is-collapsed");
         box.classList.toggle("is-collapsed", next);
         setRepoCollapsed(group.path || group.key, next);
@@ -254,7 +279,9 @@
       };
       head.querySelector(".ai-agent-repo-add").onclick = function (ev) {
         ev.stopPropagation();
-        createAgentInWorkspace(group.path || homeWorkspaceRoot || "", group.name || "Home");
+        var ws = group.path || homeWorkspaceRoot || "";
+        if (ws && !isHomePath(ws)) focusedRepoPath = ws;
+        createAgentInWorkspace(ws, group.name || "Home");
       };
       var body = document.createElement("div");
       body.className = "ai-agent-repo-body";
@@ -288,12 +315,14 @@
           row.querySelector(".ai-agent-nav-item-title").textContent = item.title || "新对话";
           row.querySelector(".ai-agent-nav-item-time").textContent = relativeTime(item.updated_at);
           row.onclick = function (ev) {
+            if (Date.now() < ignoreNavItemClickUntil) return;
             if (ev.target && ev.target.closest && ev.target.closest(".ai-agent-nav-item-actions")) return;
             openConversation(item.id).then(function () {
               if (opts.closeOnSelect) closeRailChatsFlyout();
             });
           };
           row.onkeydown = function (ev) {
+            if (Date.now() < ignoreNavItemClickUntil) return;
             if (ev.key === "Enter" || ev.key === " ") {
               ev.preventDefault();
               openConversation(item.id).then(function () {
@@ -301,7 +330,10 @@
               });
             }
           };
-          row.querySelector(".ai-agent-nav-item-more").onclick = function (ev) {
+          var moreBtn = row.querySelector(".ai-agent-nav-item-more");
+          moreBtn.onmousedown = function (ev) { ev.stopPropagation(); };
+          moreBtn.onclick = function (ev) {
+            ev.preventDefault();
             ev.stopPropagation();
             openNavItemMenu(ev.currentTarget, item);
           };
@@ -319,8 +351,7 @@
     if (navListEl) fillConversationGroups(navListEl, { closeOnSelect: false });
     if (railFlyoutList) fillConversationGroups(railFlyoutList, { closeOnSelect: true });
     if (navEmptyEl) navEmptyEl.style.display = "none";
-    var empty = !(conversationList && conversationList.length);
-    if (railFlyoutEmpty) railFlyoutEmpty.classList.toggle("is-on", empty);
+    if (railFlyoutEmpty) railFlyoutEmpty.classList.remove("is-on");
     if (isRailChatsOpen()) positionRailChatsFlyout();
   }
 
@@ -339,6 +370,11 @@
     if (!isRailChatsOpen()) return;
     if (railFlyout && railFlyout.contains(ev.target)) return;
     if (railChatsBtn && railChatsBtn.contains(ev.target)) return;
+    // Menu / confirm are portaled outside the flyout — keep flyout open while using them.
+    var menuEl = document.getElementById("ai-agent-nav-item-menu");
+    var confirmEl = document.getElementById("ai-agent-confirm-modal");
+    if (menuEl && menuEl.contains(ev.target)) return;
+    if (confirmEl && confirmEl.contains(ev.target)) return;
     closeRailChatsFlyout();
   });
   document.addEventListener("keydown", function (ev) {
@@ -370,32 +406,67 @@
       });
   }
 
+  var createAgentInFlight = Promise.resolve();
+  var conversationSwitchInFlight = Promise.resolve();
+  var conversationSwitching = false;
+
+  function whenConversationReady() {
+    return Promise.resolve(conversationSwitchInFlight).catch(function () {}).then(function () {
+      return Promise.resolve(createAgentInFlight).catch(function () {});
+    });
+  }
+
   function ensureConversationId() {
     if (activeConversationId) {
       return Promise.resolve(activeConversationId);
     }
-    var ws = activeWorkspaceRoot || homeWorkspaceRoot || undefined;
-    return apiFetch(apiBase + "/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: provider,
-        title: "新对话",
-        workspace_root: ws,
-      }),
-    })
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        var conv = data && data.conversation;
-        if (!conv || !conv.id) throw new Error("create conversation failed");
-        var createdId = conv.id;
-        if (typeof migrateRunSlot === "function") migrateRunSlot(null, createdId);
-        rememberActiveConversation(createdId);
-        setActiveWorkspace(conv.workspace_root || homeWorkspaceRoot, conv.is_home ? "Home" : conv.title);
-        return refreshConversationList().then(function () {
-          return activeConversationId;
+    // Default No Repo (home). Only keep a non-home workspace if the user already selected one.
+    var cur = String(activeWorkspaceRoot || "").trim();
+    var ws = cur || homeWorkspaceRoot || undefined;
+    var ensureGen = sessionGeneration;
+    var ensureWs = String(ws || "").trim();
+    // Serialize with createAgentInWorkspace so rapid Home/+ clicks don't race this POST.
+    var run = function () {
+      if (activeConversationId) return Promise.resolve(activeConversationId);
+      if (ensureGen !== sessionGeneration) return Promise.resolve(activeConversationId);
+      return apiFetch(apiBase + "/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: provider,
+          title: "新对话",
+          workspace_root: ensureWs || undefined,
+        }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var conv = data && data.conversation;
+          if (!conv || !conv.id) throw new Error("create conversation failed");
+          var createdId = conv.id;
+          // User already opened/created another chat while this POST was in flight.
+          if (ensureGen !== sessionGeneration) {
+            return activeConversationId;
+          }
+          if (activeConversationId != null && Number(activeConversationId) !== Number(createdId)) {
+            return activeConversationId;
+          }
+          if (typeof migrateRunSlot === "function") migrateRunSlot(null, createdId);
+          rememberActiveConversation(createdId);
+          setActiveWorkspace(
+            conv.workspace_root || homeWorkspaceRoot,
+            conv.is_home ? "Home" : workspaceDisplayName(conv.workspace_root || homeWorkspaceRoot),
+            { keepTitle: true }
+          );
+          return refreshConversationList().then(function () {
+            return activeConversationId;
+          });
         });
-      });
+    };
+    if (typeof createAgentInFlight !== "undefined" && createAgentInFlight && createAgentInFlight.then) {
+      createAgentInFlight = createAgentInFlight.catch(function () {}).then(run);
+      return createAgentInFlight;
+    }
+    return run();
   }
 
   function threadHasContent() {
@@ -509,6 +580,7 @@
     // (DOM can be empty briefly while switching / after a failed restore).
     var canDiscardEmpty = !!(
       leavingId != null
+      && Number(leavingId) !== Number(suppressDiscardConvId)
       && !hasContent
       && (!leavingMeta || isEmptyPlaceholderConv(leavingMeta))
     );
@@ -526,20 +598,48 @@
     }
     if (leavingId != null || leavingBusy || hasContent) {
       // Persist current DOM before switching away (critical for background resume).
+      // Await so a quick reopen cannot GET a stale empty payload.
+      var flushDone = Promise.resolve();
       if (typeof flushChatHistory === "function") {
-        flushChatHistory({ streaming: leavingBusy });
+        flushDone = Promise.resolve(
+          flushChatHistory({ streaming: leavingBusy, convId: leavingId })
+        ).catch(function () {});
       }
       if (leavingId != null && typeof parkActiveRunToSlot === "function") {
         parkActiveRunToSlot(leavingId);
         if (leavingBusy && typeof markRunSlotBusy === "function") {
-          markRunSlotBusy(leavingId, true, sessionId);
+          // Keep the parked slot's own session — do not pass global sessionId.
+          markRunSlotBusy(leavingId, true);
         }
       }
+      // Always invalidate in-flight UI callbacks (even when leaving an idle chat).
+      sessionGeneration += 1;
+      if (leavingBusy) {
+        // Detach local SSE only — do NOT cancel the backend pump.
+        stopRequested = false;
+        if (activeAbort) {
+          try { activeAbort.abort(); } catch (err) {}
+          activeAbort = null;
+        }
+        isRunning = false;
+        pendingFollow = false;
+        if (typeof stopRunElapsedTimer === "function") stopRunElapsedTimer();
+      }
+      sendQueue = [];
+      if (typeof renderQueue === "function") renderQueue();
+      if (opts.clearActive) {
+        rememberActiveConversation(null);
+        sessionId = "";
+        try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
+      }
+      if (typeof renderConversationList === "function") renderConversationList();
+      return flushDone.then(function () { return leavingBusy; });
     }
+    // Always invalidate in-flight UI callbacks (even when leaving an idle chat).
+    sessionGeneration += 1;
     if (leavingBusy) {
       // Detach local SSE only — do NOT cancel the backend pump.
       stopRequested = false;
-      sessionGeneration += 1;
       if (activeAbort) {
         try { activeAbort.abort(); } catch (err) {}
         activeAbort = null;
@@ -562,21 +662,37 @@
   function openConversation(id) {
     if (!id) return Promise.resolve();
     // Already on this chat (empty or not) — do not detach/delete self.
-    if (Number(id) === Number(activeConversationId)) {
+    if (Number(id) === Number(activeConversationId) && !conversationSwitching) {
       if (inputField) inputField.focus();
       return Promise.resolve();
     }
-    return Promise.resolve(detachActiveConversation({ clearActive: false })).then(function () {
-      return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(id))
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
+    var targetId = Number(id);
+    conversationSwitching = true;
+    conversationSwitchInFlight = Promise.resolve(detachActiveConversation({ clearActive: false }))
+      .then(function () {
+        // Drop active id during load so sendMessage cannot target the previous chat.
+        rememberActiveConversation(null);
+        sessionId = "";
+        try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
+        isRunning = false;
+        pendingFollow = false;
+        sendQueue = [];
+        if (typeof renderQueue === "function") renderQueue();
+        return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(targetId));
+      })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
           var conv = data && data.conversation;
           if (!conv) return;
           rememberActiveConversation(conv.id);
           setActiveWorkspace(
             conv.workspace_root || homeWorkspaceRoot,
-            conv.is_home ? "Home" : (conv.title || conv.workspace_name)
+            conv.is_home ? "Home" : workspaceDisplayName(conv.workspace_root || homeWorkspaceRoot),
+            { keepTitle: true }
           );
+          if (conv.workspace_root && !conv.is_home && !isHomePath(conv.workspace_root)) {
+            focusedRepoPath = conv.workspace_root;
+          }
           var slot = typeof getRunSlot === "function" ? getRunSlot(conv.id) : null;
           sessionId = conv.session_id || (slot && slot.sessionId) || "";
           if (slot && sessionId) slot.sessionId = sessionId;
@@ -585,57 +701,139 @@
             else localStorage.removeItem(sessionStorageKey);
           } catch (err) {}
           var payload = conv.payload || null;
+          // Restore follow cursor so switching chats does not replay the whole thinking chain.
+          var savedCursor = Number((payload && payload.eventCursor) || 0) || 0;
+          if (slot && savedCursor > 0) {
+            slot.eventCursor = Math.max(Number(slot.eventCursor || 0) || 0, savedCursor);
+          }
           if (payload && payload.model) setSelectedModel(payload.model, false);
           else if (conv.model) setSelectedModel(conv.model, false);
           clearThreadMessages();
-          if (typeof ideOpenTabs !== "undefined") {
-            ideOpenTabs = [];
-            ideActivePath = "";
-            if (typeof renderIdeTabs === "function") renderIdeTabs();
-            if (typeof showIdeEditor === "function") showIdeEditor(false);
-          }
+          // Keep IDE tabs (terminal/files) across chat switches.
           var restored = restoreChatHistory(payload);
-          var slotBusy = !!(slot && (slot.busy || slot.pendingFollow || slot.settled));
-          bootRestoredStreaming = !!(restored && restored.streaming) || slotBusy || !!conv.streaming;
+          // Only resume a live mid-flight run, or a finished pump that still has
+          // live_events waiting for one-shot /follow (background poll sets pendingFollow).
+          // Do NOT follow merely because slot.settled — that painted「会话已过期」.
+          var needsFollow = !!(
+            (slot && slot.busy && !slot.settled)
+            || (slot && slot.pendingFollow && !slot.settled && (slot.sessionId || conv.session_id))
+            || (restored && restored.streaming)
+            || (conv.streaming && conv.session_id)
+          );
           sendQueue = (slot && slot.sendQueue && slot.sendQueue.length) ? slot.sendQueue.slice() : [];
           queueCollapsed = !!(slot && slot.queueCollapsed);
           if (typeof renderQueue === "function") renderQueue();
           updateEmptyState();
           renderConversationList();
           if (typeof refreshIdeTree === "function") refreshIdeTree();
-          if (bootRestoredStreaming) {
+          if (chatTitleEl) {
+            if (isEmptyPlaceholderConv(conv) || isPlaceholderTitle(conv.title)) {
+              chatTitleEl.textContent = "";
+            } else {
+              chatTitleEl.textContent = String(conv.title || "").trim();
+            }
+          }
+          if (needsFollow) {
             if (typeof markRunSlotBusy === "function") markRunSlotBusy(conv.id, true, sessionId);
             pendingFollow = true;
             isRunning = true;
             updateRunState("继续接收");
-            if (typeof followIfNeeded === "function") followIfNeeded();
-          } else if (sendQueue.length && typeof drainQueue === "function") {
-            updateRunState("就绪");
-            drainQueue();
+            // Soft preflight: avoid「会话已过期」when streaming flag is stale.
+            var sid = sessionId;
+            var convIdForFollow = conv.id;
+            var startFollow = function () {
+              if (Number(activeConversationId) !== Number(convIdForFollow)) return;
+              if (typeof followIfNeeded === "function") followIfNeeded();
+            };
+            if (!sid) {
+              pendingFollow = false;
+              isRunning = false;
+              if (slot) { slot.busy = false; slot.settled = false; slot.pendingFollow = false; }
+              updateRunState("就绪");
+            } else {
+              apiFetch(apiBase + "/api/chat/status?session_id=" + encodeURIComponent(sid))
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (st) {
+                  if (Number(activeConversationId) !== Number(convIdForFollow)) return;
+                  if (st && st.ok && !st.running && !(st.events > 0)) {
+                    pendingFollow = false;
+                    isRunning = false;
+                    bootRestoredStreaming = false;
+                    if (slot) { slot.busy = false; slot.settled = false; slot.pendingFollow = false; }
+                    // Clear stale streaming flag server-side.
+                    apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(convIdForFollow), {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        session_id: sid,
+                        payload: { _clearStreamingOnly: true, sessionId: sid },
+                      }),
+                    }).catch(function () {});
+                    if (sendQueue.length && typeof drainQueue === "function") drainQueue();
+                    else updateRunState("就绪");
+                    return;
+                  }
+                  startFollow();
+                })
+                .catch(function () { startFollow(); });
+            }
           } else {
-            updateRunState("就绪");
+            if (slot) {
+              slot.busy = false;
+              slot.settled = false;
+              slot.pendingFollow = false;
+            }
+            bootRestoredStreaming = false;
+            if (sendQueue.length && typeof drainQueue === "function") {
+              updateRunState("就绪");
+              drainQueue();
+            } else {
+              updateRunState("就绪");
+            }
           }
-          if (chatTitleEl) chatTitleEl.textContent = conv.title || "新对话";
-        })
-        .catch(function (err) {
-          console.warn("open conversation failed", err);
-        });
-    });
+      })
+      .catch(function (err) {
+        console.warn("open conversation failed", err);
+      })
+      .then(function () {
+        conversationSwitching = false;
+      });
+    return conversationSwitchInFlight;
   }
 
   var navItemMenu = document.getElementById("ai-agent-nav-item-menu");
   var navItemMenuTarget = null;
   var navItemMenuRow = null;
+  var navItemMenuConvId = null;
+  var ignoreNavItemClickUntil = 0;
+  // Explicit deletes must never race with empty-placeholder discard of another chat.
+  var suppressDiscardConvId = null;
+  var pendingDeleteId = null;
+  var pendingDeleteTitle = "";
 
   function hideNavItemMenu() {
     if (navItemMenu) {
       navItemMenu.classList.remove("is-on");
       navItemMenu.setAttribute("aria-hidden", "true");
-      navItemMenu.innerHTML = "";
+      // Defer clearing: sync innerHTML="" during click lets the event fall through
+      // to a different conversation row and can discard/delete the wrong chat.
+      var menu = navItemMenu;
+      setTimeout(function () {
+        if (menu && !menu.classList.contains("is-on")) menu.innerHTML = "";
+      }, 0);
     }
     if (navItemMenuRow) navItemMenuRow.classList.remove("is-menu-open");
     navItemMenuTarget = null;
     navItemMenuRow = null;
+    navItemMenuConvId = null;
+  }
+
+  function lookupConvTitle(id) {
+    var want = Number(id);
+    var hit = (conversationList || []).find(function (c) {
+      return Number(c.id) === want;
+    });
+    return (hit && hit.title) || "";
   }
 
   function patchConversation(id, body) {
@@ -724,9 +922,18 @@
   function openNavItemMenu(anchor, item) {
     if (!navItemMenu || !anchor || !item) return;
     hideNavItemMenu();
+    var convId = Number(item.id);
+    if (!convId) return;
     navItemMenuTarget = item;
+    navItemMenuConvId = convId;
     navItemMenuRow = anchor.closest(".ai-agent-nav-item");
-    if (navItemMenuRow) navItemMenuRow.classList.add("is-menu-open");
+    if (navItemMenuRow) {
+      navItemMenuRow.classList.add("is-menu-open");
+      // Prefer the row's data-conv-id so we never act on a stale list object.
+      var fromDom = Number(navItemMenuRow.getAttribute("data-conv-id") || 0);
+      if (fromDom) navItemMenuConvId = fromDom;
+    }
+    navItemMenu.dataset.convId = String(navItemMenuConvId);
     navItemMenu.innerHTML =
       '<button type="button" data-act="share" role="menuitem">' +
         '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 9.5V2.5"/><path d="M5.5 4.5L8 2l2.5 2.5"/><path d="M3.5 8v4.5h9V8"/></svg>' +
@@ -754,27 +961,41 @@
         navItemMenu.style.top = Math.max(8, rect.top - h - 4) + "px";
       }
     });
+    navItemMenu.onmousedown = function (ev) { ev.stopPropagation(); };
     navItemMenu.onclick = function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
       var btn = ev.target && ev.target.closest ? ev.target.closest("button[data-act]") : null;
-      if (!btn || !navItemMenuTarget) return;
+      if (!btn) return;
       var act = btn.getAttribute("data-act");
       var target = navItemMenuTarget;
+      var pinnedId = Number(navItemMenu.dataset.convId || navItemMenuConvId || (target && target.id) || 0);
+      var pinnedTitle = (target && target.title) || "新对话";
+      // Block ghost clicks on rows underneath the menu for this gesture.
+      ignoreNavItemClickUntil = Date.now() + 500;
       hideNavItemMenu();
-      if (act === "rename") renameConversation(target);
-      else if (act === "archive") patchConversation(target.id, { archived: true });
-      else if (act === "delete") deleteConversation(target.id);
-      else if (act === "share") {
-        var text = target.title || "新对话";
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(function () {
-            alert("已复制标题：" + text);
-          }).catch(function () {
+      if (!pinnedId) return;
+      // Let the current click finish before opening confirm / navigating.
+      setTimeout(function () {
+        if (act === "rename") {
+          renameConversation({ id: pinnedId, title: pinnedTitle });
+        } else if (act === "archive") {
+          patchConversation(pinnedId, { archived: true });
+        } else if (act === "delete") {
+          deleteConversation(pinnedId, pinnedTitle);
+        } else if (act === "share") {
+          var text = pinnedTitle || "新对话";
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+              alert("已复制标题：" + text);
+            }).catch(function () {
+              alert(text);
+            });
+          } else {
             alert(text);
-          });
-        } else {
-          alert(text);
+          }
         }
-      }
+      }, 0);
     };
   }
 
@@ -843,21 +1064,33 @@
     closeConfirmDialog(false);
   });
 
-  function deleteConversation(id) {
-    if (!id) return Promise.resolve();
+  function deleteConversation(id, title) {
+    var deleteId = Number(id);
+    if (!deleteId) return Promise.resolve();
+    var label = String(title || "").trim() || "这个对话";
     return showConfirmDialog({
       title: "删除对话",
-      message: "删除后无法恢复，确定要删除这个对话吗？",
+      message: "确定删除「" + label + "」？删除后无法恢复。",
       okText: "删除",
       cancelText: "取消",
       danger: true,
     }).then(function (ok) {
       if (!ok) return;
-      return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(id), {
+      return apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(deleteId), {
         method: "DELETE",
       })
         .then(function () {
-          var wasActive = Number(id) === Number(activeConversationId);
+          var wasActive = Number(deleteId) === Number(activeConversationId);
+          if (typeof getRunSlot === "function") {
+            try {
+              var slot = getRunSlot(deleteId);
+              slot.busy = false;
+              slot.settled = true;
+              slot.pendingFollow = false;
+              slot.eventCursor = 0;
+              slot.sessionId = "";
+            } catch (e) {}
+          }
           return refreshConversationList().then(function () {
             if (!wasActive) return;
             startNewConversationUi(true);
@@ -883,7 +1116,10 @@
       sessionId = "";
       try { localStorage.removeItem(sessionStorageKey); } catch (err) {}
       try { localStorage.removeItem(historyStorageKey()); } catch (err) {}
-      if (!activeWorkspaceRoot) setActiveWorkspace(homeWorkspaceRoot || "", "Home");
+      // New empty session defaults to No Repo (home), not the last opened project.
+      focusedRepoPath = "";
+      setActiveWorkspace(homeWorkspaceRoot || "", "Home");
+      if (typeof resetChatTitleToWorkspace === "function") resetChatTitleToWorkspace();
       stoppedAgentMsg = null;
       if (typeof leaveEditMode === "function") leaveEditMode();
       clearThreadMessages();
@@ -892,11 +1128,10 @@
       updateRunState("就绪");
       renderConversationList();
       if (typeof refreshIdeTree === "function") refreshIdeTree();
+      if (typeof updateCrumb === "function") updateCrumb();
       if (inputField) inputField.focus();
     });
   }
-
-  var createAgentInFlight = Promise.resolve();
 
   function openNewAgentFlow(opts) {
     opts = opts || {};
@@ -905,12 +1140,16 @@
       openWorkspacePicker({ mode: "new-agent", focusPath: !!opts.focusPath });
       return;
     }
-    var ws = String(opts.workspace || activeWorkspaceRoot || homeWorkspaceRoot || "").trim();
+    // Top「新建 Agent」defaults to No Repo (home). Explicit opts.workspace still wins;
+    // per-repo「+」calls createAgentInWorkspace directly.
+    var ws = String(opts.workspace || "").trim();
+    if (!ws) ws = homeWorkspaceRoot || "";
     if (!ws) {
       openWorkspacePicker({ mode: "new-agent", focusPath: true });
       return;
     }
-    createAgentInWorkspace(ws, opts.name);
+    var name = opts.name || (isHomePath(ws) ? "Home" : workspaceDisplayName(ws));
+    createAgentInWorkspace(ws, name);
   }
 
   function createAgentInWorkspace(workspacePath, workspaceName) {
@@ -921,10 +1160,13 @@
       return createAgentInFlight;
     }
     createAgentInFlight = createAgentInFlight.catch(function () {}).then(function () {
-      setRepoCollapsed(ws, false);
-      if (workspaceName) setActiveWorkspace(ws, workspaceName);
-      else setActiveWorkspace(ws);
+      // Park/flush the previous chat FIRST while its workspace is still active.
+      // Switching activeWorkspaceRoot before flush used to re-tag the old chat as Home.
       return Promise.resolve(detachActiveConversation({ clearActive: true })).then(function () {
+        setRepoCollapsed(ws, false);
+        if (ws && !isHomePath(ws)) focusedRepoPath = ws;
+        if (workspaceName) setActiveWorkspace(ws, workspaceName);
+        else setActiveWorkspace(ws);
         return refreshConversationList();
       }).then(function () {
         // Reuse an existing empty placeholder in this workspace instead of POST again.
@@ -941,7 +1183,7 @@
           return pruneExtraEmptyPlaceholders(existing.id).then(function () {
             return openConversation(existing.id);
           }).then(function () {
-            if (chatTitleEl) chatTitleEl.textContent = "新对话";
+            if (chatTitleEl) chatTitleEl.textContent = "";
             if (inputField) inputField.focus();
           });
         }
@@ -975,7 +1217,7 @@
             }).then(function () {
               return openConversation(createdId);
             }).then(function () {
-              if (chatTitleEl) chatTitleEl.textContent = "新对话";
+              if (chatTitleEl) chatTitleEl.textContent = "";
               if (inputField) inputField.focus();
             });
           });
@@ -1030,7 +1272,7 @@
   function workspaceDisplayName(root) {
     var ws = String(root || "").trim();
     if (!ws) return "Home";
-    if (homeWorkspaceRoot && ws.toLowerCase() === String(homeWorkspaceRoot).toLowerCase()) return "Home";
+    if (homeWorkspaceRoot && normPath(ws) === normPath(homeWorkspaceRoot)) return "Home";
     if (isSshWorkspace(ws)) {
       var m = ws.match(/^ssh:\/\/([^/]+)(\/.*)?$/i);
       if (m) {
@@ -1234,7 +1476,7 @@
     btn.type = "button";
     btn.className = "ai-agent-ws-item";
     var active = activeWorkspaceRoot
-      && String(r.path || "").toLowerCase() === String(activeWorkspaceRoot).toLowerCase();
+      && normPath(r.path || "") === normPath(activeWorkspaceRoot);
     if (active) btn.classList.add("is-active");
     var name = r.name || r.path || "";
     var sub = "";
@@ -1586,33 +1828,9 @@
     }
     closeWorkspacePicker();
     setRepoCollapsed(ws, false);
-    if (wsPickerMode === "new-agent" || wsPickerMode === "add-repo") {
-      createAgentInWorkspace(ws, name);
-      return;
-    }
-    var label = name || workspaceDisplayName(ws);
-    if (activeConversationId) {
-      setActiveWorkspace(ws, label, { keepTitle: true });
-    } else {
-      setActiveWorkspace(ws, label);
-      if (chatTitleEl) chatTitleEl.textContent = "新对话";
-    }
-    var after = function () {
-      if (typeof refreshIdeTree === "function") refreshIdeTree();
-      if (inputField) inputField.focus();
-    };
-    if (!activeConversationId) {
-      after();
-      return;
-    }
-    apiFetch(apiBase + "/api/conversations/" + encodeURIComponent(activeConversationId), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace_root: ws }),
-    })
-      .then(function () { return refreshConversationList(); })
-      .then(after)
-      .catch(after);
+    // Switching folder always opens/creates an agent in that workspace.
+    // Never PATCH-move the current chat (that made Ai-agent chats jump under Home).
+    createAgentInWorkspace(ws, name || workspaceDisplayName(ws));
   }
 
   function useTypedWorkspacePath(fromFlyout) {
