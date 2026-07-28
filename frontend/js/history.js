@@ -726,7 +726,6 @@
           if (payload && payload.model) setSelectedModel(payload.model, false);
           else if (conv.model) setSelectedModel(conv.model, false);
           clearThreadMessages();
-          // Keep IDE tabs (terminal/files) across chat switches.
           var restored = restoreChatHistory(payload);
           // Only resume a live mid-flight run, or a finished pump that still has
           // live_events waiting for one-shot /follow (background poll sets pendingFollow).

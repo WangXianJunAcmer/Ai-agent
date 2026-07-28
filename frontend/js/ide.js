@@ -48,6 +48,8 @@
   var ideChildrenCache = {};
   var ideTreeWorkspace = "";
   var ideTreeLoading = false;
+  // ponytail: per-workspace IDE snapshot — switching projects must not leak open files/tabs.
+  var ideStateByRoot = {};
   var ideClipboard = null; // { mode: 'copy'|'cut', path, type }
   var ideCtxTarget = null; // { path, type }
   var ideOutline = document.getElementById("coding-agent-ide-outline");
@@ -159,6 +161,79 @@
 
   function workspaceRoot() {
     return activeWorkspaceRoot || homeWorkspaceRoot || "";
+  }
+
+  function ideRootKey(root) {
+    var r = String(root || "").trim();
+    if (!r) return "";
+    return typeof normPath === "function" ? normPath(r) : r.toLowerCase();
+  }
+
+  function snapshotIdeState() {
+    return {
+      tabs: ideOpenTabs,
+      activeId: ideActiveId,
+      activePath: ideActivePath,
+      pageSeq: idePageSeq,
+      expanded: ideExpanded,
+      childrenCache: ideChildrenCache,
+      treeWorkspace: ideTreeWorkspace,
+      navStack: ideNavStack,
+      navIndex: ideNavIndex,
+    };
+  }
+
+  function applyIdeSnapshot(st) {
+    if (st) {
+      ideOpenTabs = st.tabs || [];
+      ideActiveId = st.activeId || "";
+      ideActivePath = st.activePath || "";
+      idePageSeq = st.pageSeq || 1;
+      ideExpanded = st.expanded || {};
+      ideChildrenCache = st.childrenCache || {};
+      ideTreeWorkspace = st.treeWorkspace || "";
+      ideNavStack = st.navStack || [];
+      ideNavIndex = st.navIndex != null ? st.navIndex : -1;
+    } else {
+      ideOpenTabs = [];
+      ideActiveId = "";
+      ideActivePath = "";
+      ideExpanded = {};
+      ideChildrenCache = {};
+      ideTreeWorkspace = "";
+      ideNavStack = [];
+      ideNavIndex = -1;
+      if (ideCode) ideCode.value = "";
+    }
+    if (ideTermMount) {
+      while (ideTermMount.firstChild) ideTermMount.removeChild(ideTermMount.firstChild);
+    }
+    renderIdeTabs();
+    if (ideActiveId && findTabByKey(ideActiveId)) {
+      activateIdeTab(ideActiveId, false);
+    } else {
+      ideActiveId = "";
+      ideActivePath = "";
+      syncEditorChrome();
+      if (typeof updateCrumb === "function") updateCrumb();
+      else if (typeof updateGutter === "function") updateGutter();
+    }
+  }
+
+  /** Called from setActiveWorkspace when the project root changes. */
+  function onIdeWorkspaceChange(prevRoot, nextRoot) {
+    var prevKey = ideRootKey(prevRoot);
+    var nextKey = ideRootKey(nextRoot);
+    if (prevKey === nextKey) return;
+    if (prevKey) ideStateByRoot[prevKey] = snapshotIdeState();
+    applyIdeSnapshot(nextKey ? ideStateByRoot[nextKey] || null : null);
+    if (ideTreeWorkspace && ideRootKey(ideTreeWorkspace) !== nextKey) {
+      ideChildrenCache = {};
+      ideExpanded = {};
+      ideTreeWorkspace = "";
+    }
+    if (ideRootName) ideRootName.textContent = ideExplorerTitle();
+    if (ideIsOpen()) refreshIdeTree();
   }
 
   /** Explorer title: reuse history.workspaceDisplayName (shared IIFE; do not redeclare). */

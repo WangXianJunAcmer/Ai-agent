@@ -3351,7 +3351,10 @@
   var chatTitleEl = document.getElementById("coding-agent-chat-title");
   function setActiveWorkspace(root, title, opts) {
     opts = opts || {};
-    activeWorkspaceRoot = (root || "").trim();
+    var prev = activeWorkspaceRoot;
+    var next = (root || "").trim();
+    activeWorkspaceRoot = next;
+    if (typeof onIdeWorkspaceChange === "function") onIdeWorkspaceChange(prev, next);
     // Chat header title is conversation-owned. Never mirror workspace ("Home") here;
     // empty / new chats stay blank until first-round auto-title.
     if (chatTitleEl && !opts.keepTitle) {
