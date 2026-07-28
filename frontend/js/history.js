@@ -35,6 +35,12 @@
   var wsFlyoutPathUe = document.getElementById("coding-agent-ws-flyout-path-ue");
   var wsUePathInput = document.getElementById("coding-agent-ws-ue-path-input");
   var wsUePathGo = document.getElementById("coding-agent-ws-ue-path-go");
+  var wsSshHostname = document.getElementById("coding-agent-ws-ssh-hostname");
+  var wsSshConnect = document.getElementById("coding-agent-ws-ssh-connect");
+  var wsSshHostList = document.getElementById("coding-agent-ws-ssh-host-list");
+  var wsSshOpenConfig = document.getElementById("coding-agent-ws-ssh-open-config");
+  var wsSshManualToggle = document.getElementById("coding-agent-ws-ssh-manual-toggle");
+  var wsSshManual = document.getElementById("coding-agent-ws-ssh-manual");
   var wsSshId = document.getElementById("coding-agent-ws-ssh-id");
   var wsSshLabel = document.getElementById("coding-agent-ws-ssh-label");
   var wsSshHost = document.getElementById("coding-agent-ws-ssh-host");
@@ -51,6 +57,7 @@
   var wsSshSave = document.getElementById("coding-agent-ws-ssh-save");
   var workspaceRootsCache = [];
   var sshHostsCache = [];
+  var sshConfigPath = "";
   var wsPickerMode = "switch"; // switch | new-agent | add-repo
   var wsPcBtn = null;
   var wsUseExistingBtn = null;
@@ -1514,7 +1521,7 @@
       wsBrowseSearch.value = "";
       wsBrowseSearch.placeholder = "Search or path";
     }
-    loadLocalBrowse("", { path: "" });
+    loadLocalBrowse("");
   }
 
   function openUseExistingFlyout(anchor) {
@@ -1609,25 +1616,18 @@
     renderBrowseFlyoutList();
   }
 
-  function loadLocalBrowse(query, opts) {
+  function loadLocalBrowse(path, opts) {
     if (!wsBrowseList) return;
     opts = opts || {};
-    var q = String(query != null ? query : (wsBrowseSearch && wsBrowseSearch.value) || "").trim();
-    var browsePath = opts.path != null ? String(opts.path) : String(browse.path || "");
-    var nameFilter = "";
-    if (opts.path == null) {
-      var parsed = parseLocalPathQuery(q);
-      if (parsed) {
-        browsePath = parsed.dir;
-        nameFilter = parsed.filter || "";
-      } else {
-        nameFilter = q.toLowerCase();
-      }
-    } else {
-      nameFilter = q.toLowerCase();
+    var want = path != null ? String(path) : String(browse.path || "");
+    if (wsBrowseHead) wsBrowseHead.textContent = want || "This PC";
+    // Keep Search UI while resolving abs path (same as SSH).
+    if (opts.keepSearch || parseLocalPathQuery(wsBrowseSearch && wsBrowseSearch.value)) {
+      renderBrowseFlyoutList();
+    } else if (wsBrowseList) {
+      wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>Loading…</div>";
     }
-    var url = apiBase + "/api/workspace/local?q=" + encodeURIComponent(nameFilter)
-      + "&path=" + encodeURIComponent(browsePath);
+    var url = apiBase + "/api/workspace/local?q=&path=" + encodeURIComponent(want);
     apiFetch(url)
       .then(function (res) {
         return res.json().then(function (data) { return { ok: res.ok, data: data }; });
@@ -1635,6 +1635,17 @@
       .then(function (result) {
         if (browseKind !== "local") return;
         if (!result.ok) {
+          var abs = parseLocalPathQuery(wsBrowseSearch && wsBrowseSearch.value);
+          if (abs) {
+            renderBrowseFlyoutList();
+            var err = document.createElement("div");
+            err.className = "coding-agent-ws-item-path";
+            err.style.padding = "6px 8px";
+            err.textContent = (result.data && (result.data.detail || result.data.message)) || "加载失败";
+            wsBrowseList.appendChild(err);
+            requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
+            return;
+          }
           if (wsBrowseList) {
             wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>"
               + String((result.data && (result.data.detail || result.data.message)) || "加载失败")
@@ -1646,9 +1657,42 @@
         applyBrowseData(result.data);
       })
       .catch(function () {
-        if (browseKind !== "local" || !wsBrowseList) return;
-        wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
+        if (browseKind !== "local") return;
+        var abs = parseLocalPathQuery(wsBrowseSearch && wsBrowseSearch.value);
+        if (abs) {
+          renderBrowseFlyoutList();
+          return;
+        }
+        if (wsBrowseList) {
+          wsBrowseList.innerHTML = "<div class='coding-agent-ws-item-path' style='padding:6px 8px'>加载失败</div>";
+        }
       });
+  }
+
+  function scheduleLocalPathJump(parsed) {
+    if (!parsed) return;
+    clearTimeout(browseSearchJumpTimer);
+    var go = function () {
+      if (browseKind !== "local") return;
+      var cur = localPathNorm(browse.path);
+      if (cur === localPathNorm(parsed.full) || cur === localPathNorm(parsed.dir)) {
+        renderBrowseFlyoutList();
+        return;
+      }
+      loadLocalBrowse(parsed.dir, { keepSearch: true });
+    };
+    if (localPathNorm(browse.path) === localPathNorm(parsed.dir)
+      || localPathNorm(browse.path) === localPathNorm(parsed.full)) {
+      go();
+    } else {
+      browseSearchJumpTimer = setTimeout(go, 120);
+    }
+  }
+
+  function localRecentRoots() {
+    return (workspaceRootsCache || []).filter(function (r) {
+      return r && !r.is_ssh && !isSshWorkspace(r.path);
+    });
   }
 
   function closeWorkspacePicker() {
@@ -1808,7 +1852,7 @@
     var sameHost = prevHost === hid;
     browseKind = "ssh";
     openWsFlyout(anchor || wsPcBtn, "browse");
-    if (wsBrowseSearch) wsBrowseSearch.placeholder = "Search or /path";
+    if (wsBrowseSearch) wsBrowseSearch.placeholder = "Search or path";
 
     var cached = (sameHost && readSshTreeCache(hid, browse.path)) || latestSshTreeCache(hid);
     var hasLocal = sameHost && browse.path
@@ -1856,7 +1900,7 @@
     }
     if (wsBrowseSearch) {
       wsBrowseSearch.value = "";
-      wsBrowseSearch.placeholder = "Search or /path";
+      wsBrowseSearch.placeholder = "Search or path";
     }
     browse.path = "";
     browse.uri = "";
@@ -2078,38 +2122,56 @@
         wsBrowseList.appendChild(btn2);
       });
     } else {
-      // local — same drill-in UX as SSH
+      // local — same search semantics as SSH (client filter + abs path jump)
       var localParsed = parseLocalPathQuery(rawQ);
+      var atExact = localParsed && localPathNorm(browse.path) === localPathNorm(localParsed.full);
+      var atParent = localParsed && localPathNorm(browse.path) === localPathNorm(localParsed.dir);
       var nameFilterL = "";
       if (localParsed) {
-        var atExact = localPathNorm(browse.path) === localPathNorm(localParsed.full);
-        var atParent = localPathNorm(browse.path) === localPathNorm(localParsed.dir);
-        if (!atExact && !atParent && localParsed.dir) {
-          // waiting for parent load
-          var waitL = document.createElement("div");
-          waitL.className = "coding-agent-ws-item-path";
-          waitL.style.padding = "6px 8px";
-          waitL.textContent = "加载 " + localParsed.dir + " …";
-          wsBrowseList.appendChild(waitL);
-          requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
-          return;
-        }
         nameFilterL = atExact ? "" : String(localParsed.filter || "");
       } else {
         nameFilterL = q;
       }
 
+      if (localParsed && !atParent && !atExact) {
+        var waitL = document.createElement("div");
+        waitL.className = "coding-agent-ws-item-path";
+        waitL.style.padding = "6px 8px";
+        waitL.textContent = "加载 " + localParsed.dir + " …";
+        wsBrowseList.appendChild(waitL);
+        requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
+        return;
+      }
+
+      var localRecents = localRecentRoots().filter(function (r) {
+        if (!q) return true;
+        var p = String(r.path || "").toLowerCase();
+        var n = String(r.name || "").toLowerCase();
+        return p.indexOf(q) >= 0 || n.indexOf(q) >= 0;
+      });
+      localRecents.forEach(function (r) {
+        var btnR = document.createElement("button");
+        btnR.type = "button";
+        btnR.className = "coding-agent-ws-item";
+        btnR.innerHTML = WS_ICON_FOLDER
+          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
+          + WS_ICON_CHECK;
+        btnR.querySelector(".coding-agent-ws-item-name").textContent = r.path || r.name || "";
+        btnR.title = r.path || "";
+        btnR.onclick = function () {
+          selectWorkspacePath(r.path, workspaceDisplayName(r.path) || r.name);
+        };
+        wsBrowseList.appendChild(btnR);
+      });
+
       if (!rawQ && browse.path && browse.parent) {
         var upL = document.createElement("button");
         upL.type = "button";
         upL.className = "coding-agent-ws-item";
-        upL.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span>'
-          + '<span class="coding-agent-ws-item-path"></span></span>';
-        upL.querySelector(".coding-agent-ws-item-path").textContent = browse.parent;
-        upL.title = browse.parent;
+        upL.innerHTML = '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">..</span></span>';
         upL.onclick = function () {
           if (wsBrowseSearch) wsBrowseSearch.value = "";
-          loadLocalBrowse("", { path: browse.parent });
+          loadLocalBrowse(browse.parent);
         };
         wsBrowseList.appendChild(upL);
       }
@@ -2120,21 +2182,25 @@
         if (nameFilterL) {
           var nl = name.toLowerCase();
           var pl = pth.toLowerCase();
-          if (nl.indexOf(nameFilterL) < 0 && pl.indexOf(nameFilterL) < 0) return;
+          if (localParsed && !atExact) {
+            if (!(nl.indexOf(nameFilterL) === 0 || nl.indexOf(nameFilterL) >= 0
+              || pl.indexOf(nameFilterL) >= 0)) return;
+          } else if (nl.indexOf(nameFilterL) < 0 && pl.indexOf(nameFilterL) < 0) {
+            return;
+          }
         }
+        var label = pth || name;
         var btnL = document.createElement("button");
         btnL.type = "button";
         btnL.className = "coding-agent-ws-item";
         btnL.innerHTML = (r.is_home ? WS_ICON_HOME : WS_ICON_FOLDER)
-          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span>'
-          + '<span class="coding-agent-ws-item-path"></span></span>'
+          + '<span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name"></span></span>'
           + '<span class="coding-agent-ws-chevron-r" aria-hidden="true"></span>';
-        btnL.querySelector(".coding-agent-ws-item-name").textContent = name || pth;
-        btnL.querySelector(".coding-agent-ws-item-path").textContent = pth;
+        btnL.querySelector(".coding-agent-ws-item-name").textContent = label;
         btnL.title = pth;
         btnL.onclick = function () {
           if (wsBrowseSearch) wsBrowseSearch.value = "";
-          loadLocalBrowse("", { path: pth });
+          loadLocalBrowse(pth);
         };
         wsBrowseList.appendChild(btnL);
       });
@@ -2230,7 +2296,175 @@
       wsSshStatus.textContent = "";
       wsSshStatus.className = "";
     }
+    if (wsSshManual) wsSshManual.classList.remove("is-on");
     syncSshAuthFields();
+    loadSshHosts().then(function () {
+      renderSshConnectList(wsSshHostname ? wsSshHostname.value : "");
+      if (wsSshHostname) {
+        wsSshHostname.focus();
+        wsSshHostname.select();
+      }
+      requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
+    });
+  }
+
+  function renderSshConnectList(query) {
+    if (!wsSshHostList) return;
+    var q = String(query || "").trim().toLowerCase();
+    wsSshHostList.innerHTML = "";
+    var hosts = sshHostsCache.slice();
+    if (q) {
+      hosts = hosts.filter(function (host) {
+        return String(host.label || "").toLowerCase().indexOf(q) >= 0
+          || String(host.id || "").toLowerCase().indexOf(q) >= 0
+          || String(host.host || "").toLowerCase().indexOf(q) >= 0
+          || String(host.user || "").toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    if (!hosts.length) {
+      var empty = document.createElement("div");
+      empty.className = "coding-agent-ws-item-path";
+      empty.style.padding = "6px 8px";
+      empty.textContent = q ? "No matches" : "No hosts in ~/.ssh/config yet";
+      wsSshHostList.appendChild(empty);
+      return;
+    }
+    hosts.forEach(function (host) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "coding-agent-ws-item";
+      btn.innerHTML = WS_ICON_SSH
+        + '<span class="coding-agent-ws-item-main">'
+        + '<span class="coding-agent-ws-item-name"></span>'
+        + '<span class="coding-agent-ws-item-host"></span>'
+        + "</span>";
+      btn.querySelector(".coding-agent-ws-item-name").textContent = host.label || host.id;
+      var sub = host.user && host.host ? (host.user + "@" + host.host) : (host.host || "");
+      if (host.source === "config") sub = (sub ? sub + " · " : "") + "SSH config";
+      btn.querySelector(".coding-agent-ws-item-host").textContent = sub;
+      var badge = document.createElement("span");
+      badge.className = "coding-agent-ws-item-host";
+      badge.style.marginLeft = "auto";
+      badge.style.flex = "0 0 auto";
+      badge.textContent = "SSH";
+      btn.appendChild(badge);
+      btn.onclick = function (ev) {
+        ev.stopPropagation();
+        if (wsSshHostname) wsSshHostname.value = host.id || host.label || "";
+        openSshTree(host, null, { soft: false });
+      };
+      wsSshHostList.appendChild(btn);
+    });
+  }
+
+  function findSshHostByQuery(raw) {
+    var q = String(raw || "").trim();
+    if (!q) return null;
+    var lower = q.toLowerCase();
+    var hit = sshHostsCache.find(function (h) {
+      return String(h.id || "").toLowerCase() === lower
+        || String(h.label || "").toLowerCase() === lower;
+    });
+    if (hit) return hit;
+    var at = q.indexOf("@");
+    if (at > 0) {
+      var user = q.slice(0, at).trim();
+      var hostPart = q.slice(at + 1).trim();
+      hit = sshHostsCache.find(function (h) {
+        return String(h.user || "").toLowerCase() === user.toLowerCase()
+          && (String(h.host || "").toLowerCase() === hostPart.toLowerCase()
+            || String(h.id || "").toLowerCase() === hostPart.toLowerCase());
+      });
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  function connectSshHostname() {
+    var raw = wsSshHostname ? String(wsSshHostname.value || "").trim() : "";
+    if (!raw) {
+      setSshStatus("输入 Host 别名或 user@host", "err");
+      if (wsSshHostname) wsSshHostname.focus();
+      return;
+    }
+    var known = findSshHostByQuery(raw);
+    if (known) {
+      setSshStatus("");
+      openSshTree(known, null, { soft: false });
+      return;
+    }
+    var at = raw.indexOf("@");
+    if (at <= 0) {
+      setSshStatus("未在 SSH config 找到该 Host，可 Open SSH Config 添加，或用 user@host", "err");
+      return;
+    }
+    var user = raw.slice(0, at).trim();
+    var hostPart = raw.slice(at + 1).trim();
+    var port = 22;
+    var colon = hostPart.lastIndexOf(":");
+    if (colon > 0 && /^\d+$/.test(hostPart.slice(colon + 1))) {
+      port = Number(hostPart.slice(colon + 1));
+      hostPart = hostPart.slice(0, colon);
+    }
+    if (!user || !hostPart) {
+      setSshStatus("格式：user@host", "err");
+      return;
+    }
+    var id = hostPart.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "ssh";
+    if (id.length > 64) id = id.slice(0, 64);
+    setSshStatus("连接中…");
+    var payload = {
+      id: id,
+      label: id,
+      host: hostPart,
+      port: port,
+      user: user,
+      auth: "key",
+      key_path: "",
+      default_path: "/",
+    };
+    apiFetch(apiBase + "/api/ssh/hosts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          setSshStatus((result.data && result.data.detail) || "连接失败", "err");
+          return;
+        }
+        setSshStatus("");
+        var host = (result.data && result.data.host) || payload;
+        return loadSshHosts().then(function () {
+          renderWorkspacePickerList(wsSearch ? wsSearch.value : "");
+          renderSshConnectList(wsSshHostname ? wsSshHostname.value : "");
+          openSshTree(host, null, { soft: false });
+        });
+      })
+      .catch(function () { setSshStatus("连接失败", "err"); });
+  }
+
+  function openSshConfigInOs() {
+    setSshStatus("打开 SSH Config…");
+    apiFetch(apiBase + "/api/ssh/open-config", { method: "POST" })
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          setSshStatus((result.data && result.data.detail) || "打开失败", "err");
+          return;
+        }
+        if (result.data && result.data.ssh_config) sshConfigPath = result.data.ssh_config;
+        setSshStatus("已打开 " + (sshConfigPath || "~/.ssh/config"), "ok");
+        return loadSshHosts().then(function () {
+          renderSshConnectList(wsSshHostname ? wsSshHostname.value : "");
+        });
+      })
+      .catch(function () { setSshStatus("打开失败", "err"); });
   }
 
   function syncSshAuthFields() {
@@ -2341,6 +2575,7 @@
       .then(function (res) { return res.json(); })
       .then(function (data) {
         sshHostsCache = (data && data.hosts) || [];
+        sshConfigPath = (data && data.ssh_config) || sshConfigPath || "";
         return sshHostsCache;
       })
       .catch(function () {
@@ -2495,55 +2730,46 @@
     selectWorkspacePath(ws);
   }
 
-  function createFolderAndOpen() {
-    var raw = window.prompt("新建文件夹名称（默认在 D:\\code 下；也可填完整路径）", "");
-    if (raw == null) return;
-    var name = String(raw || "").trim();
-    if (!name) return;
-    var parent = "D:\\code";
-    var rel = name;
-    if (/^[a-zA-Z]:[\\/]/.test(name) || name.indexOf("/") === 0 || name.indexOf("~") === 0) {
-      var norm = name.replace(/\//g, "\\");
-      var idx = norm.lastIndexOf("\\");
-      if (idx <= 2) {
-        alert("请提供完整文件夹路径");
-        return;
-      }
-      parent = norm.slice(0, idx);
-      rel = norm.slice(idx + 1);
-    }
-    function doMkdir(root, pathRel) {
-      return apiFetch(apiBase + "/api/workspace/mkdir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: root, path: pathRel }),
-      }).then(function (res) {
+  function pickFolderNative(mode) {
+    var initial = "";
+    if (!isSshWorkspace(activeWorkspaceRoot) && activeWorkspaceRoot) initial = activeWorkspaceRoot;
+    else if (homeWorkspaceRoot) initial = homeWorkspaceRoot;
+    return apiFetch(apiBase + "/api/workspace/pick-folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: mode || "open", initial: initial || null }),
+    })
+      .then(function (res) {
         return res.json().then(function (data) { return { ok: res.ok, data: data }; });
-      });
-    }
-    doMkdir(parent, rel)
-      .catch(function () { return { ok: false }; })
+      })
       .then(function (result) {
-        if (result && result.ok) {
-          var full = (result.data && result.data.abs_path)
-            || (parent.replace(/[\\\/]+$/, "") + "\\" + rel);
-          selectWorkspacePath(full, rel);
-          return;
+        if (!result.ok) {
+          alert((result.data && result.data.detail) || "无法打开系统文件夹选择器");
+          return null;
         }
-        // Fallback: create under Home when D:\code is unavailable.
-        var fallbackRoot = homeWorkspaceRoot || "";
-        if (!fallbackRoot || parent.toLowerCase() === String(fallbackRoot).toLowerCase()) {
-          alert((result && result.data && result.data.detail) || "创建文件夹失败");
-          return;
-        }
-        return doMkdir(fallbackRoot, rel).then(function (r2) {
-          if (!r2.ok) {
-            alert((r2.data && r2.data.detail) || "创建文件夹失败");
-            return;
-          }
-          selectWorkspacePath((r2.data && r2.data.abs_path) || (fallbackRoot + "\\" + rel), rel);
-        });
+        if (result.data && result.data.cancelled) return null;
+        var path = result.data && result.data.path;
+        return path || null;
+      })
+      .catch(function () {
+        alert("无法打开系统文件夹选择器");
+        return null;
       });
+  }
+
+  function openFolderNative() {
+    closePcFlyout();
+    pickFolderNative("open").then(function (path) {
+      if (path) selectWorkspacePath(path);
+    });
+  }
+
+  function createFolderAndOpen() {
+    closePcFlyout();
+    // Cursor-style: OS dialog with New Folder button; pick the (new) folder and open it.
+    pickFolderNative("new").then(function (path) {
+      if (path) selectWorkspacePath(path);
+    });
   }
 
   if (navNewBtn) {
@@ -2637,13 +2863,7 @@
   if (wsBrowseOpenFolder) {
     wsBrowseOpenFolder.onclick = function (ev) {
       ev.stopPropagation();
-      if (wsBrowsePath) wsBrowsePath.classList.add("is-on");
-      if (wsBrowsePathInput) {
-        wsBrowsePathInput.value = browse.path
-          || (isSshWorkspace(activeWorkspaceRoot) ? "" : (activeWorkspaceRoot || ""));
-        wsBrowsePathInput.focus();
-        wsBrowsePathInput.select();
-      }
+      openFolderNative();
     };
   }
   if (wsBrowsePathGo) {
@@ -2664,15 +2884,10 @@
     wsBrowseSearch.addEventListener("input", function () {
       if (browseKind === "local") {
         var parsed = parseLocalPathQuery(wsBrowseSearch.value);
-        if (parsed) {
+        if (parsed) scheduleLocalPathJump(parsed);
+        else {
           clearTimeout(browseSearchJumpTimer);
-          browseSearchJumpTimer = setTimeout(function () {
-            if (browseKind !== "local") return;
-            loadLocalBrowse(wsBrowseSearch.value);
-          }, 120);
-        } else {
-          clearTimeout(browseSearchJumpTimer);
-          loadLocalBrowse(wsBrowseSearch.value);
+          renderBrowseFlyoutList();
         }
         return;
       }
@@ -2688,28 +2903,25 @@
       clearTimeout(browseSearchJumpTimer);
       if (browseKind === "local") {
         var lp = parseLocalPathQuery(wsBrowseSearch.value);
-        if (lp) {
-          var filter = String(lp.filter || "").toLowerCase();
-          var hit = null;
-          if (localPathNorm(browse.path) === localPathNorm(lp.dir) && filter) {
-            var dirs = (browseEntries || []).filter(function (e) {
-              return String(e.name || "").toLowerCase().indexOf(filter) === 0;
-            });
-            hit = dirs.find(function (e) {
-              return String(e.name || "").toLowerCase() === filter;
-            }) || (dirs.length === 1 ? dirs[0] : null);
-          }
-          if (hit) {
-            wsBrowseSearch.value = "";
-            loadLocalBrowse("", { path: hit.path });
-          } else if (!filter) {
-            wsBrowseSearch.value = "";
-            loadLocalBrowse("", { path: lp.full });
-          } else {
-            loadLocalBrowse(wsBrowseSearch.value);
-          }
+        if (!lp) return;
+        var filter = String(lp.filter || "").toLowerCase();
+        var hit = null;
+        if (localPathNorm(browse.path) === localPathNorm(lp.dir) && filter) {
+          var dirs = (browseEntries || []).filter(function (e) {
+            return String(e.name || "").toLowerCase().indexOf(filter) === 0;
+          });
+          hit = dirs.find(function (e) {
+            return String(e.name || "").toLowerCase() === filter;
+          }) || (dirs.length === 1 ? dirs[0] : null);
+        }
+        if (hit) {
+          wsBrowseSearch.value = "";
+          loadLocalBrowse(hit.path);
+        } else if (!filter) {
+          wsBrowseSearch.value = "";
+          loadLocalBrowse(lp.full);
         } else {
-          loadLocalBrowse(wsBrowseSearch.value);
+          loadLocalBrowse(lp.dir, { keepSearch: true });
         }
         return;
       }
@@ -2742,12 +2954,7 @@
   if (wsUeOpenFolder) {
     wsUeOpenFolder.onclick = function (ev) {
       ev.stopPropagation();
-      if (wsFlyoutPathUe) wsFlyoutPathUe.classList.add("is-on");
-      if (wsUePathInput) {
-        wsUePathInput.value = isSshWorkspace(activeWorkspaceRoot) ? "" : (activeWorkspaceRoot || "");
-        wsUePathInput.focus();
-        wsUePathInput.select();
-      }
+      openFolderNative();
     };
   }
   if (wsUePathGo) {
@@ -2774,6 +2981,37 @@
     wsUeSsh.onclick = function (ev) {
       ev.stopPropagation();
       openSshForm();
+    };
+  }
+  if (wsSshHostname) {
+    wsSshHostname.addEventListener("input", function () {
+      renderSshConnectList(wsSshHostname.value);
+    });
+    wsSshHostname.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      connectSshHostname();
+    });
+  }
+  if (wsSshConnect) {
+    wsSshConnect.onclick = function (ev) {
+      ev.stopPropagation();
+      connectSshHostname();
+    };
+  }
+  if (wsSshOpenConfig) {
+    wsSshOpenConfig.onclick = function (ev) {
+      ev.stopPropagation();
+      openSshConfigInOs();
+    };
+  }
+  if (wsSshManualToggle) {
+    wsSshManualToggle.onclick = function (ev) {
+      ev.stopPropagation();
+      if (!wsSshManual) return;
+      wsSshManual.classList.toggle("is-on");
+      syncSshAuthFields();
+      requestAnimationFrame(function () { positionWsFlyout(wsFlyoutAnchor); });
     };
   }
   if (wsSshAuth) {
