@@ -608,7 +608,11 @@
     } finally {
       if (activeAbort === controller) activeAbort = null;
       // Keep blob preview URLs — thread thumbs still reference them until navigation.
-      if (runGen === sessionGeneration) scheduleSaveChatHistory({ convId: runConvId });
+      if (runGen === sessionGeneration) {
+        // Force streaming:false so auto-title can run (isRunning may still be true
+        // until drainQueue's finally — a bare scheduleSave would keep pending=true).
+        scheduleSaveChatHistory({ convId: runConvId, streaming: false });
+      }
     }
   }
 
@@ -800,6 +804,31 @@
         noteWorking(agentMsg, keepTitle);
       }
       scheduleSaveChatHistory();
+    } else if (payload.type === "tool_approval") {
+      updateRunState("等待确认危险命令");
+      rememberActivity(agentMsg, "Waiting for approval");
+      var cmd = String(payload.command || "");
+      var reason = String(payload.reason || "该命令可能造成不可逆破坏");
+      var ask = typeof window.showConfirmDialog === "function"
+        ? window.showConfirmDialog
+        : function (opts) { return Promise.resolve(window.confirm((opts && opts.message) || "")); };
+      ask({
+        title: "危险命令确认",
+        message: reason + (cmd ? ("\n\n" + cmd) : ""),
+        okText: "允许执行",
+        cancelText: "拒绝",
+        danger: true,
+      }).then(function (ok) {
+        return apiFetch(apiBase + "/api/chat/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: payload.session_id || sessionId || state.sessionId || "",
+            call_id: payload.call_id || "",
+            approve: !!ok,
+          }),
+        });
+      }).catch(function () {});
     } else if (payload.type === "status") {
       var statusText = payload.content || payload.status || "正在处理";
       if (!isNoisyStatus(statusText)) updateRunState(statusText);
@@ -863,12 +892,14 @@
             false
           );
         }
-      } else if (doneErr && !agentMsg.querySelector(".coding-agent-segment-text")) {
+      } else if (doneErr && !agentBubbleHasVisibleOutput(agentMsg)) {
         streamStandaloneText(agentMsg, doneErr, false);
-      } else if (!agentMsg.querySelector(".coding-agent-segment-text")) {
-        if (doneStatus !== "finished" && doneStatus !== "cancelled") {
-          streamStandaloneText(agentMsg, "(完成，状态: " + (payload.status || "unknown") + ")", false);
-        }
+      } else if (!agentBubbleHasVisibleOutput(agentMsg)) {
+        // finished/cancelled with silent model → never leave a blank AI row.
+        var emptyHint = doneStatus === "cancelled"
+          ? "（已取消）"
+          : "（模型未返回内容。请重试，或换个说法再问一次。）";
+        streamStandaloneText(agentMsg, emptyHint, false);
       }
       if (!getRunMeta(agentMsg).turnChangesShown) {
         // Don't clobber a backend undoable panel if done races ahead of turn_changes
@@ -882,7 +913,7 @@
           if (localChanges) renderTurnChanges(agentMsg, localChanges);
         }
       }
-      scheduleSaveChatHistory();
+      scheduleSaveChatHistory({ streaming: false });
     }
   }
 

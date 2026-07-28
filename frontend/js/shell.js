@@ -764,13 +764,22 @@
     #coding-agent-ws-picker.is-on { display: block; }
     #coding-agent-ws-flyout {
       display: none; position: absolute; left: calc(100% + 6px); top: 0;
-      width: min(280px, calc(100vw - 48px));
+      width: min(300px, calc(100vw - 48px));
       background: #fff; border-radius: 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.06);
       padding: 6px; z-index: 31;
-      max-height: min(420px, 70vh); overflow: auto;
+      max-height: min(560px, 85vh); overflow: auto;
     }
     #coding-agent-ws-flyout.is-on { display: block; }
+    /* SSH tree: one scrollbar only — flyout clips, list scrolls. */
+    #coding-agent-ws-flyout:has([data-flyout-panel="ssh-tree"].is-on) {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #coding-agent-ws-flyout:has([data-flyout-panel="ssh-tree"].is-on) #coding-agent-ws-flyout-panels {
+      flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+    }
     #coding-agent-ws-flyout-path {
       display: none; flex-direction: column; gap: 6px;
       padding: 6px 4px 4px;
@@ -797,17 +806,25 @@
       border: 0; background: #111; color: #fff; border-radius: 8px;
       padding: 8px 10px; font: 600 12px/1 inherit; cursor: pointer;
     }
-    #coding-agent-ws-flyout-search {
+    #coding-agent-ws-flyout-search,
+    #coding-agent-ws-ssh-search {
       width: 100%; box-sizing: border-box; border: 0; background: #f4f4f5;
       border-radius: 8px; padding: 8px 10px; margin: 2px 0 6px;
       font: 12.5px/1.3 inherit; outline: none;
     }
+    #coding-agent-ws-flyout-search::placeholder,
+    #coding-agent-ws-ssh-search::placeholder { color: #8b8b93; }
     #coding-agent-ws-flyout-list {
       display: flex; flex-direction: column; gap: 1px;
       max-height: 220px; overflow: auto; margin-bottom: 4px;
     }
     #coding-agent-ws-flyout-panels > [data-flyout-panel] { display: none; }
     #coding-agent-ws-flyout-panels > [data-flyout-panel].is-on { display: block; }
+    #coding-agent-ws-flyout-panels > [data-flyout-panel="ssh-tree"].is-on {
+      display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+    }
+    #coding-agent-ws-ssh-tree-head { flex: 0 0 auto; }
+    #coding-agent-ws-ssh-search { flex: 0 0 auto; }
     #coding-agent-ws-ssh-form {
       display: none; flex-direction: column; gap: 6px; padding: 4px 2px 6px;
     }
@@ -851,6 +868,20 @@
       letter-spacing: .01em; padding: 10px 8px 4px;
     }
     .coding-agent-ws-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow: auto; }
+    /* SSH browse: list is the only scroller (not the flyout). */
+    #coding-agent-ws-ssh-tree-list.coding-agent-ws-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      overflow: auto;
+      margin-bottom: 0;
+    }
+    #coding-agent-ws-ssh-use-here {
+      flex: 0 0 auto;
+      position: static;
+      margin-top: 4px;
+      background: #fff; border-top: 1px solid #f0f0f0; z-index: 1;
+    }
     .coding-agent-ws-item,
     .coding-agent-ws-nav {
       display: flex; align-items: center; gap: 8px;
@@ -1053,6 +1084,39 @@
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       display: block;
+    }
+    #coding-agent-nav-tip {
+      display: none; position: fixed; z-index: 2147483645;
+      min-width: 200px; max-width: min(360px, calc(100vw - 24px));
+      padding: 10px 12px; border-radius: 10px;
+      background: #fff; border: 1px solid rgba(0,0,0,.1);
+      box-shadow: 0 10px 28px rgba(0,0,0,.14);
+      font: 12.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #18181b; pointer-events: none;
+    }
+    #coding-agent-nav-tip.is-on { display: block; }
+    #coding-agent-nav-tip .tip-title {
+      font-weight: 650; margin: 0 0 6px; word-break: break-word;
+    }
+    #coding-agent-nav-tip .tip-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      color: #52525b; margin-top: 4px;
+    }
+    #coding-agent-nav-tip .tip-row svg {
+      width: 14px; height: 14px; flex: 0 0 auto; margin-top: 1px;
+    }
+    #coding-agent-nav-tip .tip-row span {
+      min-width: 0; word-break: break-all;
+    }
+    #coding-agent-nav-tip .tip-ssh { color: #15803d; font-weight: 600; }
+    #coding-agent-ctx-ws.is-ssh {
+      border-color: rgba(21, 128, 61, .28);
+      background: rgba(21, 128, 61, .06);
+    }
+    #coding-agent-ctx-ws.is-ssh .coding-agent-ctx-chip-label::before {
+      content: "SSH · ";
+      font-weight: 700;
+      color: #15803d;
     }
     .coding-agent-nav-item.is-renaming {
       background: rgba(0,0,0,.06);
@@ -2500,7 +2564,7 @@
     <div id="coding-agent-sidebar">
       <div id="coding-agent-resize-handle" title="拖动调整宽度" aria-hidden="true"></div>
       <div id="coding-agent-workspace">
-      <button id="coding-agent-toggle-ide" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="false">
+      <button id="coding-agent-toggle-ide" type="button" title="切换编辑器" aria-label="切换编辑器" aria-pressed="false">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
           <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
@@ -2650,7 +2714,7 @@
               <span id="coding-agent-ctx-branch-label" class="coding-agent-ctx-chip-label"></span>
             </button>
             <div id="coding-agent-ws-picker" role="listbox" aria-label="选择仓库" aria-hidden="true">
-              <input id="coding-agent-ws-search" type="search" placeholder="Search folders, repos..." autocomplete="off">
+              <input id="coding-agent-ws-search" type="search" placeholder="Search" autocomplete="off">
               <div class="coding-agent-ws-section-label">Recents</div>
               <div id="coding-agent-ws-recents" class="coding-agent-ws-list"></div>
               <div class="coding-agent-ws-section-label">Repos</div>
@@ -2676,7 +2740,7 @@
               <div id="coding-agent-ws-flyout" aria-hidden="true">
                 <div id="coding-agent-ws-flyout-panels">
                   <div data-flyout-panel="pc" id="coding-agent-ws-flyout-pc">
-                    <input id="coding-agent-ws-flyout-search" type="search" placeholder="Search This PC..." autocomplete="off">
+                    <input id="coding-agent-ws-flyout-search" type="search" placeholder="Search" autocomplete="off">
                     <div id="coding-agent-ws-flyout-list" class="coding-agent-ws-list"></div>
                     <button type="button" id="coding-agent-ws-open-folder" class="coding-agent-ws-item">
                       <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
@@ -2693,7 +2757,7 @@
                       <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Open Folder</span></span>
                     </button>
                     <button type="button" id="coding-agent-ws-ue-ssh" class="coding-agent-ws-item">
-                      <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg>
+                      <svg class="coding-agent-ws-item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
                       <span class="coding-agent-ws-item-main"><span class="coding-agent-ws-item-name">Connect via SSH</span></span>
                     </button>
                     <div id="coding-agent-ws-flyout-path-ue">
@@ -2702,6 +2766,7 @@
                     </div>
                   </div>
                   <div data-flyout-panel="ssh-tree" id="coding-agent-ws-flyout-ssh-tree">
+                    <input id="coding-agent-ws-ssh-search" type="search" placeholder="Search" autocomplete="off">
                     <div id="coding-agent-ws-ssh-tree-head" class="coding-agent-ws-item-path" style="padding:4px 6px 8px;"></div>
                     <div id="coding-agent-ws-ssh-tree-list" class="coding-agent-ws-list"></div>
                     <button type="button" id="coding-agent-ws-ssh-use-here" class="coding-agent-ws-item">
@@ -2710,6 +2775,9 @@
                   </div>
                   <div data-flyout-panel="ssh-form" id="coding-agent-ws-flyout-ssh-form">
                     <div id="coding-agent-ws-ssh-form" class="is-on">
+                      <div class="coding-agent-ws-item-path" style="padding:0 0 8px;line-height:1.35;">
+                        ~/.ssh/config 里的 Host 会自动出现在 Repos 列表；这里只用于手动补一条。
+                      </div>
                       <label>ID<input id="coding-agent-ws-ssh-id" type="text" placeholder="wxj_35" autocomplete="off"></label>
                       <label>Label<input id="coding-agent-ws-ssh-label" type="text" placeholder="wxj_35" autocomplete="off"></label>
                       <label>Host<input id="coding-agent-ws-ssh-host" type="text" placeholder="10.0.0.1" autocomplete="off"></label>
@@ -2839,7 +2907,7 @@
             </button>
           </div>
           <div id="coding-agent-ide-top-actions">
-            <button id="coding-agent-toggle-ide-dock" type="button" title="切换编辑器 (Ctrl+G)" aria-label="切换编辑器" aria-pressed="true">
+            <button id="coding-agent-toggle-ide-dock" type="button" title="切换编辑器" aria-label="切换编辑器" aria-pressed="true">
               <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1.5" y="2" width="13" height="12" rx="1.2" stroke="currentColor" stroke-width="1.2"/>
                 <path d="M10.5 2.5v11" stroke="currentColor" stroke-width="1.2"/>
@@ -2962,6 +3030,17 @@
       </div>
       <div id="coding-agent-ide-ctx" role="menu" aria-hidden="true"></div>
       <div id="coding-agent-nav-item-menu" role="menu" aria-hidden="true"></div>
+      <div id="coding-agent-nav-tip" aria-hidden="true">
+        <div class="tip-title"></div>
+        <div class="tip-row tip-ssh" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
+          <span class="tip-ssh-text"></span>
+        </div>
+        <div class="tip-row tip-path">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+          <span class="tip-path-text"></span>
+        </div>
+      </div>
     </div>
     <div id="coding-agent-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="coding-agent-confirm-title" aria-hidden="true">
       <div id="coding-agent-confirm-card">

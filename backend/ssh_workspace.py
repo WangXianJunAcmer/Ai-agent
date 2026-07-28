@@ -75,6 +75,21 @@ def normalize_ssh_workspace(raw: str) -> str:
     return format_ssh_uri(host_id, path)
 
 
+def _ssh_err_detail(err: BaseException) -> str:
+    s = str(err).lower()
+    if "timed out" in s or "timeout" in s:
+        return "SSH 连接超时（检查主机/端口/网络或防火墙）"
+    if "authentication" in s or "auth fail" in s or "permission denied" in s:
+        return "SSH 认证失败（检查密钥路径、密码或用户名）"
+    if "refused" in s:
+        return "SSH 连接被拒绝（端口未开或 sshd 未运行）"
+    if "no route" in s or "unreachable" in s or "name or service not known" in s:
+        return "SSH 主机不可达（检查 IP/域名）"
+    if "connection reset" in s:
+        return "SSH 连接被重置（对端关闭或网络不稳）"
+    return f"SSH 连接失败: {err}"
+
+
 def _connect(host: dict):
     try:
         import paramiko
@@ -90,7 +105,9 @@ def _connect(host: dict):
         "hostname": host["host"],
         "port": int(host.get("port") or 22),
         "username": host["user"],
-        "timeout": 20,
+        "timeout": 15,
+        "banner_timeout": 20,
+        "auth_timeout": 20,
         "allow_agent": True,
         "look_for_keys": True,
     }
@@ -107,26 +124,48 @@ def _connect(host: dict):
     try:
         client.connect(**kwargs)
     except Exception as err:  # noqa: BLE001 — surface to UI
-        raise HTTPException(status_code=400, detail=f"SSH 连接失败: {err}") from err
+        try:
+            client.close()
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=_ssh_err_detail(err)) from err
+    transport = client.get_transport()
+    if transport is not None:
+        # Keep NAT / idle sessions alive; reconnect still happens if transport dies.
+        transport.set_keepalive(30)
     return client
 
 
 def get_client(host_id: str):
+    """Reuse pooled client; connect outside the lock so other hosts aren't blocked."""
     hid = str(host_id or "").strip()
+    stale = None
     with _LOCK:
         client = _CLIENTS.get(hid)
         if client is not None:
             transport = client.get_transport()
             if transport is not None and transport.is_active():
                 return client
-            try:
-                client.close()
-            except Exception:
-                pass
             _CLIENTS.pop(hid, None)
             _OS_CACHE.pop(hid, None)
-        host = get_host(hid, include_secrets=True)
-        client = _connect(host)
+            stale = client
+    if stale is not None:
+        try:
+            stale.close()
+        except Exception:
+            pass
+    host = get_host(hid, include_secrets=True)
+    client = _connect(host)
+    with _LOCK:
+        existing = _CLIENTS.get(hid)
+        if existing is not None:
+            transport = existing.get_transport()
+            if transport is not None and transport.is_active():
+                try:
+                    client.close()
+                except Exception:
+                    pass
+                return existing
         _CLIENTS[hid] = client
         _OS_CACHE.pop(hid, None)
         return client
@@ -263,33 +302,108 @@ def _cmd_exe_quote(arg: str) -> str:
     return '"' + str(arg).replace('"', '""') + '"'
 
 
+def remote_home(host_id: str) -> str:
+    """Resolve the remote login home directory (not filesystem root '/')."""
+    host = get_host(host_id, include_secrets=False)
+    user = str(host.get("user") or "").strip() or "user"
+    client = get_client(host_id)
+    remote_os = detect_remote_os(host_id)
+    if str(remote_os.get("family") or "") == "windows":
+        probes = (
+            'cmd.exe /d /s /c "echo %USERPROFILE%"',
+            "cmd /d /s /c echo %USERPROFILE%",
+        )
+        for probe in probes:
+            try:
+                code, out_b, _err = _exec_raw(client, probe, timeout=10)
+                text = _decode_remote(out_b).strip().splitlines()
+                home = (text[0] if text else "").strip().strip('"')
+                if code == 0 and home and "echo" not in home.lower():
+                    return home.replace("\\", "/")
+            except Exception:
+                continue
+        return f"C:/Users/{user}"
+    try:
+        code, out_b, _err = _exec_raw(
+            client, 'printf %s "${HOME:-}"; echo', timeout=10
+        )
+        text = _decode_remote(out_b).strip().splitlines()
+        home = (text[0] if text else "").strip()
+        if code == 0 and home.startswith("/"):
+            return posixpath.normpath(home) or f"/home/{user}"
+    except Exception:
+        pass
+    return f"/home/{user}"
+
+
+def effective_default_path(host_id: str, host: dict | None = None) -> str:
+    """Prefer configured project path; treat '/' / '~' as unset → remote $HOME."""
+    info = host or get_host(host_id, include_secrets=False)
+    raw = str(info.get("default_path") or "").strip()
+    if raw in {"", "/", "~", "~/", "."}:
+        return remote_home(host_id)
+    if raw.startswith("~/"):
+        return posixpath.join(remote_home(host_id), raw[2:])
+    if not raw.startswith("/") and not (len(raw) >= 2 and raw[1] == ":"):
+        return "/" + raw
+    return raw
+
+
 def test_connection(host_id: str) -> dict:
+    import time
+
+    t0 = time.perf_counter()
     drop_client(host_id)
     client = get_client(host_id)
     host = get_host(host_id, include_secrets=False)
-    default = host.get("default_path") or "/"
+    default = effective_default_path(host_id, host)
     sftp = client.open_sftp()
     try:
         sftp.listdir(default)
     except OSError:
-        default = "/"
+        default = remote_home(host_id)
         try:
-            sftp.listdir("/")
+            sftp.listdir(default)
         except OSError:
-            # Windows OpenSSH often has no POSIX "/" listing; keep configured default.
-            default = host.get("default_path") or "C:/"
+            # Windows OpenSSH often has no POSIX "/" listing; keep home-ish default.
+            default = host.get("default_path") or default or "C:/"
     finally:
         sftp.close()
     remote_os = detect_remote_os(host_id)
+    ms = int((time.perf_counter() - t0) * 1000)
     return {
         "ok": True,
         "id": host_id,
         "label": host.get("label") or host_id,
         "default_path": default,
+        "latency_ms": ms,
         "os": remote_os,
         "shell": remote_os.get("shell"),
         "os_family": remote_os.get("family"),
         "os_label": remote_os.get("label"),
+    }
+
+
+def warm_connection(host_id: str) -> dict:
+    """Reuse pool if healthy; otherwise reconnect. Used when opening the remote tree."""
+    import time
+
+    t0 = time.perf_counter()
+    get_client(host_id)
+    remote_os = detect_remote_os(host_id)
+    host = get_host(host_id, include_secrets=False)
+    default = effective_default_path(host_id, host)
+    ms = int((time.perf_counter() - t0) * 1000)
+    return {
+        "ok": True,
+        "id": host_id,
+        "label": host.get("label") or host_id,
+        "latency_ms": ms,
+        "os": remote_os,
+        "shell": remote_os.get("shell"),
+        "os_family": remote_os.get("family"),
+        "os_label": remote_os.get("label"),
+        "default_path": default,
     }
 
 

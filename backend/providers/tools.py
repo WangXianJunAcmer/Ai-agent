@@ -19,12 +19,110 @@ _MAX_READ = 200_000
 _MAX_SHELL_OUT = 50_000
 _SHELL_TIMEOUT = 60
 
+# Virtual tools — executed by compat_agent (nested loops), not run_tool.
+EXPLORE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "explore",
+        "description": (
+            "Read-only research sub-agent: grep/read/list the codebase to answer a "
+            "question. Prefer this before large edits when you are unsure where code lives."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to find out (be specific).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+TASK_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "task",
+        "description": (
+            "Spawn a nested sub-agent and return its summary. "
+            "subagent_type=explore is read-only research; "
+            "general can edit/run shell and may spawn further sub-agents (depth-limited)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Full task instructions for the sub-agent.",
+                },
+                "subagent_type": {
+                    "type": "string",
+                    "enum": ["explore", "general"],
+                    "description": "explore = read-only; general = can write/shell.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Short title for the UI (optional).",
+                },
+            },
+            "required": ["prompt", "subagent_type"],
+        },
+    },
+}
+
 
 def _safe_resolve(host_root: Path, path: str) -> Path | str:
     try:
         return resolve_in_root(host_root, path)
     except ValueError as err:
         return str(err)
+
+
+def _slice_file_text(text: str, path: str, offset: int = 0, limit: int = 0) -> str:
+    """Optional 1-based line window with numbers. offset/limit 0 = full raw text."""
+    if not offset and not limit:
+        return text
+    lines = text.splitlines()
+    n = len(lines)
+    if offset < 0:
+        start = max(0, n + offset)
+    else:
+        start = max(0, int(offset) - 1) if offset else 0
+    if limit and int(limit) > 0:
+        end = min(n, start + int(limit))
+    else:
+        end = n
+    body = "\n".join(f"{i + 1}|{lines[i]}" for i in range(start, end))
+    return f"# {path} lines {start + 1}-{end} of {n}\n{body}"
+
+
+def apply_str_replace(text: str, old_string: str, new_string: str, path: str) -> tuple[str | None, str]:
+    """Return (new_text|None, status_or_error). Requires unique old_string."""
+    if not old_string:
+        return None, "old_string is empty"
+    count = text.count(old_string)
+    if count == 0:
+        needle = (old_string.strip().splitlines() or [""])[0][:40]
+        hints: list[str] = []
+        if needle:
+            for i, line in enumerate(text.splitlines(), 1):
+                if needle in line:
+                    hints.append(f"{i}:{line[:200]}")
+                    if len(hints) >= 5:
+                        break
+        nearby = ("\nNearby lines:\n" + "\n".join(hints)) if hints else ""
+        return None, (
+            f"old_string not found in {path}.{nearby}\n"
+            "Re-read the file and copy an exact unique snippet."
+        )
+    if count > 1:
+        return None, (
+            f"old_string found {count} times in {path}; include more surrounding "
+            "context to make it unique (or use write_file for a full rewrite)."
+        )
+    return text.replace(old_string, new_string, 1), f"updated {path}"
 
 
 def make_tool_kit(
@@ -54,7 +152,7 @@ def make_tool_kit(
         if tracker is not None:
             tracker.mark_touched(path)
 
-    def read_file(path: str) -> str:
+    def read_file(path: str, offset: int = 0, limit: int = 0, **_extra) -> str:
         blocked = _block("read", {"path": path})
         if blocked:
             return blocked
@@ -69,9 +167,10 @@ def make_tool_kit(
             data = data[:_MAX_READ]
             suffix = f"\n… truncated to {_MAX_READ} bytes"
         try:
-            return data.decode("utf-8") + suffix
+            text = data.decode("utf-8")
         except UnicodeDecodeError:
             return f"binary file ({len(data)} bytes); cannot decode as utf-8"
+        return _slice_file_text(text, path, offset=int(offset or 0), limit=int(limit or 0)) + suffix
 
     def list_dir(path: str = ".") -> str:
         blocked = _block("ls", {"path": path})
@@ -168,11 +267,12 @@ def make_tool_kit(
         if tracker is not None:
             tracker.snapshot_before(path)
         text = target.read_text(encoding="utf-8")
-        if old_string not in text:
-            return "old_string not found"
-        target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8", newline="\n")
+        new_text, msg = apply_str_replace(text, old_string, new_string, path)
+        if new_text is None:
+            return msg
+        target.write_text(new_text, encoding="utf-8", newline="\n")
         _track(path)
-        return f"updated {path}"
+        return msg
 
     def run_shell(command: str) -> str:
         blocked = _block("shell", {"command": command})
@@ -206,6 +306,8 @@ def make_tool_kit(
         executors["str_replace"] = str_replace
 
     schemas = [_openai_schema(name, fn) for name, fn in executors.items()]
+    schemas.append(EXPLORE_SCHEMA)
+    schemas.append(TASK_SCHEMA)
     return schemas, executors
 
 
@@ -280,13 +382,14 @@ def _make_ssh_tool_kit(
                     out_lines.append(_strip_root(raw))
         return "\n".join(out_lines)
 
-    def read_file(path: str) -> str:
+    def read_file(path: str, offset: int = 0, limit: int = 0, **_extra) -> str:
         blocked = _block("read", {"path": path})
         if blocked:
             return blocked
         try:
             data = ssh_read(host_id, remote, path or ".")
-            return str(data.get("content") or "")
+            text = str(data.get("content") or "")
+            return _slice_file_text(text, path, offset=int(offset or 0), limit=int(limit or 0))
         except Exception as err:  # noqa: BLE001
             return str(getattr(err, "detail", None) or err)
 
@@ -392,10 +495,11 @@ def _make_ssh_tool_kit(
         try:
             data = ssh_read(host_id, remote, path)
             text = str(data.get("content") or "")
-            if old_string not in text:
-                return "old_string not found"
-            ssh_write(host_id, remote, path, text.replace(old_string, new_string, 1))
-            return f"updated {path}"
+            new_text, msg = apply_str_replace(text, old_string, new_string, path)
+            if new_text is None:
+                return msg
+            ssh_write(host_id, remote, path, new_text)
+            return msg
         except Exception as err:  # noqa: BLE001
             return str(getattr(err, "detail", None) or err)
 
@@ -425,12 +529,21 @@ def _make_ssh_tool_kit(
         executors["str_replace"] = str_replace
 
     schemas = [_openai_schema(name, fn) for name, fn in executors.items()]
+    schemas.append(EXPLORE_SCHEMA)
+    schemas.append(TASK_SCHEMA)
     return schemas, executors
 
 
 _PARAM_HINTS: dict[str, dict[str, Any]] = {
     "read_file": {
-        "properties": {"path": {"type": "string", "description": "Workspace-relative path"}},
+        "properties": {
+            "path": {"type": "string", "description": "Workspace-relative path"},
+            "offset": {
+                "type": "integer",
+                "description": "Optional 1-based start line (negative = from end)",
+            },
+            "limit": {"type": "integer", "description": "Optional max lines to return"},
+        },
         "required": ["path"],
     },
     "list_dir": {
@@ -476,8 +589,10 @@ _DESCRIPTIONS = {
     "glob_files": "Glob files under the workspace (e.g. 'backend/**/*.py').",
     "grep": "Search file contents with a regex. Optional glob filter (e.g. '*.py').",
     "write_file": "Create or overwrite a text file relative to the workspace root.",
-    "str_replace": "Replace the first exact occurrence of old_string in a file.",
+    "str_replace": "Replace exactly one unique occurrence of old_string. Prefer over write_file.",
     "run_shell": "Run a shell command with cwd=workspace root.",
+    "explore": "Read-only research sub-agent for locating code before edits.",
+    "task": "Spawn a nested explore/general sub-agent (depth-limited).",
 }
 
 
@@ -533,6 +648,12 @@ def demo() -> None:
         assert any(s["function"]["name"] == "read_file" for s in schemas)
         assert "hello" in run_tool(ex, "read_file", {"path": "a.txt"})
         assert "escapes" in run_tool(ex, "read_file", {"path": "../outside"}).lower()
+        assert "1|hello" in run_tool(ex, "read_file", {"path": "a.txt", "offset": 1, "limit": 1})
+        (root / "c.txt").write_text("aa\nbb\naa\n", encoding="utf-8")
+        dup = run_tool(ex, "str_replace", {"path": "c.txt", "old_string": "aa", "new_string": "xx"})
+        assert "2 times" in dup, dup
+        miss = run_tool(ex, "str_replace", {"path": "c.txt", "old_string": "zz", "new_string": "yy"})
+        assert "not found" in miss, miss
 
         # contents/fileText aliases must write + track for undo (DeepSeek often uses these).
         tr = TurnChangeTracker(root)

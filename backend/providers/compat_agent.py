@@ -22,6 +22,11 @@ from backend.turn_changes import TurnChangeTracker, store_tracker
 _MAX_ROUNDS = 24
 # ponytail: message-count cap, not tokens; raise / summarize if long threads still 400.
 _MAX_HISTORY_MESSAGES = 40
+_EXPLORE_ROUNDS = 8
+_GENERAL_SUB_ROUNDS = 12
+_MAX_SUBAGENT_DEPTH = 2  # root=0 → child=1 → grandchild=2
+_APPROVAL_TIMEOUT_SEC = 120.0
+
 
 PROVIDER_DEFAULTS = {
     "openai": {
@@ -74,20 +79,100 @@ def build_client(settings: dict, provider: str) -> AsyncOpenAI:
     )
 
 
+def _workspace_env_block(settings: dict) -> str:
+    """Tell the model whether tools run locally or on SSH remote (and which OS/shell)."""
+    import os
+    from backend.ssh_workspace import detect_remote_os, is_ssh_uri, parse_ssh_uri
+
+    root = str(settings.get("host_root") or "")
+    if not is_ssh_uri(root):
+        local = "Windows (cmd/PowerShell)" if os.name == "nt" else "Unix (bash/sh)"
+        return (
+            "You are a coding agent on the LOCAL machine that runs Coding Agent.\n"
+            f"Workspace root: {root}\n"
+            f"Local OS/shell: {local}\n"
+        )
+
+    host_id, remote = parse_ssh_uri(root)
+    label = host_id
+    login = ""
+    try:
+        from backend.ssh_hosts import get_host
+
+        host = get_host(host_id, include_secrets=False)
+        label = str(host.get("label") or host_id).strip() or host_id
+        user = str(host.get("user") or "").strip()
+        hostname = str(host.get("host") or "").strip()
+        if user and hostname:
+            login = f"{user}@{hostname}"
+    except Exception:
+        pass
+
+    os_info: dict = {}
+    try:
+        os_info = detect_remote_os(host_id)
+    except Exception:
+        os_info = {}
+    family = str(os_info.get("family") or os_info.get("system") or "unknown").lower()
+    shell = str(os_info.get("shell") or ("cmd" if family == "windows" else "bash"))
+    os_label = str(os_info.get("label") or family)
+    if family == "windows":
+        os_hint = (
+            "Remote is Windows — use cmd/PowerShell-style commands and Windows paths on the REMOTE host."
+        )
+    else:
+        os_hint = (
+            "Remote is NOT Windows. Do NOT use C:\\ paths or PowerShell. "
+            "Use POSIX paths and bash/sh. EasyConnect/VPN on the user's laptop is unrelated "
+            "unless they explicitly ask about the local UI machine."
+        )
+    lines = [
+        "You are a coding agent on a REMOTE machine via SSH — not on the Coding Agent server host.",
+        f"SSH server: {label}" + (f" (id={host_id})" if label != host_id else ""),
+    ]
+    if login:
+        lines.append(f"SSH login: {login}")
+    lines.extend([
+        f"Remote OS: {os_label} (family={family})",
+        f"Remote shell for run_shell: {shell}",
+        f"Remote workspace path: {remote}",
+        f"Workspace URI: {root}",
+        "All tools (read/grep/shell/…) already execute on this REMOTE host.",
+        os_hint,
+    ])
+    return "\n".join(lines) + "\n"
+
+
 def _system_prompt(settings: dict, mode: str) -> str:
-    root = settings["host_root"]
+    from backend.project_memory import project_memory_block
+
     plan = (
         "You are in plan mode: analyze and propose changes; do not write files or run mutating shell."
         if mode == "plan"
         else "You are in agent mode: use tools to inspect and edit the workspace to complete the task."
     )
-    return (
-        "You are a local coding agent.\n"
-        f"Workspace root: {root}\n"
-        f"{plan}\n"
-        "Prefer read_file / grep / glob_files / list_dir before shell. "
+    playbook = (
+        "Playbook:\n"
+        "- Prefer explore / task / grep / glob_files / read_file before editing.\n"
+        "- Use task(subagent_type=general) for parallelizable multi-step work; "
+        "explore for read-only research.\n"
+        "- MCP tools are named mcp__server__tool — use them when they fit the task.\n"
+        "- Prefer str_replace for edits; keep old_string unique. Use write_file only for new files "
+        "or full rewrites.\n"
+        "- After edits, run the smallest check that would fail (e.g. py_compile, relevant test).\n"
+        "- If a tool fails, fix the approach — do not retry the identical call blindly.\n"
+        "- End with what changed and how you verified.\n"
         "Paths are relative to the workspace root. Reply in the user's language."
     )
+    base = (
+        f"{_workspace_env_block(settings)}"
+        f"{plan}\n"
+        f"{playbook}"
+    )
+    memory = project_memory_block(settings["host_root"])
+    if memory:
+        return f"{base}\n\n{memory}"
+    return base
 
 
 def normalize_reasoning_effort(raw: str | None) -> str | None:
@@ -121,21 +206,39 @@ def strip_unused_reasoning(messages: list[dict[str, Any]]) -> None:
 
 
 def trim_history(messages: list[dict[str, Any]], max_messages: int = _MAX_HISTORY_MESSAGES) -> None:
-    """Keep system + newest messages; never split assistant tool_calls from their tool replies."""
+    """Keep system + newest messages; fold dropped turns into a short summary note."""
     if len(messages) <= max_messages:
         return
     system = messages[0] if messages and messages[0].get("role") == "system" else None
     rest = messages[1:] if system else list(messages)
-    keep_n = max_messages - (1 if system else 0)
+    # Reserve one slot for the summary message.
+    keep_n = max_messages - (1 if system else 0) - 1
     if keep_n <= 0:
         messages[:] = [system] if system else []
         return
     cut = max(0, len(rest) - keep_n)
-    # Skip leading orphan tool messages (their assistant was trimmed away).
     while cut < len(rest) and rest[cut].get("role") == "tool":
         cut += 1
+    dropped = rest[:cut]
     kept = rest[cut:]
-    messages[:] = ([system] + kept) if system else kept
+    bits: list[str] = []
+    for msg in dropped:
+        role = msg.get("role")
+        content = msg.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        if role == "user":
+            bits.append("User: " + content.strip()[:240])
+        elif role == "assistant":
+            bits.append("Assistant: " + content.strip()[:240])
+    summary = {
+        "role": "user",
+        "content": (
+            "[Earlier conversation summary — details may be incomplete]\n"
+            + ("\n".join(bits[-16:]) if bits else "(tool-heavy history trimmed)")
+        ),
+    }
+    messages[:] = ([system, summary] + kept) if system else ([summary] + kept)
 
 
 def apply_deepseek_thinking(
@@ -189,6 +292,314 @@ class CompatSessionAgent:
         self.messages: list[dict[str, Any]] = []
 
 
+async def _await_shell_approval(
+    session,
+    *,
+    call_id: str,
+    command: str,
+    reason: str,
+    turn: int,
+    emit: Callable[[dict], None],
+) -> bool:
+    """Emit tool_approval and wait for /api/chat/approve (or timeout/cancel → deny)."""
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future = loop.create_future()
+    session.pending_approval = {
+        "call_id": call_id,
+        "command": command,
+        "reason": reason,
+    }
+    session.approval_future = fut
+    emit({
+        "type": "tool_approval",
+        "session_id": session.session_id,
+        "call_id": call_id,
+        "command": command,
+        "reason": reason,
+        "model": session.model,
+    })
+    deadline = loop.time() + _APPROVAL_TIMEOUT_SEC
+    try:
+        while True:
+            if session.turn != turn:
+                return False
+            if fut.done():
+                return bool(fut.result())
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+            try:
+                await asyncio.wait_for(asyncio.shield(fut), timeout=min(1.0, remaining))
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                return False
+    finally:
+        session.pending_approval = None
+        session.approval_future = None
+        if not fut.done():
+            fut.cancel()
+
+
+async def _run_subagent(
+    client: AsyncOpenAI,
+    *,
+    model: str,
+    settings: dict,
+    prompt: str,
+    session,
+    turn: int,
+    emit: Callable[[dict], None],
+    provider: str,
+    subagent_type: str = "explore",
+    depth: int = 1,
+    parent_tracker=None,
+) -> str:
+    """Nested tool loop. explore=read-only; general=write+shell; depth-capped task/explore."""
+    if depth > _MAX_SUBAGENT_DEPTH:
+        return f"max subagent depth {_MAX_SUBAGENT_DEPTH} reached; summarize and continue yourself."
+
+    kind = (subagent_type or "explore").strip().lower()
+    if kind not in {"explore", "general"}:
+        kind = "explore"
+    allow_write = kind == "general" and bool(settings.get("allow_repo_write", True))
+    guard = {**settings, "allow_repo_write": allow_write}
+    tools, executors = make_tool_kit(settings, allow_write=allow_write, tracker=parent_tracker)
+
+    # Depth gate: only allow further nesting when depth < max.
+    if depth >= _MAX_SUBAGENT_DEPTH:
+        tools = [
+            t for t in tools
+            if (t.get("function") or {}).get("name") not in {"explore", "task"}
+        ]
+
+    # MCP tools (shared pool).
+    mcp_mgr = None
+    try:
+        from backend.mcp_client import get_mcp_manager
+
+        mcp_mgr = get_mcp_manager(settings)
+        tools = list(tools) + mcp_mgr.openai_tools()
+    except Exception:
+        mcp_mgr = None
+
+    if kind == "explore":
+        system = (
+            "You are a read-only code explorer. Use grep/glob/read/list/MCP tools only. "
+            "Answer the research question concisely with file paths and key findings. "
+            "Do not edit files."
+        )
+        max_rounds = _EXPLORE_ROUNDS
+    else:
+        system = (
+            "You are a nested coding sub-agent. Complete the assigned task using tools. "
+            "Prefer str_replace over full-file writes. You may spawn explore/task children "
+            f"(current depth {depth}/{_MAX_SUBAGENT_DEPTH}). Return a concise summary of "
+            "what you did and how to verify."
+        )
+        max_rounds = _GENERAL_SUB_ROUNDS
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": (prompt or "").strip() or "Survey the workspace."},
+    ]
+    final_text = ""
+    for _ in range(max_rounds):
+        if session.turn != turn:
+            return f"{kind} cancelled"
+        request: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "tools": tools or None,
+            "stream": False,
+        }
+        if provider == "deepseek":
+            request["extra_body"] = {"thinking": {"type": "disabled"}}
+        resp = await client.chat.completions.create(**request)
+        choice = resp.choices[0] if resp.choices else None
+        if choice is None:
+            break
+        msg = choice.message
+        content = msg.content or ""
+        tool_calls = list(msg.tool_calls or [])
+        assistant: dict[str, Any] = {"role": "assistant", "content": content or None}
+        if tool_calls:
+            assistant["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments or "{}",
+                    },
+                }
+                for tc in tool_calls
+            ]
+        messages.append(assistant)
+        if not tool_calls:
+            final_text = content.strip()
+            break
+        for tc in tool_calls:
+            if session.turn != turn:
+                return f"{kind} cancelled"
+            name = tc.function.name
+            raw_args = tc.function.arguments or "{}"
+            try:
+                args_obj = json.loads(raw_args)
+            except json.JSONDecodeError:
+                args_obj = {"_raw": raw_args}
+            # Nested explore/task → recurse
+            if name in {"explore", "task"}:
+                if name == "explore":
+                    child_prompt = ""
+                    if isinstance(args_obj, dict):
+                        child_prompt = str(args_obj.get("query") or args_obj.get("prompt") or "").strip()
+                    child_type = "explore"
+                else:
+                    child_prompt = ""
+                    child_type = "explore"
+                    if isinstance(args_obj, dict):
+                        child_prompt = str(args_obj.get("prompt") or args_obj.get("query") or "").strip()
+                        child_type = str(args_obj.get("subagent_type") or "explore").strip().lower()
+                ev = tool_call_event(
+                    session, guard, call_id=tc.id, name=name, status="running",
+                    args=args_obj, result="", include_empty=True, check_repo_write=True,
+                )
+                emit(ev)
+                result = await _run_subagent(
+                    client,
+                    model=model,
+                    settings=settings,
+                    prompt=child_prompt,
+                    session=session,
+                    turn=turn,
+                    emit=emit,
+                    provider=provider,
+                    subagent_type=child_type,
+                    depth=depth + 1,
+                    parent_tracker=parent_tracker if child_type == "general" else None,
+                )
+                emit(
+                    tool_call_event(
+                        session, guard, call_id=tc.id, name=name, status="completed",
+                        args=args_obj, result=result, include_empty=True,
+                    )
+                )
+            elif str(name).startswith("mcp__") and mcp_mgr is not None:
+                ev = tool_call_event(
+                    session, guard, call_id=tc.id, name=name, status="running",
+                    args=args_obj, result="", include_empty=True, check_repo_write=False,
+                )
+                emit(ev)
+                result = await asyncio.to_thread(mcp_mgr.call, name, args_obj)
+                emit(
+                    tool_call_event(
+                        session, guard, call_id=tc.id, name=name, status="completed",
+                        args=args_obj, result=result, include_empty=True,
+                    )
+                )
+            else:
+                ev = tool_call_event(
+                    session, guard, call_id=tc.id, name=name, status="running",
+                    args=args_obj, result="", include_empty=True, check_repo_write=True,
+                )
+                emit(ev)
+                if ev.get("repo_write_blocked"):
+                    result = ev["repo_write_blocked"]
+                else:
+                    # Dangerous shell confirm also applies inside general sub-agents.
+                    if name == "run_shell" and isinstance(args_obj, dict) and allow_write:
+                        from backend.safety import shell_approval_reason
+
+                        cmd = str(args_obj.get("command") or "")
+                        reason = shell_approval_reason(cmd)
+                        if reason:
+                            ok = await _await_shell_approval(
+                                session,
+                                call_id=tc.id,
+                                command=cmd,
+                                reason=reason,
+                                turn=turn,
+                                emit=emit,
+                            )
+                            if session.turn != turn:
+                                return f"{kind} cancelled"
+                            if not ok:
+                                result = f"User denied dangerous command: {reason}"
+                                emit(
+                                    tool_call_event(
+                                        session, guard, call_id=tc.id, name=name,
+                                        status="completed", args=args_obj, result=result,
+                                        include_empty=True,
+                                    )
+                                )
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": result,
+                                })
+                                continue
+                    path_arg = ""
+                    if isinstance(args_obj, dict):
+                        path_arg = str(args_obj.get("path") or args_obj.get("file") or "").strip()
+                    if path_arg and name in {"write_file", "str_replace"} and parent_tracker is not None:
+                        parent_tracker.snapshot_before(path_arg)
+                    result = await asyncio.to_thread(run_tool, executors, name, raw_args)
+                    if (
+                        parent_tracker is not None
+                        and path_arg
+                        and name in {"write_file", "str_replace"}
+                        and isinstance(result, str)
+                        and result.startswith(("wrote ", "updated "))
+                    ):
+                        parent_tracker.mark_touched(path_arg)
+                emit(
+                    tool_call_event(
+                        session, guard, call_id=tc.id, name=name, status="completed",
+                        args=args_obj, result=result, include_empty=True,
+                    )
+                )
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result if isinstance(result, str) else json.dumps(result, ensure_ascii=False),
+            })
+    if not final_text:
+        tool_bits = [
+            m.get("content", "")
+            for m in messages
+            if m.get("role") == "tool" and isinstance(m.get("content"), str)
+        ]
+        final_text = "\n".join(tool_bits[-4:])[:4000] or f"({kind} produced no findings)"
+    return final_text[:6000]
+
+
+async def _run_explore(
+    client: AsyncOpenAI,
+    *,
+    model: str,
+    settings: dict,
+    query: str,
+    session,
+    turn: int,
+    emit: Callable[[dict], None],
+    provider: str,
+) -> str:
+    """Back-compat alias → read-only subagent at depth 1."""
+    return await _run_subagent(
+        client,
+        model=model,
+        settings=settings,
+        prompt=query,
+        session=session,
+        turn=turn,
+        emit=emit,
+        provider=provider,
+        subagent_type="explore",
+        depth=1,
+    )
+
+
 async def stream_compat_turn(
     session,
     settings: dict,
@@ -214,6 +625,16 @@ async def stream_compat_turn(
     else:
         tracker = TurnChangeTracker(Path(settings["host_root"]))
     tools, executors = make_tool_kit(settings, allow_write=allow_write, tracker=tracker)
+    mcp_mgr = None
+    try:
+        from backend.mcp_client import get_mcp_manager
+
+        mcp_mgr = get_mcp_manager(settings)
+        mcp_tools = mcp_mgr.openai_tools()
+        if mcp_tools:
+            tools = list(tools) + mcp_tools
+    except Exception:
+        mcp_mgr = None
     client = build_client(settings, handle.provider)
     # DeepSeek default: thinking off. Others ignore.
     use_thinking = False if thinking is None else bool(thinking)
@@ -246,6 +667,9 @@ async def stream_compat_turn(
     strip_unused_reasoning(handle.messages)
     handle.messages.append({"role": "user", "content": user_text})
     final_status = "finished"
+    emitted_text_len = 0
+    tools_ran = False
+    nudged_for_empty = False
 
     try:
         for _ in range(_MAX_ROUNDS):
@@ -262,7 +686,7 @@ async def stream_compat_turn(
             request: dict[str, Any] = {
                 "model": model,
                 "messages": handle.messages,
-                "tools": tools or None,
+                "tools": None if nudged_for_empty else (tools or None),
                 "stream": True,
             }
             if handle.provider == "deepseek":
@@ -287,6 +711,7 @@ async def stream_compat_turn(
                     continue
                 if delta.content:
                     content_parts.append(delta.content)
+                    emitted_text_len += len(delta.content)
                     emit({
                         "type": "text",
                         "session_id": session.session_id,
@@ -338,8 +763,22 @@ async def stream_compat_turn(
             handle.messages.append(assistant_msg)
 
             if not tool_acc:
+                # Tools ran earlier but model returned empty final text → nudge once.
+                if (
+                    tools_ran
+                    and not "".join(content_parts).strip()
+                    and not nudged_for_empty
+                    and emitted_text_len == 0
+                ):
+                    nudged_for_empty = True
+                    handle.messages.append({
+                        "role": "user",
+                        "content": "请根据上面的工具结果，用简短中文直接回答用户。不要再调用工具。",
+                    })
+                    continue
                 break
 
+            tools_ran = True
             # Execute tools then continue the loop.
             blocked_turn = False
             for idx, slot in sorted(tool_acc.items()):
@@ -374,9 +813,84 @@ async def stream_compat_turn(
                         "content": ev["repo_write_blocked"],
                         "model": session.model,
                     })
+                    emitted_text_len += len(str(ev["repo_write_blocked"] or ""))
                     result = ev["repo_write_blocked"]
                     blocked_turn = True
+                elif name == "explore":
+                    query = ""
+                    if isinstance(args_obj, dict):
+                        query = str(args_obj.get("query") or args_obj.get("prompt") or "").strip()
+                    result = await _run_subagent(
+                        client,
+                        model=model,
+                        settings=guard_settings,
+                        prompt=query,
+                        session=session,
+                        turn=turn,
+                        emit=emit,
+                        provider=handle.provider,
+                        subagent_type="explore",
+                        depth=1,
+                    )
+                elif name == "task":
+                    child_prompt = ""
+                    child_type = "explore"
+                    if isinstance(args_obj, dict):
+                        child_prompt = str(args_obj.get("prompt") or args_obj.get("query") or "").strip()
+                        child_type = str(args_obj.get("subagent_type") or "explore").strip().lower()
+                    result = await _run_subagent(
+                        client,
+                        model=model,
+                        settings=guard_settings,
+                        prompt=child_prompt,
+                        session=session,
+                        turn=turn,
+                        emit=emit,
+                        provider=handle.provider,
+                        subagent_type=child_type,
+                        depth=1,
+                        parent_tracker=tracker if child_type == "general" else None,
+                    )
+                elif str(name).startswith("mcp__") and mcp_mgr is not None:
+                    result = await asyncio.to_thread(mcp_mgr.call, name, args_obj)
                 else:
+                    # Dangerous shell → UI confirm before executing.
+                    if name == "run_shell" and isinstance(args_obj, dict):
+                        from backend.safety import shell_approval_reason
+
+                        cmd = str(args_obj.get("command") or "")
+                        reason = shell_approval_reason(cmd)
+                        if reason:
+                            ok = await _await_shell_approval(
+                                session,
+                                call_id=call_id,
+                                command=cmd,
+                                reason=reason,
+                                turn=turn,
+                                emit=emit,
+                            )
+                            if session.turn != turn:
+                                return "cancelled"
+                            if not ok:
+                                result = f"User denied dangerous command: {reason}"
+                                emit(
+                                    tool_call_event(
+                                        session,
+                                        guard_settings,
+                                        call_id=call_id,
+                                        name=name,
+                                        status="completed",
+                                        args=args_obj,
+                                        result=result,
+                                        include_empty=True,
+                                    )
+                                )
+                                handle.messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": call_id,
+                                    "content": result,
+                                })
+                                continue
                     # Snapshot before I/O even if the tool rejects kwargs — so undo
                     # still works when the model used contents/fileText aliases.
                     path_arg = ""
@@ -419,6 +933,29 @@ async def stream_compat_turn(
                 "type": "text",
                 "session_id": session.session_id,
                 "content": f"（已达工具轮次上限 {_MAX_ROUNDS}）",
+                "model": session.model,
+            })
+            emitted_text_len += 1
+
+        # Never finish with a blank bubble: synthesize if model stayed silent.
+        if final_status == "finished" and emitted_text_len == 0 and session.turn == turn:
+            bits: list[str] = []
+            for msg in reversed(handle.messages):
+                if msg.get("role") != "tool":
+                    continue
+                body = msg.get("content")
+                if isinstance(body, str) and body.strip():
+                    bits.append(body.strip()[:1200])
+                if len(bits) >= 3:
+                    break
+            if bits:
+                summary = "根据工具结果：\n\n" + "\n\n---\n\n".join(reversed(bits))
+            else:
+                summary = "（模型未返回内容。请重试，或换个说法再问一次。）"
+            emit({
+                "type": "text",
+                "session_id": session.session_id,
+                "content": summary,
                 "model": session.model,
             })
 
@@ -477,6 +1014,10 @@ if __name__ == "__main__":
         {"role": "user", "content": str(i)} for i in range(50)
     ]
     trim_history(hist, max_messages=5)
-    assert hist[0]["role"] == "system" and len(hist) == 5
+    assert hist[0]["role"] == "system"
+    assert any("Earlier conversation summary" in str(m.get("content") or "") for m in hist)
     assert hist[-1]["content"] == "49"
+    ssh_block = _workspace_env_block({"host_root": "ssh://demo-host/home/wxj/proj"})
+    assert "REMOTE" in ssh_block and "ssh://demo-host" in ssh_block, ssh_block
+    assert "NOT Windows" in ssh_block or "POSIX" in ssh_block, ssh_block
     print("ok")

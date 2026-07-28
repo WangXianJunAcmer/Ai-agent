@@ -344,6 +344,34 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
             "detail": detail,
             "paths": paths,
         }
+    if lowered == "explore":
+        label = (query or "workspace")[:80]
+        return {
+            "kind": "explore",
+            "title": ("Exploring " if status == "running" else "Explored ") + label,
+            "detail": detail or query,
+            "paths": paths,
+        }
+    if lowered == "task":
+        st = ""
+        if isinstance(args, dict):
+            st = first_str(args, "subagent_type", "description") or ""
+        label = (st or query or "subagent")[:80]
+        return {
+            "kind": "explore",
+            "title": ("Task " if status == "running" else "Tasked ") + label,
+            "detail": detail or query,
+            "paths": paths,
+        }
+    if lowered.startswith("mcp") or "mcp__" in (raw_name or ""):
+        mcp_tool = first_str(args, "toolName", "tool_name", "name", "tool") if isinstance(args, dict) else ""
+        label = mcp_tool or raw_name.replace("mcp__", "").replace("__", "/")[:80]
+        return {
+            "kind": "explore",
+            "title": f"MCP {label}",
+            "detail": detail or label,
+            "paths": paths,
+        }
     if lowered == "websearch":
         term = query or (first_str(args, "search_term", "q") if isinstance(args, dict) else "")
         label = (term or "web")[:80]
@@ -446,16 +474,6 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
         return {"kind": "plan", "title": "Updated todos", "detail": detail or "Refreshed task list", "paths": []}
     if lowered in {"createplan"}:
         return {"kind": "plan", "title": "Created plan", "detail": detail or "Plan draft", "paths": []}
-    if lowered in {"task"}:
-        task_desc = query or (
-            first_str(args, "prompt", "description", "message") if isinstance(args, dict) else ""
-        )
-        return {
-            "kind": "plan",
-            "title": "Task" + (f": {task_desc[:80]}" if task_desc else ""),
-            "detail": detail or task_desc,
-            "paths": [],
-        }
     if lowered in {"mcp"}:
         mcp_tool = first_str(args, "toolName", "tool_name", "name", "tool") if isinstance(args, dict) else ""
         return {

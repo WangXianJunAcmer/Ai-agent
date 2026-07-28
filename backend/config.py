@@ -73,6 +73,7 @@ def load_settings() -> dict:
         "cloud_repo_url": (cloud.get("repo_url") or "").strip(),
         "cloud_starting_ref": cloud.get("starting_ref", "main"),
         "cloud_auto_create_pr": bool(cloud.get("auto_create_pr", False)),
+        "mcp": cfg.get("mcp") or {},
     }
 
 

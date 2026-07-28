@@ -394,6 +394,17 @@
     return streamTimelineText(msg, full, renderAsMarkdown !== false);
   }
 
+  function agentBubbleHasVisibleOutput(msg) {
+    if (!msg) return false;
+    var texts = msg.querySelectorAll(".coding-agent-segment-text");
+    for (var i = 0; i < texts.length; i++) {
+      if (String(texts[i].textContent || "").trim()) return true;
+    }
+    if (msg.querySelector(".coding-agent-card")) return true;
+    if (msg.querySelector(".coding-agent-turn-changes")) return true;
+    return false;
+  }
+
   function streamStandaloneText(msg, text, renderAsMarkdown) {
     // Error / status lines are not part of the cumulative reply — don't slice by sealedReplyLen.
     beginToolSegment(msg);
@@ -1032,7 +1043,7 @@
       var pathEl = head.querySelector(".coding-agent-turn-file-path");
       if (pathEl && file.path && file.status !== "deleted") {
         pathEl.style.cursor = "pointer";
-        pathEl.title = "在编辑器中打开 (Ctrl+G)";
+        pathEl.title = "在编辑器中打开";
         pathEl.addEventListener("click", function (ev) {
           ev.stopPropagation();
           if (typeof openIdeFile === "function") openIdeFile(file.path);

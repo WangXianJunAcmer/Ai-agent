@@ -154,23 +154,44 @@ def delete_conversation_by_id(user_id: int, conv_id: int) -> None:
 
 
 _TITLE_LEAD_RE = re.compile(
-    r"^(请|麻烦你?|帮我|帮忙|请问|你好|您好|嗨|hey|hi|hello)"
+    r"^(请|麻烦你?|帮我|帮忙|请问|"
+    r"你好[呀啊呢吧嘛哟]?|您好[呀啊呢吧嘛哟]?|嗨|hey|hi|hello)"
     r"[，,、！!。.\s]*",
     re.I,
 )
 _TITLE_LEAD2_RE = re.compile(
-    r"^(能否|可以|能不能|请帮我|帮我把|帮我写|帮我改|帮我看|我想|我要|我想要)"
+    r"^(能否|可以|能不能|请帮我|帮我把|帮我写|帮我改|帮我看|我想要|我想|我要)"
     r"[，,、\s]*",
     re.I,
 )
-_TITLE_QUESTION_RE = re.compile(
-    r"^(如何|怎么|怎样|怎么样|如何才能|怎么才能)(.+)$"
-)
-_TITLE_VERB_RE = re.compile(
-    r"^(画一个|画个|写一个|写个|做一个|做个|实现|生成|创建|修改|调整|"
-    r"查看|读取|展示|分析|解释|说明|重构)"
-)
-_TITLE_TRAIL_RE = re.compile(r"(一下|吗|呢|啊|呀|吧|嘛|哟)+$")
+_TITLE_ORPHAN_PARTICLE_RE = re.compile(r"^[呀啊呢吧嘛哟]+[，,、！!。.\s]*")
+_TITLE_TRAIL_RE = re.compile(r"(一下|吗|呢|啊|呀|吧|嘛|哟|啦)+$")
+
+# ChatGPT-style: Composer one-shot titles (not regex quotes of the first message).
+_TITLE_SYSTEM = """You generate short sidebar titles for a coding chat app (like ChatGPT).
+Output ONLY the title text. No quotes, no trailing punctuation, no explanation, no emoji.
+Do not call tools. Do not read or edit files. Do not explore the workspace.
+
+Rules:
+- Same language as the user message (Chinese in → Chinese title)
+- Chinese: about 4–14 characters. English: 3–7 words, sentence case
+- Capture the user's goal so they can find this chat later
+- Be specific (feature, file, bug, tool name). Avoid vague titles like "帮忙一下" / "Code changes"
+- Strip greetings and filler. Never answer the question — only title it
+
+Examples:
+用户: 你好呀，我想看看当前项目目录都有啥
+标题: 查看项目目录
+
+用户: 我机器上有个easyconnect的vpn，你能找到他吗？
+标题: 查找 EasyConnect
+
+用户: 帮我修一下登录页按钮点不动
+标题: 修复登录按钮
+
+用户: Who was Genghis Khan? How long did he rule?
+标题: Genghis Khan
+"""
 
 
 def is_placeholder_title(title: str | None) -> bool:
@@ -188,11 +209,39 @@ def is_placeholder_title(title: str | None) -> bool:
     return False
 
 
+def _clean_title_output(raw: str, fallback: str) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return fallback
+    # Drop accidental JSON / quotes / markdown fences.
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    if text.startswith("{") and "title" in text:
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict) and data.get("title"):
+                text = str(data["title"]).strip()
+        except json.JSONDecodeError:
+            m = re.search(r'"title"\s*:\s*"([^"]+)"', text)
+            if m:
+                text = m.group(1).strip()
+    text = text.strip().strip("\"'`“”‘’").strip()
+    text = re.sub(r"[\s]+", " ", text)
+    text = text.rstrip(" 。．.!?！？;；")
+    # Reject refusals / meta.
+    low = text.lower()
+    if any(x in low for x in ("cannot", "can't", "as an ai", "i'm sorry", "无法", "不能生成")):
+        return fallback
+    if len(text) > 40:
+        text = text[:40].rstrip(" ，,、.-—")
+    return text or fallback
+
+
 def summarize_chat_title(text: str, fallback: str = "新对话") -> str:
-    """ChatGPT-style short topic title from the first user message (not a raw quote)."""
-    raw = str(text or "")
-    # Drop markdown noise and keep the first paragraph/sentence.
-    raw = re.sub(r"```[\s\S]*?```", " ", raw)
+    """Heuristic fallback when LLM title is unavailable (offline / no key / timeout)."""
+    source = str(text or "")
+    raw = re.sub(r"```[\s\S]*?```", " ", source)
     raw = re.sub(r"`[^`]+`", " ", raw)
     raw = re.sub(r"[*_#>]+", " ", raw)
     raw = re.sub(r"\s+", " ", raw).strip()
@@ -206,60 +255,190 @@ def summarize_chat_title(text: str, fallback: str = "新对话") -> str:
                 break
     for _ in range(4):
         nxt = _TITLE_LEAD_RE.sub("", raw)
+        nxt = _TITLE_ORPHAN_PARTICLE_RE.sub("", nxt)
         nxt = _TITLE_LEAD2_RE.sub("", nxt).strip()
         if nxt == raw:
             break
         raw = nxt
-    m = _TITLE_QUESTION_RE.match(raw)
-    if m:
-        raw = (m.group(2) or "").strip()
-    raw = _TITLE_VERB_RE.sub("", raw).strip()
+    # Soft intent normalize (fallback only).
+    raw = re.sub(r"^(看看|看一下|看下|瞅瞅)", "查看", raw)
+    raw = re.sub(r"^(找一下|找下|找找|帮我找)", "查找", raw)
+    raw = re.sub(r"^(修一下|修下|修修|帮我修)", "修复", raw)
     raw = _TITLE_TRAIL_RE.sub("", raw).strip(" ，,、.-—")
-    # Prefer a compact noun-phrase title (≈ ChatGPT sidebar length).
+    # "有个X…找到" → keep product-ish token
+    m = re.search(
+        r"(?:有个|有一个)?\s*([A-Za-z][A-Za-z0-9._-]{1,32}|[\u4e00-\u9fff]{2,12})"
+        r".{0,12}(?:vpn|VPN|找到|找一下|在哪)",
+        source,
+        re.I,
+    )
+    if m and (not raw or len(raw) > 18):
+        token = m.group(1)
+        raw = f"查找 {token}" if re.match(r"^[A-Za-z]", token) else f"查找{token}"
+    if not raw:
+        raw = re.sub(r"\s+", " ", source).strip()
+        raw = _TITLE_TRAIL_RE.sub("", raw).strip(" ，,、.-—") or source.strip()
     if len(raw) > 22:
         raw = raw[:22].rstrip(" ，,、.-—")
     return raw or fallback
 
 
-def title_from_payload(payload: dict | None, fallback: str = "新对话") -> str:
+def llm_generate_title(
+    user_text: str,
+    *,
+    assistant_text: str = "",
+    settings: dict | None = None,
+    provider: str | None = None,  # unused; titles always use Composer
+) -> str | None:
+    """Composer one-shot → sidebar title. None on skip/failure (caller uses heuristic)."""
+    del provider  # titles are always Composer, not the chat's OpenAI/DeepSeek model
+    text = (user_text or "").strip()
+    if not text:
+        return None
+
+    cfg = settings
+    if cfg is None:
+        try:
+            from backend.config import load_settings
+
+            cfg = load_settings()
+        except Exception:
+            return None
+
+    from backend.config import cursor_api_key
+
+    key = cursor_api_key(cfg)
+    if not key:
+        return None
+
+    user_blob = text[:800]
+    asst = (assistant_text or "").strip()[:400]
+    content = f"{_TITLE_SYSTEM}\n\n用户消息:\n{user_blob}"
+    if asst:
+        content += f"\n\n助手开头:\n{asst}"
+    content += (
+        "\n\nReply with ONLY the title text. Do not call tools, "
+        "read files, or explore the workspace.\n标题:"
+    )
+
+    # ponytail: no raw Composer chat API — Agent.prompt is the official path.
+    # Empty cwd so a misbehaving run cannot touch the real project.
+    try:
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        from pathlib import Path
+
+        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+
+        cwd = Path(str(cfg.get("host_root") or ".")).resolve() / "data" / "title_agent"
+        cwd.mkdir(parents=True, exist_ok=True)
+
+        def _run() -> str:
+            result = Agent.prompt(
+                content,
+                AgentOptions(
+                    api_key=key,
+                    model={
+                        "id": "composer-2.5",
+                        "params": [{"id": "fast", "value": "true"}],
+                    },
+                    local=LocalAgentOptions(cwd=str(cwd)),
+                ),
+            )
+            return str(getattr(result, "result", "") or "")
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            try:
+                raw = pool.submit(_run).result(timeout=25)
+            except FuturesTimeout:
+                return None
+        title = _clean_title_output(raw, "")
+        return title or None
+    except Exception:
+        return None
+
+
+def _payload_user_texts(payload: dict) -> list[str]:
+    out: list[str] = []
+    for item in payload.get("messages") or []:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "")
+        role = str(item.get("role") or "")
+        if kind == "user" or role in {"You", "user", "User"}:
+            text = str(item.get("text") or "").strip()
+            if text:
+                out.append(text)
+    return out
+
+
+def _payload_first_assistant_text(payload: dict) -> str:
+    for item in payload.get("messages") or []:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "")
+        role = str(item.get("role") or "")
+        if kind == "agent" or role in {"Agent", "assistant", "Assistant", "AI"}:
+            text = str(item.get("text") or "").strip()
+            if text:
+                return text
+    return ""
+
+
+def _payload_has_assistant(payload: dict) -> bool:
+    for item in payload.get("messages") or []:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "")
+        role = str(item.get("role") or "")
+        if kind == "agent" or role in {"Agent", "assistant", "Assistant", "AI"}:
+            text = str(item.get("text") or "").strip()
+            cards = item.get("worklog") or item.get("cards") or []
+            if text or cards:
+                return True
+    return False
+
+
+def title_from_payload(
+    payload: dict | None,
+    fallback: str = "新对话",
+    *,
+    settings: dict | None = None,
+    provider: str | None = None,
+    use_llm: bool = True,
+) -> str:
     if not isinstance(payload, dict):
         return fallback
     # Wait until the first agent reply exists — don't rename on user-send alone.
     if payload.get("streaming") or payload.get("pending"):
         return fallback
-    messages = payload.get("messages") or []
-    has_assistant = False
-    first_user = ""
-    for item in messages:
-        if not isinstance(item, dict):
-            continue
-        kind = str(item.get("kind") or "")
-        role = str(item.get("role") or "")
-        is_user = kind == "user" or role in {"You", "user", "User"}
-        is_agent = kind == "agent" or role in {"Agent", "assistant", "Assistant", "AI"}
-        if is_user and not first_user:
-            first_user = str(item.get("text") or "").strip()
-        if is_agent:
-            # Require some agent content (or worklog) so we know the turn finished.
-            text = str(item.get("text") or "").strip()
-            cards = item.get("worklog") or item.get("cards") or []
-            if text or cards:
-                has_assistant = True
-    if not has_assistant or not first_user:
+    user_texts = _payload_user_texts(payload)
+    if not _payload_has_assistant(payload) or not user_texts:
         return fallback
-    return summarize_chat_title(first_user, fallback)
+    user0 = user_texts[0]
+    if use_llm:
+        llm = llm_generate_title(
+            user0,
+            assistant_text=_payload_first_assistant_text(payload),
+            settings=settings,
+            provider=provider,
+        )
+        if llm:
+            return llm
+    return summarize_chat_title(user0, fallback)
 
 
 def should_auto_title(existing_title: str | None, payload: dict | None) -> bool:
-    """True when placeholder title should become a short topic summary."""
+    """True once: placeholder + first user turn finished. Never again after that."""
     if not is_placeholder_title(existing_title):
         return False
     if not isinstance(payload, dict):
         return False
     if payload.get("streaming") or payload.get("pending"):
         return False
-    titled = title_from_payload(payload, fallback="")
-    return bool(titled and titled != "新对话")
+    # Exactly one user message = still the first round.
+    if len(_payload_user_texts(payload)) != 1:
+        return False
+    return _payload_has_assistant(payload)
 
 
 def public_conversation(row: dict, *, include_payload: bool = False) -> dict:

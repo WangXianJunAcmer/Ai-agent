@@ -251,6 +251,12 @@ class CancelRequest(BaseModel):
     session_id: str | None = None
 
 
+class ApproveRequest(BaseModel):
+    session_id: str | None = None
+    call_id: str | None = None
+    approve: bool = False
+
+
 class UndoRequest(BaseModel):
     session_id: str | None = None
     turn_id: str | None = None
@@ -611,7 +617,14 @@ async def conversations_put(conv_id: int, req: ConversationPutRequest, request: 
     title = req.title
     if title is None and should_auto_title(existing.get("title"), payload):
         # Auto topic title once first reply finishes; never overwrite user rename.
-        title = title_from_payload(payload, fallback=str(existing.get("title") or "新对话"))
+        # ChatGPT-style: Composer title (heuristic fallback inside).
+        title = await asyncio.to_thread(
+            title_from_payload,
+            payload,
+            str(existing.get("title") or "新对话"),
+            settings=settings,
+            provider=existing.get("provider"),
+        )
     elif title is None:
         title = None
     # PUT persists messages/session only. Workspace affiliation is set at create
@@ -698,7 +711,14 @@ async def history_put(provider: str, req: HistoryPutRequest, request: Request):
     model = (req.model or payload.get("model") or "").strip()
     conv_id = req.conversation_id
     if conv_id is None:
-        title = (req.title or "").strip() or title_from_payload(payload)
+        title = (req.title or "").strip() or await asyncio.to_thread(
+            title_from_payload,
+            payload,
+            "新对话",
+            settings=settings,
+            provider=prov,
+            use_llm=False,  # create often has no assistant yet; heuristic only
+        )
         row = create_conversation(
             uid,
             prov,
@@ -712,7 +732,13 @@ async def history_put(provider: str, req: HistoryPutRequest, request: Request):
         if req.title is not None:
             title = req.title
         elif existing and should_auto_title(existing.get("title"), payload):
-            title = title_from_payload(payload, fallback=str(existing.get("title") or "新对话"))
+            title = await asyncio.to_thread(
+                title_from_payload,
+                payload,
+                str(existing.get("title") or "新对话"),
+                settings=settings,
+                provider=prov,
+            )
         else:
             title = None
         row = update_conversation(
@@ -1072,10 +1098,16 @@ async def workspace_term_ws(websocket: WebSocket):
 
 @app.get("/api/ssh/hosts")
 async def ssh_hosts_list(request: Request):
-    from backend.ssh_hosts import list_hosts
+    from backend.ssh_hosts import list_hosts_merged, _ssh_config_path
 
     require_user(request)
-    return {"ok": True, "hosts": list_hosts(include_secrets=False)}
+    cfg = _ssh_config_path()
+    return {
+        "ok": True,
+        "hosts": list_hosts_merged(include_secrets=False),
+        "ssh_config": str(cfg),
+        "ssh_config_exists": cfg.is_file(),
+    }
 
 
 @app.post("/api/ssh/hosts")
@@ -1103,7 +1135,16 @@ async def ssh_hosts_test(host_id: str, request: Request):
     from backend.ssh_workspace import test_connection
 
     require_user(request)
-    return test_connection(host_id)
+    return await asyncio.to_thread(test_connection, host_id)
+
+
+@app.post("/api/ssh/hosts/{host_id}/warm")
+async def ssh_hosts_warm(host_id: str, request: Request):
+    """Warm/reuse SSH pool when opening the remote tree (non-destructive)."""
+    from backend.ssh_workspace import warm_connection
+
+    require_user(request)
+    return await asyncio.to_thread(warm_connection, host_id)
 
 
 @app.get("/api/ssh/hosts/{host_id}/os")
@@ -1112,7 +1153,7 @@ async def ssh_hosts_os(host_id: str, request: Request, refresh: bool = False):
     from backend.ssh_workspace import detect_remote_os
 
     require_user(request)
-    info = detect_remote_os(host_id, force=bool(refresh))
+    info = await asyncio.to_thread(detect_remote_os, host_id, force=bool(refresh))
     return {"ok": True, "id": host_id, "os": info, **info}
 
 
@@ -1123,12 +1164,23 @@ async def ssh_hosts_tree(
     path: str = "",
 ):
     from backend.ssh_hosts import get_host
-    from backend.ssh_workspace import format_ssh_uri, list_tree
+    from backend import ssh_workspace as ssh_ws
 
     require_user(request)
     host = get_host(host_id, include_secrets=False)
-    remote = (path or "").strip() or str(host.get("default_path") or "/")
-    data = list_tree(host_id, remote if remote.startswith("/") else "/" + remote, ".", depth=1)
+    raw = (path or "").strip()
+    # Empty / ~ → login home on first open. Explicit "/" must stay "/" (parent of /home).
+    if not raw or raw in {"~", "~/"}:
+        resolve = getattr(ssh_ws, "effective_default_path", None)
+        if resolve is None:
+            remote = str(host.get("default_path") or "/").strip() or "/"
+        else:
+            remote = await asyncio.to_thread(resolve, host_id, host)
+    elif raw == "/":
+        remote = "/"
+    else:
+        remote = raw if raw.startswith("/") or (len(raw) >= 2 and raw[1] == ":") else "/" + raw
+    data = ssh_ws.list_tree(host_id, remote, ".", depth=1)
     # For picker: list direct children of `path` as absolute remote dirs.
     entries = []
     for e in data.get("entries") or []:
@@ -1138,7 +1190,7 @@ async def ssh_hosts_tree(
         entries.append({
             "name": e["name"],
             "path": child,
-            "uri": format_ssh_uri(host_id, child),
+            "uri": ssh_ws.format_ssh_uri(host_id, child),
             "type": "dir",
         })
     return {
@@ -1146,7 +1198,7 @@ async def ssh_hosts_tree(
         "host_id": host_id,
         "label": host.get("label") or host_id,
         "path": remote,
-        "uri": format_ssh_uri(host_id, remote),
+        "uri": ssh_ws.format_ssh_uri(host_id, remote),
         "entries": entries,
     }
 
@@ -1212,6 +1264,28 @@ async def api_skills():
     return {"skills": skills, "host_root": str(settings["host_root"])}
 
 
+@app.get("/api/mcp/status")
+async def api_mcp_status(request: Request, refresh: bool = False):
+    """List configured MCP servers + tool/resource/prompt counts (compat agents)."""
+    from backend.mcp_client import get_mcp_manager
+
+    require_user(request)
+    mgr = get_mcp_manager(settings, refresh=bool(refresh))
+    servers = await asyncio.to_thread(mgr.status)
+    return {"servers": servers, "enabled": bool((settings.get("mcp") or {}).get("enabled", True))}
+
+
+@app.post("/api/mcp/refresh")
+async def api_mcp_refresh(request: Request):
+    """Restart MCP pool (pick up .cursor/mcp.json / config changes)."""
+    from backend.mcp_client import get_mcp_manager
+
+    require_user(request)
+    mgr = get_mcp_manager(settings, refresh=True)
+    servers = await asyncio.to_thread(mgr.status)
+    return {"ok": True, "servers": servers}
+
+
 def _attachment_dicts(items: list[AttachmentPayload] | None) -> list[dict] | None:
     if not items:
         return None
@@ -1266,6 +1340,19 @@ async def chat(req: ChatRequest):
 async def cancel_chat(req: CancelRequest):
     await _worker_await(sessions.cancel(req.session_id))
     return {"ok": True}
+
+
+@app.post("/api/chat/approve")
+async def approve_chat(req: ApproveRequest):
+    """Allow/deny a pending dangerous shell command during a compat agent turn."""
+    if not req.session_id or not req.call_id:
+        raise HTTPException(status_code=422, detail="session_id and call_id are required")
+    result = await _worker_await(
+        sessions.approve_tool(req.session_id, req.call_id, approve=bool(req.approve))
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "approve failed")
+    return result
 
 
 @app.post("/api/chat/undo")

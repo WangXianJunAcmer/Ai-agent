@@ -43,3 +43,6 @@ class Session:
     last_active: float = 0.0
     # turn_id → TurnChangeTracker (compat providers; for undo).
     undo_turns: dict = field(default_factory=dict)
+    # Dangerous shell confirm: compat agent waits on approval_future.
+    pending_approval: dict | None = None
+    approval_future: object | None = None

@@ -242,6 +242,32 @@ def _shell_reads_secret(cmd: str) -> bool:
     return False
 
 
+# Destructive / irreversible shell — pause for UI confirm (not a hard block).
+_SHELL_APPROVAL_RE = re.compile(
+    r"(?:"
+    r"\brm\s+(?:-[^\s]*\s+)*-[^\s]*r|\brm\s+(?:-[^\s]*\s+)*-[^\s]*f\b|\brm\s+-rf\b|\brm\s+-fr\b"
+    r"|\brmdir\b|\bdel\s+/[sSqQfF]"
+    r"|\bRemove-Item\b[^\n|;]*-(?:Recurse|Force)\b"
+    r"|\bgit\s+push\b[^\n|;]*--force|\bgit\s+push\b[^\n|;]*\s-f\b"
+    r"|\bgit\s+reset\s+--hard\b|\bgit\s+clean\s+[^\n|;]*-f"
+    r"|\bdd\s+if=|\bmkfs\b|\bformat\s+[A-Za-z]:"
+    r"|\bchmod\s+-R\s+777\b|\bchown\s+-R\b"
+    r"|>\s*(?:~?/)?\.env\b|>>\s*(?:~?/)?\.env\b"
+    r")",
+    re.I,
+)
+
+
+def shell_approval_reason(cmd: str) -> str | None:
+    """If command looks destructive, return a short reason for UI confirm."""
+    text = (cmd or "").strip()
+    if not text:
+        return None
+    if not _SHELL_APPROVAL_RE.search(text):
+        return None
+    return "该命令可能造成不可逆破坏（删除/强推/硬重置等），需确认后执行。"
+
+
 def sensitive_tool_block_reason(name: str, args) -> str | None:
     """Block tools that would read secret-bearing files or dump env secrets."""
     if not _SAFETY_ENABLED:

@@ -103,11 +103,10 @@ def workspace_label(root: Path | str) -> str:
         from backend.ssh_hosts import get_host
 
         try:
-            host_id, path = parse_ssh_uri(text)
+            host_id, _path = parse_ssh_uri(text)
             host = get_host(host_id, include_secrets=False)
-            label = host.get("label") or host_id
-            name = path.rstrip("/").split("/")[-1] or label
-            return f"{name} · {label}"
+            # Host only — remote folder belongs in URI / tooltip, not the repo title.
+            return str(host.get("label") or host_id).strip() or host_id
         except Exception:
             return text
     try:

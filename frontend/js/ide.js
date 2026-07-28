@@ -1,4 +1,4 @@
-/* coding-agent frontend/js/ide.js — Cursor-like code sidebar (Ctrl+G) */
+/* coding-agent frontend/js/ide.js — Cursor-like code sidebar */
 
   var idePanel = document.getElementById("coding-agent-ide");
   var ideExplorer = document.getElementById("coding-agent-ide-explorer");
@@ -140,7 +140,7 @@
   }
 
   function toggleIdeMaximized() {
-    if (!ideIsOpen()) openIdePanel(currentIdePanel() || "files");
+    if (!ideIsOpen()) openIdePanel("files");
     setIdeMaximized(!ideIsMaximized());
   }
 
@@ -223,8 +223,52 @@
 
   function toggleIde() {
     if (ideIsOpen()) setIdeOpen(false);
-    else openIdePanel(currentIdePanel() || "files");
+    else openIdePanel("files"); // never auto-spawn terminal on Ctrl+G
   }
+
+  // Shortcut routing follows the mouse, not focus (xterm otherwise keeps stealing keys).
+  var ideHoverZone = "other"; // terminal | editor | ide | sidebar | other
+
+  function zoneFromElement(el) {
+    if (!el || !el.closest) return "other";
+    if (el.closest(
+      "#coding-agent-ide-panel-terminal, #coding-agent-ide-term-mount, "
+      + ".coding-agent-ide-xterm-host, .xterm"
+    )) {
+      return "terminal";
+    }
+    if (el === ideCode || (ideFindInput && el === ideFindInput)) return "editor";
+    if (ideCode && ideCode.contains && ideCode.contains(el)) return "editor";
+    if (idePanel && idePanel.contains(el)) return "ide";
+    if (sidebar && sidebar.contains(el)) return "sidebar";
+    return "other";
+  }
+
+  function ideKeyZone(_ev) {
+    return ideHoverZone || "other";
+  }
+
+  function syncHoverZone(el) {
+    var next = zoneFromElement(el);
+    if (next === ideHoverZone) return;
+    var prev = ideHoverZone;
+    ideHoverZone = next;
+    if (prev === "terminal" && next !== "terminal") {
+      blurActiveTerminal();
+    } else if (next === "terminal") {
+      var tab = activePageTab();
+      if (tab && tab.kind === "terminal" && tab.xterm) {
+        try { tab.xterm.focus(); } catch (e) {}
+      }
+    }
+  }
+
+  document.addEventListener("mousemove", function (ev) {
+    syncHoverZone(ev.target);
+  }, true);
+  document.addEventListener("mouseover", function (ev) {
+    syncHoverZone(ev.target);
+  }, true);
 
   function syncEditorChrome() {
     var tab = activePageTab();
@@ -1779,6 +1823,34 @@
     return tab;
   }
 
+  function isTerminalActive() {
+    var tab = activePageTab();
+    return !!(ideIsOpen() && tab && tab.kind === "terminal");
+  }
+
+  function blurActiveTerminal() {
+    var tab = activePageTab();
+    if (tab && tab.xterm) {
+      try { tab.xterm.blur(); } catch (e) {}
+    }
+  }
+
+  /** Ctrl+J: open terminal from files; minimize IDE when terminal is in front. */
+  function minimizeIdeSidebar() {
+    blurActiveTerminal();
+    setIdeOpen(false);
+    if (typeof inputField !== "undefined" && inputField) {
+      try { inputField.focus(); } catch (e) {}
+    }
+  }
+
+  /** What's "in front": mouse hover wins, else active tab. */
+  function ideFrontIsTerminal() {
+    if (ideHoverZone === "terminal") return true;
+    if (ideHoverZone === "editor" || ideHoverZone === "ide") return false;
+    return isTerminalActive();
+  }
+
   function focusExplorerForFile() {
     setIdeOpen(true, "files");
     if (!ideOpenTabs.some(function (t) { return (t.kind || "file") === "file"; })) {
@@ -1905,16 +1977,34 @@
 
   document.addEventListener("keydown", function (ev) {
     if (!sidebar || !sidebar.classList.contains("is-fullscreen")) return;
+    if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey) return;
     var key = String(ev.key || "").toLowerCase();
-    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && key === "j") {
-      ev.preventDefault();
-      openOrFocusSpecialPage("terminal", { forceNew: false });
+    if (key !== "g" && key !== "j") return;
+    // G/J follow what's in front (hover / active tab), not xterm focus.
+    ev.preventDefault();
+    var termFront = ideFrontIsTerminal();
+    if (key === "j") {
+      if (termFront) minimizeIdeSidebar();
+      else {
+        if (!ideIsOpen()) setIdeOpen(true, "files");
+        openOrFocusSpecialPage("terminal", { forceNew: false });
+      }
+      return;
+    }
+    // Ctrl+G
+    if (termFront) {
+      // terminal → file view (prefer an open file tab)
+      var fileTab = ideOpenTabs.find(function (t) { return (t.kind || "file") === "file"; });
+      if (fileTab) activateIdeTab(tabKey(fileTab), false);
+      else focusExplorerForFile();
+    } else {
+      minimizeIdeSidebar(); // file → collapse IDE rail
     }
   });
 
   try {
     var savedPanel = localStorage.getItem("coding-agent-ide-panel:" + provider);
-    if (savedPanel === "browser") savedPanel = "files";
+    if (savedPanel === "browser" || savedPanel === "terminal") savedPanel = "files";
     if (savedPanel) setIdePanel(savedPanel);
   } catch (err) {}
 
@@ -2018,20 +2108,18 @@
   window.addEventListener("resize", hideIdeCtx);
 
   document.addEventListener("keydown", function (ev) {
-    if ((ev.ctrlKey || ev.metaKey) && String(ev.key || "").toLowerCase() === "g") {
-      ev.preventDefault();
-      toggleIde();
-    }
+    var zone = ideKeyZone(ev);
+    // Hover over terminal → don't steal find/save from bash.
+    if (zone === "terminal") return;
+
     if ((ev.ctrlKey || ev.metaKey) && String(ev.key || "").toLowerCase() === "s" && ideIsOpen()) {
-      if (ev.target === ideCode || (sidebar && sidebar.contains(ev.target))) {
+      if (zone === "editor" || zone === "ide" || zone === "sidebar") {
         ev.preventDefault();
         saveIdeFile();
       }
     }
     if ((ev.ctrlKey || ev.metaKey) && String(ev.key || "").toLowerCase() === "f" && ideIsOpen()) {
-      var inIde = idePanel && idePanel.contains(ev.target);
-      var inEditor = ideEditor && ideEditor.contains(ev.target);
-      if (inIde || inEditor || ev.target === ideCode || ev.target === ideFindInput) {
+      if (zone === "editor" || zone === "ide") {
         ev.preventDefault();
         openFindBar();
       }

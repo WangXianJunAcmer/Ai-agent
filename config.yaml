@@ -27,3 +27,18 @@ providers:
   deepseek:
     base_url: "https://api.deepseek.com"
     # Same stack as openai; only base_url + DEEPSEEK_API_KEY differ
+
+# MCP servers for OpenAI / DeepSeek agents (Cursor path also reads {workspace}/.cursor/mcp.json).
+# Example stdio:
+#   servers:
+#     - name: filesystem
+#       command: npx
+#       args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+# Example HTTP:
+#   servers:
+#     - name: remote
+#       url: "https://example.com/mcp"
+#       headers: { Authorization: "Bearer ..." }
+mcp:
+  enabled: true
+  servers: []

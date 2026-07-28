@@ -193,11 +193,14 @@ class SessionManager:
         ws_key = self._workspace_key(workspace)
         local_settings = self._settings_for_workspace(workspace)
 
+        # Cursor SDK needs a real local cwd — map ssh:// → data/ssh_mirrors/…
         if prov not in COMPAT_PROVIDERS and is_ssh_uri(ws_key):
-            raise RuntimeError(
-                "Cursor Agent 不支持 SSH 远程工作区。请改用 OpenAI 或 DeepSeek，"
-                "或切换到本机文件夹。"
-            )
+            from backend.ssh_mirror import ensure_mirror
+
+            mirror = await asyncio.to_thread(ensure_mirror, ws_key)
+            local_settings = dict(local_settings)
+            local_settings["host_root"] = str(mirror)
+            local_settings["ssh_uri"] = ws_key
 
         async with self._map_lock:
             await self._prune_idle_sessions()
@@ -281,7 +284,21 @@ class SessionManager:
         return str(self.settings.get("model") or "auto")
 
     def _session_settings(self, session: Session) -> dict:
-        return self._settings_for_workspace(session.workspace_root or None)
+        from backend.ssh_workspace import is_ssh_uri
+
+        settings = self._settings_for_workspace(session.workspace_root or None)
+        ws = session.workspace_root or ""
+        # Keep session.workspace_root as ssh:// for UI; Cursor cwd uses the mirror.
+        if (
+            session.provider not in COMPAT_PROVIDERS
+            and is_ssh_uri(ws)
+        ):
+            from backend.ssh_mirror import ensure_mirror
+
+            settings = dict(settings)
+            settings["host_root"] = str(ensure_mirror(ws))
+            settings["ssh_uri"] = ws
+        return settings
 
     def _agent_options(self, model: str | dict, *, settings: dict | None = None):
         from backend.config import cursor_api_key
@@ -351,11 +368,33 @@ class SessionManager:
         if not session_id or session_id not in self._sessions:
             return
         session = self._sessions[session_id]
+        # Deny any in-flight dangerous-shell confirm so the loop can exit.
+        fut = session.approval_future
+        if fut is not None and hasattr(fut, "done") and not fut.done():
+            fut.set_result(False)
         await self._cancel_session_run(session, bump=True)
         # Compat pumps never set active_run — cancel the task so the loop exits.
         task = session.pump_task
         if task is not None and not task.done():
             task.cancel()
+
+    async def approve_tool(
+        self, session_id: str | None, call_id: str, *, approve: bool
+    ) -> dict:
+        """Resolve a pending dangerous-shell confirmation from the UI."""
+        if not session_id or session_id not in self._sessions:
+            return {"ok": False, "error": "session not found"}
+        session = self._sessions[session_id]
+        pending = session.pending_approval or {}
+        if not pending:
+            return {"ok": False, "error": "no pending approval"}
+        if str(pending.get("call_id") or "") != str(call_id or ""):
+            return {"ok": False, "error": "call_id mismatch"}
+        fut = session.approval_future
+        if fut is None or not hasattr(fut, "done") or fut.done():
+            return {"ok": False, "error": "approval already resolved"}
+        fut.set_result(bool(approve))
+        return {"ok": True, "approved": bool(approve)}
 
     async def undo_turn(
         self, session_id: str | None, turn_id: str | None, path: str | None = None
@@ -988,6 +1027,40 @@ class SessionManager:
             # Only cancel on turn mismatch — never because an SSE client disconnected.
             if run is not None and session.turn != turn:
                 await self._cancel_run(run)
+            # Cursor wrote into the local SSH mirror — push back to remote.
+            ssh_uri = str(local_settings.get("ssh_uri") or "").strip()
+            if ssh_uri:
+                try:
+                    from backend.ssh_mirror import push_mirror
+
+                    push_result = await asyncio.to_thread(
+                        push_mirror, ssh_uri, Path(str(local_settings["host_root"]))
+                    )
+                    if push_result.get("pushed"):
+                        self._emit(session, {
+                            "type": "summary",
+                            "session_id": session.session_id,
+                            "content": (
+                                f"已同步 {push_result['pushed']} 个文件到 "
+                                f"{ssh_uri}"
+                            ),
+                            "model": session.model,
+                        })
+                    errs = push_result.get("errors") or []
+                    if errs:
+                        self._emit(session, {
+                            "type": "summary",
+                            "session_id": session.session_id,
+                            "content": "SSH 回写部分失败: " + "; ".join(errs[:5]),
+                            "model": session.model,
+                        })
+                except Exception as sync_err:  # noqa: BLE001
+                    self._emit(session, {
+                        "type": "summary",
+                        "session_id": session.session_id,
+                        "content": f"SSH 回写失败: {sync_err}",
+                        "model": session.model,
+                    })
             session.live_done = True
 
     async def stream(
