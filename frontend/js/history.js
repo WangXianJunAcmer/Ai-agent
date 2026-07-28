@@ -499,8 +499,20 @@
     var leavingId = activeConversationId;
     var leavingBusy = !!(isRunning || pendingFollow || activeAbort || (sendQueue && sendQueue.length));
     var hasContent = threadHasContent() || leavingBusy;
-    // Empty unused draft: drop it instead of keeping a blank「新对话」in the nav.
-    if (leavingId != null && !hasContent) {
+    var leavingMeta = null;
+    if (leavingId != null) {
+      leavingMeta = (conversationList || []).find(function (c) {
+        return Number(c.id) === Number(leavingId);
+      }) || null;
+    }
+    // Only delete true blank placeholders. Never delete when server says it has messages
+    // (DOM can be empty briefly while switching / after a failed restore).
+    var canDiscardEmpty = !!(
+      leavingId != null
+      && !hasContent
+      && (!leavingMeta || isEmptyPlaceholderConv(leavingMeta))
+    );
+    if (canDiscardEmpty) {
       rememberActiveConversation(null);
       var discardPromise = discardEmptyConversation(leavingId);
       sendQueue = [];

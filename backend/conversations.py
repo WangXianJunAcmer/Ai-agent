@@ -20,7 +20,7 @@ def list_conversations(user_id: int, provider: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT id, user_id, provider, title, workspace_root, agent_session_id, model,
-                   pinned, archived, updated_at, created_at
+                   pinned, archived, updated_at, created_at, payload_json
             FROM conversations
             WHERE user_id = ? AND provider = ? AND COALESCE(archived, 0) = 0
             ORDER BY COALESCE(pinned, 0) DESC, datetime(updated_at) DESC, id DESC
@@ -277,18 +277,27 @@ def public_conversation(row: dict, *, include_payload: bool = False) -> dict:
     except OSError:
         name = "Home"
     payload = None
-    try:
-        payload = json.loads(row.get("payload_json") or "{}")
-    except json.JSONDecodeError:
+    raw_payload = row.get("payload_json")
+    # List queries must include payload_json; missing key must NOT mean empty
+    # (otherwise every nav row looks blank and prune/discard deletes real chats).
+    if "payload_json" not in row:
+        is_empty = False
+        streaming = False
         payload = None
-    streaming = bool(
-        isinstance(payload, dict)
-        and (payload.get("streaming") or payload.get("pending"))
-    )
-    messages = []
-    if isinstance(payload, dict) and isinstance(payload.get("messages"), list):
-        messages = payload.get("messages") or []
-    is_empty = (not streaming) and len(messages) == 0
+    else:
+        try:
+            payload = json.loads(raw_payload or "{}")
+        except json.JSONDecodeError:
+            payload = None
+        streaming = bool(
+            isinstance(payload, dict)
+            and (payload.get("streaming") or payload.get("pending"))
+        )
+        messages = []
+        if isinstance(payload, dict) and isinstance(payload.get("messages"), list):
+            messages = payload.get("messages") or []
+        is_empty = (not streaming) and len(messages) == 0
+
     out = {
         "id": int(row["id"]),
         "provider": row["provider"],
