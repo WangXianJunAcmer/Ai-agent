@@ -317,9 +317,10 @@
     #coding-agent-nav-new:hover { background: #f3f3f3; }
     #coding-agent-nav-new svg { width: 16px; height: 16px; flex: 0 0 auto; }
     #coding-agent-ide-topbar {
-      flex: 0 0 auto; min-height: 35px; display: flex; align-items: stretch;
+      flex: 0 0 auto; height: 35px; min-height: 35px; max-height: 35px;
+      display: flex; align-items: stretch;
       border-bottom: 1px solid var(--ai-border); background: #ececec;
-      overflow: visible; position: relative; z-index: 20;
+      overflow: hidden; position: relative; z-index: 20;
     }
     #coding-agent-ide-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
     #coding-agent-ide-editor {
@@ -327,12 +328,19 @@
       background: #fff; border-right: 1px solid var(--ai-border);
     }
     #coding-agent-ide-tabs {
-      flex: 1 1 auto; min-width: 0; display: flex; gap: 0; overflow: visible;
+      flex: 1 1 auto; min-width: 0; display: flex; gap: 0; overflow: hidden;
       padding: 0; background: transparent; align-items: stretch;
     }
     #coding-agent-ide-tabs-scroll {
-      flex: 1 1 auto; min-width: 0; display: flex; overflow-x: auto; align-items: stretch;
+      flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: nowrap;
+      overflow-x: auto; overflow-y: hidden; align-items: stretch;
+      scrollbar-width: thin;
     }
+    #coding-agent-ide-tabs-scroll::-webkit-scrollbar { height: 6px; }
+    #coding-agent-ide-tabs-scroll::-webkit-scrollbar-thumb {
+      background: rgba(0,0,0,.28); border-radius: 3px;
+    }
+    #coding-agent-ide-tabs-scroll::-webkit-scrollbar-track { background: transparent; }
     #coding-agent-ide-tab-add {
       flex: 0 0 auto; width: 28px; height: 28px; margin: 3px 2px 0;
       border: 0; border-radius: 6px; background: transparent; color: #666;
@@ -464,6 +472,7 @@
     }
     .coding-agent-ide-tab {
       display: inline-flex; align-items: center; gap: 6px;
+      flex: 0 0 auto; /* never shrink when many tabs — scroll instead */
       border: 0; border-right: 1px solid rgba(0,0,0,.06); background: transparent;
       padding: 0 8px 0 10px; font: 12px/1.2 inherit; color: var(--ai-muted);
       cursor: grab; max-width: 180px; height: 100%; position: relative;
@@ -743,6 +752,7 @@
     .coding-agent-ide-tree-icon.is-bat,
     .coding-agent-ide-tree-icon.is-sh { color: #3e7a3e; }
     .coding-agent-ide-tree-icon.is-img { color: #0a7ea4; font-size: 9px; }
+    .coding-agent-ide-tree-icon.is-doc { color: #2b579a; }
     .coding-agent-ide-tree-label {
       flex: 1 1 auto; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
