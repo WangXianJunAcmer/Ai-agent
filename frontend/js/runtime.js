@@ -616,6 +616,22 @@
     }
   }
 
+  function appendNoticeCard(agentMsg, text) {
+    finalizePlanCard(agentMsg);
+    var notice = String(text || "").trim();
+    if (!notice || !agentMsg) return;
+    beginToolSegment(agentMsg);
+    appendCard(agentMsg, {
+      kind: "run",
+      title: notice,
+      meta: "",
+      detail: "",
+      paths: [],
+      live: false,
+      forceCollapsed: true,
+    });
+  }
+
   function applyStreamPayload(agentMsg, payload, state) {
     // New-chat bumps sessionGeneration — ignore late chunks from the aborted stream.
     if (state && state.gen != null && state.gen !== sessionGeneration) return;
@@ -681,6 +697,9 @@
       // Official Cursor SDK: summary-started / summary / summary-completed.
       if (payload.completed) {
         finalizePlanCard(agentMsg);
+      } else if (state.finished) {
+        // Post-done "summary" (legacy SSH push) must not reopen Planning shimmer.
+        appendNoticeCard(agentMsg, payload.summary || payload.content || "");
       } else {
         rememberActivity(agentMsg, "Planning next moves");
         updateRunState(currentActivityTitle(agentMsg));
@@ -689,6 +708,9 @@
         beginToolSegment(agentMsg);
         notePlanning(agentMsg, payload.summary || payload.content || "");
       }
+      scheduleSaveChatHistory();
+    } else if (payload.type === "notice") {
+      appendNoticeCard(agentMsg, payload.content || payload.summary || "");
       scheduleSaveChatHistory();
     } else if (payload.type === "upload") {
       beginToolSegment(agentMsg);

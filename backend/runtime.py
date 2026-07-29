@@ -1042,8 +1042,9 @@ class SessionManager:
                         push_mirror, ssh_uri, Path(str(local_settings["host_root"]))
                     )
                     if push_result.get("pushed"):
+                        # Not "summary" — that reopens the Planning next moves shimmer after done.
                         self._emit(session, {
-                            "type": "summary",
+                            "type": "notice",
                             "session_id": session.session_id,
                             "content": (
                                 f"已同步 {push_result['pushed']} 个文件到 "
@@ -1054,14 +1055,14 @@ class SessionManager:
                     errs = push_result.get("errors") or []
                     if errs:
                         self._emit(session, {
-                            "type": "summary",
+                            "type": "notice",
                             "session_id": session.session_id,
                             "content": "SSH 回写部分失败: " + "; ".join(errs[:5]),
                             "model": session.model,
                         })
                 except Exception as sync_err:  # noqa: BLE001
                     self._emit(session, {
-                        "type": "summary",
+                        "type": "notice",
                         "session_id": session.session_id,
                         "content": f"SSH 回写失败: {sync_err}",
                         "model": session.model,
