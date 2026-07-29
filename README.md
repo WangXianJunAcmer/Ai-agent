@@ -24,7 +24,11 @@ cp .env.example .env
 # 编辑 .env，按需填入 CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY
 
 ./run.sh
-# Windows: start_ca.bat / stop_ca.bat
+# 前台跑；停掉用 Ctrl+C，或另开终端：
+./stop.sh
+
+# Windows 后台：
+#   start_ca.bat / stop_ca.bat
 ```
 
 自检：
@@ -114,5 +118,6 @@ Coding-Agent/
 ├── start.py
 ├── start_ca.bat
 ├── stop_ca.bat
-└── run.sh
+├── run.sh
+└── stop.sh
 ```

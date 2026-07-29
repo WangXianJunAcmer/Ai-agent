@@ -1212,13 +1212,15 @@
       display: flex; align-items: flex-start; gap: 8px;
       color: #52525b; margin-top: 4px;
     }
+    #coding-agent-nav-tip .tip-row[hidden] { display: none !important; }
     #coding-agent-nav-tip .tip-row svg {
       width: 14px; height: 14px; flex: 0 0 auto; margin-top: 1px;
     }
     #coding-agent-nav-tip .tip-row span {
       min-width: 0; word-break: break-all;
     }
-    #coding-agent-nav-tip .tip-ssh { color: #15803d; font-weight: 600; }
+    #coding-agent-nav-tip .tip-ico-ssh[hidden],
+    #coding-agent-nav-tip .tip-ico-folder[hidden] { display: none !important; }
     #coding-agent-ctx-ws.is-ssh {
       border-color: rgba(21, 128, 61, .28);
       background: rgba(21, 128, 61, .06);
@@ -3147,12 +3149,9 @@
       <div id="coding-agent-nav-item-menu" role="menu" aria-hidden="true"></div>
       <div id="coding-agent-nav-tip" aria-hidden="true">
         <div class="tip-title"></div>
-        <div class="tip-row tip-ssh" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
-          <span class="tip-ssh-text"></span>
-        </div>
         <div class="tip-row tip-path">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+          <svg class="tip-ico-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"></path></svg>
+          <svg class="tip-ico-ssh" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
           <span class="tip-path-text"></span>
         </div>
       </div>

@@ -1355,18 +1355,14 @@
     var tip = document.getElementById("coding-agent-nav-tip");
     if (!tip || !anchor || !item) return;
     var titleEl = tip.querySelector(".tip-title");
-    var sshRow = tip.querySelector(".tip-ssh");
-    var sshText = tip.querySelector(".tip-ssh-text");
     var pathText = tip.querySelector(".tip-path-text");
+    var icoFolder = tip.querySelector(".tip-ico-folder");
+    var icoSsh = tip.querySelector(".tip-ico-ssh");
     if (titleEl) titleEl.textContent = item.title || "新对话";
     var ws = item.workspace_root || "";
-    var ssh = !!(item.is_ssh || isSshWorkspace(ws));
-    if (sshRow) sshRow.hidden = !ssh;
-    if (ssh && sshText) {
-      var m = String(ws).match(/^ssh:\/\/([^/]+)/i);
-      var hostId = m ? decodeURIComponent(m[1] || "") : (item.workspace_name || "SSH");
-      sshText.textContent = "SSH · " + hostId;
-    }
+    var ssh = isSshWorkspace(ws);
+    if (icoFolder) icoFolder.hidden = !!ssh;
+    if (icoSsh) icoSsh.hidden = !ssh;
     if (pathText) pathText.textContent = workspaceTipPath(ws) || ws || "(no path)";
     tip.classList.add("is-on");
     tip.setAttribute("aria-hidden", "false");
