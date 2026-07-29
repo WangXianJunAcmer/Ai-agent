@@ -1361,8 +1361,14 @@
     if (titleEl) titleEl.textContent = item.title || "新对话";
     var ws = item.workspace_root || "";
     var ssh = isSshWorkspace(ws);
-    if (icoFolder) icoFolder.hidden = !!ssh;
-    if (icoSsh) icoSsh.hidden = !ssh;
+    // SVG.hidden is unreliable in some browsers — toggle the attribute explicitly.
+    function setHidden(el, on) {
+      if (!el) return;
+      if (on) el.setAttribute("hidden", "");
+      else el.removeAttribute("hidden");
+    }
+    setHidden(icoFolder, ssh);
+    setHidden(icoSsh, !ssh);
     if (pathText) pathText.textContent = workspaceTipPath(ws) || ws || "(no path)";
     tip.classList.add("is-on");
     tip.setAttribute("aria-hidden", "false");
