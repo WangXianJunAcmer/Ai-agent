@@ -380,6 +380,12 @@ def check_context_error() -> None:
     assert "上一条仍在执行" in busy, busy
     internal = friendly_error("internal error")
     assert "内部错误" in internal, internal
+    auth = friendly_error("Error code: 401 - Incorrect API key provided")
+    assert "API Key 无效" in auth, auth
+    auth2 = friendly_error("nope", status=401)
+    assert "API Key 无效" in auth2, auth2
+    auth3 = friendly_error("denied", code="unauthenticated")
+    assert "API Key 无效" in auth3, auth3
     print("ok context error")
 
 

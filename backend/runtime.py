@@ -17,7 +17,7 @@ from cursor_sdk import (
     LocalAgentOptions,
     SendOptions,
 )
-from cursor_sdk.errors import AgentBusyError
+from cursor_sdk.errors import AgentBusyError, AuthenticationError
 
 from backend.attachments import build_message, prune_upload_dir, upload_meta
 from backend.providers import COMPAT_PROVIDERS, build_compat_handle, normalize_provider
@@ -563,16 +563,26 @@ class SessionManager:
                 terminal = scrub_reply((result.result or "").strip())
                 if terminal and not reply:
                     out["reply"] = terminal
-                if str(result.status).lower() in {"error", "failed"} and terminal:
-                    out["error"] = friendly_error(terminal)
+                if str(result.status).lower() in {"error", "failed"}:
+                    out["error"] = friendly_error(self._run_failure_message(result))
                 return out
             except (CursorAgentError, RuntimeError) as err:
                 msg = getattr(err, "message", None) or str(err)
+                if isinstance(err, AuthenticationError) and not str(msg or "").strip():
+                    msg = "authentication failed"
+                status_code = getattr(err, "status", None) if isinstance(err, CursorAgentError) else None
+                if isinstance(err, AuthenticationError) and status_code is None:
+                    status_code = 401
+                code = getattr(err, "code", None) if isinstance(err, CursorAgentError) else None
                 return {
                     "session_id": session.session_id,
                     "reply": "",
                     "status": "error",
-                    "error": friendly_error(msg),
+                    "error": friendly_error(
+                        msg,
+                        status=status_code if isinstance(status_code, int) else None,
+                        code=code,
+                    ),
                     "model": session.model,
                 }
             finally:
@@ -623,13 +633,30 @@ class SessionManager:
             **extra,
         })
 
-    def _emit_error(self, session: Session, content: str) -> dict:
+    def _emit_error(self, session: Session, content: str, *, err: BaseException | None = None) -> dict:
+        status = getattr(err, "status", None) if err is not None else None
+        code = getattr(err, "code", None) if err is not None else None
+        if err is not None and isinstance(err, AuthenticationError) and status is None:
+            status = 401
         return self._emit(session, {
             "type": "error",
             "session_id": session.session_id,
-            "content": friendly_error(content),
+            "content": friendly_error(content, status=status if isinstance(status, int) else None, code=code),
             "model": session.model,
         })
+
+    @staticmethod
+    def _run_failure_message(result) -> str:
+        """RunResult has no .error field — empty .result used to become bare「Agent 执行失败」."""
+        for attr in ("error", "message", "result"):
+            val = getattr(result, attr, None)
+            text = str(val or "").strip()
+            if text:
+                return text
+        return (
+            "Agent 执行失败（未返回具体原因）。"
+            "若刚更换或填入了 API Key，请确认 Key 有效，并重启服务后再试。"
+        )
 
     def _cancelled_send(self, session: Session, **extra) -> dict:
         return {
@@ -993,12 +1020,7 @@ class SessionManager:
             status = getattr(result, "status", None) or "finished"
             err_msg = None
             if str(status).lower() in {"error", "failed"}:
-                err_msg = (
-                    getattr(result, "error", None)
-                    or getattr(result, "message", None)
-                    or getattr(result, "result", None)
-                    or "Agent 执行失败"
-                )
+                err_msg = self._run_failure_message(result)
                 self._emit_error(session, str(err_msg))
             resolved = model_id_from_selection(getattr(result, "model", None))
             terminal = scrub_reply((result.result or "").strip())
@@ -1012,7 +1034,8 @@ class SessionManager:
             if terminal:
                 done_extra["result"] = terminal
             if err_msg:
-                done_extra["error"] = friendly_error(str(err_msg if not terminal else terminal))
+                # Prefer the failure text; empty result must not wipe the auth hint.
+                done_extra["error"] = friendly_error(str(err_msg))
             self._emit_turn_changes(session, tracker)
             self._emit_done(session, status, **done_extra)
         except asyncio.CancelledError:
@@ -1022,9 +1045,23 @@ class SessionManager:
             raise
         except (CursorAgentError, RuntimeError) as err:
             msg = getattr(err, "message", None) or str(err)
-            self._emit_error(session, msg)
+            if isinstance(err, AuthenticationError) and not str(msg or "").strip():
+                msg = "authentication failed"
+            self._emit_error(session, msg, err=err if isinstance(err, CursorAgentError) else None)
             self._emit_turn_changes(session, tracker)
-            self._emit_done(session, "error", error=friendly_error(msg))
+            status_code = getattr(err, "status", None) if isinstance(err, CursorAgentError) else None
+            if isinstance(err, AuthenticationError) and status_code is None:
+                status_code = 401
+            code = getattr(err, "code", None) if isinstance(err, CursorAgentError) else None
+            self._emit_done(
+                session,
+                "error",
+                error=friendly_error(
+                    msg,
+                    status=status_code if isinstance(status_code, int) else None,
+                    code=code,
+                ),
+            )
         finally:
             session._active_tracker = None
             if session.active_run is run:

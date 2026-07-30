@@ -316,8 +316,9 @@
 
   function formatAgentError(raw) {
     var msg = String(raw || "unknown");
-    // Backend already rewrites context-overflow; only decorate raw transport errors.
+    // Backend already rewrites context-overflow / auth; only decorate raw transport errors.
     if (msg.indexOf("上下文已超限") >= 0) return msg;
+    if (msg.indexOf("API Key 无效") >= 0) return msg;
     var lower = msg.toLowerCase();
     if (
       lower.indexOf("context") >= 0 && (lower.indexOf("limit") >= 0 || lower.indexOf("length") >= 0 || lower.indexOf("window") >= 0 || lower.indexOf("overflow") >= 0 || lower.indexOf("too long") >= 0 || lower.indexOf("exceed") >= 0)
@@ -327,6 +328,20 @@
       || msg.indexOf("上下文") >= 0 && (msg.indexOf("超") >= 0 || msg.indexOf("过长") >= 0)
     ) {
       return "上下文已超限，请点击「新对话」清空后重试，或缩短本次输入/附件。\n原始错误: " + msg;
+    }
+    if (
+      lower.indexOf("authentication") >= 0
+      || lower.indexOf("unauthorized") >= 0
+      || lower.indexOf("unauthenticated") >= 0
+      || lower.indexOf("invalid api key") >= 0
+      || lower.indexOf("incorrect api key") >= 0
+      || lower.indexOf("invalid_api_key") >= 0
+      || lower.indexOf("error code: 401") >= 0
+      || lower.indexOf("error code: 403") >= 0
+      || lower.indexOf("http 401") >= 0
+      || lower.indexOf("http 403") >= 0
+    ) {
+      return "API Key 无效或已失效，请检查 .env 里对应的 CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY 后重启服务。\n原始错误: " + msg;
     }
     return msg;
   }

@@ -960,10 +960,18 @@ async def stream_compat_turn(
             })
 
     except Exception as err:
+        from backend.tool_display import friendly_error
+
+        status = getattr(err, "status_code", None) or getattr(err, "status", None)
+        code = getattr(err, "code", None) or getattr(err, "type", None)
         emit({
             "type": "error",
             "session_id": session.session_id,
-            "content": str(err),
+            "content": friendly_error(
+                str(err),
+                status=status if isinstance(status, int) else None,
+                code=str(code) if code else None,
+            ),
             "model": session.model,
         })
         final_status = "error"

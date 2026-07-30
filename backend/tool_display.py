@@ -525,9 +525,10 @@ def tool_summary(name: str, args=None, result=None, status: str = "unknown") -> 
     }
 
 
-def friendly_error(message: str) -> str:
+def friendly_error(message: str, *, status: int | None = None, code: str | None = None) -> str:
     msg = (message or "").strip() or "unknown"
     lower = msg.lower()
+    code_l = str(code or "").strip().lower()
     if (
         ("context" in lower and any(k in lower for k in ("limit", "length", "window", "overflow", "exceed", "too long")))
         or "maximum context" in lower
@@ -540,9 +541,57 @@ def friendly_error(message: str) -> str:
         return "上一条仍在执行，请稍等片刻后重试，或点击「新对话」。原始错误: " + msg
     if lower == "internal error" or "internal error" in lower:
         return "服务内部错误，常见于上一条被中断后 Agent 尚未释放。请再发一次或开新对话。原始错误: " + msg
+    if _looks_like_auth_error(msg, status=status, code=code_l):
+        return (
+            "API Key 无效或已失效，请检查 .env 里对应的 "
+            "CURSOR_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY 后重启服务。"
+            "原始错误: " + msg
+        )
     if "bridge" in lower or "cursor-sdk-bridge" in lower:
         return msg  # already wrapped with actionable hint in runtime
     return msg
+
+
+def _looks_like_auth_error(message: str, *, status: int | None = None, code: str = "") -> bool:
+    if status in {401, 403}:
+        return True
+    code_l = (code or "").lower()
+    if code_l in {
+        "unauthenticated",
+        "unauthorized",
+        "permission_denied",
+        "forbidden",
+        "authentication_error",
+        "invalid_api_key",
+    }:
+        return True
+    lower = (message or "").lower()
+    needles = (
+        "authenticationerror",
+        "authentication failed",
+        "authentication required",
+        "unauthenticated",
+        "unauthorized",
+        "invalid api key",
+        "invalid_api_key",
+        "incorrect api key",
+        "api key is invalid",
+        "api key invalid",
+        "expired api key",
+        "wrong api key",
+        "invalid token",
+        "access token",
+        "bearer token",
+        "not authorized",
+        "permission denied",
+        "error code: 401",
+        "error code: 403",
+        "status code 401",
+        "status code 403",
+        "http 401",
+        "http 403",
+    )
+    return any(n in lower for n in needles)
 
 
 def model_id_from_selection(value) -> str:
